@@ -21,9 +21,15 @@ def fetch_contracts():
                 "naics_codes": ["561720"]
             },
             "fields": [
-                "Award ID", "Recipient Name", "Award Amount",
-                "Start Date", "End Date",
-                "Awarding Agency", "Awarding Sub Agency", "Description"
+                "Award ID",
+                "Recipient Name",
+                "Award Amount",
+                "Start Date",
+                "End Date",
+                "Awarding Agency",
+                "Awarding Sub Agency",
+                "Description",
+                "generated_internal_id"
             ],
             "page": page,
             "limit": 100,
@@ -36,8 +42,7 @@ def fetch_contracts():
         r.raise_for_status()
 
         data = r.json()
-        results = data.get("results", [])
-        out.extend(results)
+        out.extend(data.get("results", []))
 
         if not data.get("page_metadata", {}).get("hasNext"):
             break
@@ -62,6 +67,7 @@ def main():
         if TODAY <= end <= CUTOFF:
             amount = c.get("Award Amount") or 0
             days_left = (end - TODAY).days
+
             rows.append({
                 "score": score(amount, days_left),
                 "days_remaining": days_left,
@@ -72,13 +78,20 @@ def main():
                 "end_date": end.isoformat(),
                 "agency": c.get("Awarding Agency"),
                 "sub_agency": c.get("Awarding Sub Agency"),
-                "description": c.get("Description", "")
+                "description": c.get("Description", ""),
+                "generated_internal_id": c.get("generated_internal_id"),
+                "internal_id": c.get("internal_id")
             })
 
     rows.sort(key=lambda x: (-x["score"], x["days_remaining"]))
 
+    fields = [
+        "score", "days_remaining", "contract", "vendor", "value",
+        "start_date", "end_date", "agency", "sub_agency",
+        "description", "generated_internal_id", "internal_id"
+    ]
+
     with open("janitorial_recompete_report.csv", "w", newline="") as f:
-        fields = ["score","days_remaining","contract","vendor","value","start_date","end_date","agency","sub_agency","description"]
         writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
         writer.writerows(rows)
