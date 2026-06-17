@@ -80,6 +80,33 @@ def score(amount, days_left):
     time_score = 40 if days_left <= 180 else 30 if days_left <= 365 else 20
     return value_score + time_score
 
+def competition_score(comp):
+    comp = (comp or "").upper()
+    return 40 if comp == "FULL AND OPEN COMPETITION" else 35 if comp == "FULL AND OPEN COMPETITION AFTER EXCLUSION OF SOURCES" else 30 if comp == "COMPETED UNDER SAP" else 0
+
+def value_score(value):
+    value = money(value)
+    return 35 if value >= 10_000_000 else 25 if value >= 5_000_000 else 15 if value >= 2_000_000 else 10 if value >= 1_000_000 else 0
+
+def days_score(days):
+    days = int(days or 9999)
+    return 25 if days <= 30 else 20 if days <= 60 else 15 if days <= 90 else 10 if days <= 180 else 0
+
+def agency_bonus(row):
+    a=(row.get("agency") or "").upper(); return 5 if "DEFENSE" in a else 4 if "VETERANS AFFAIRS" in a else 3 if "HOMELAND SECURITY" in a else 0
+
+def solicitation_bonus(row):
+    return 5 if row.get("solicitation_id") else 0
+
+def office_bonus(row):
+    o=(row.get("awarding_office") or "").upper(); return 5 if any(x in o for x in ["697DCK","NETWORK CONTRACT OFFICE","DEFENSE HEALTH AGENCY","NAVFAC","W40M"]) else 0
+
+def recompete_score(row):
+    return competition_score(row.get("competition_type")) + value_score(row.get("value")) + days_score(row.get("days_remaining")) + agency_bonus(row) + solicitation_bonus(row) + office_bonus(row)
+
+def priority(score):
+    return "CRITICAL" if score >= 90 else "HIGH" if score >= 75 else "MEDIUM" if score >= 60 else "LOW"
+
 def should_enrich(row):
     return row["value"] >= 1_000_000 and row["days_remaining"] <= 180 and row.get("internal_id")
 
@@ -187,8 +214,15 @@ def main():
             enrich_count += 1
             time.sleep(0.1)
 
+    for row in rows:
+        rs = recompete_score(row)
+        row["recompete_score"] = rs
+        row["priority"] = priority(rs)
+
+    rows.sort(key=lambda r: (-int(r["recompete_score"]), -float(r["value"]), int(r["days_remaining"])))
+
     fields = [
-        "score", "days_remaining", "contract", "vendor", "value",
+        "recompete_score", "priority", "score", "days_remaining", "contract", "vendor", "value",
         "start_date", "end_date", "agency", "sub_agency",
         "description", "generated_internal_id", "internal_id",
         "solicitation_id", "awarding_office", "funding_office",
