@@ -7,6 +7,11 @@ from datetime import date, timedelta
 USASPENDING_URL = "https://api.usaspending.gov/api/v2/search/spending_by_award/"
 NAICS = "561720"  # Janitorial Services
 
+import json
+
+contracts = fetch_expiring_contracts()
+
+print(json.dumps(contracts[0], indent=2))
 
 def fetch_expiring_contracts(days_ahead=540, limit=100):
     today = date.today()
