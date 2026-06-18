@@ -77,3 +77,24 @@ Files likely involved: tests/
 1. Work TASK.md top to bottom — these are sprint tasks only.
 2. When TASK.md is empty, consult MAINTENANCE.md for the next maintenance item.
 3. Never do maintenance while sprint tasks remain unless it directly blocks progress.
+
+---
+
+## 2026-06-18 — Sprint: Watchlists / Email Alerts / Export CSV / Dashboard
+**Status:** ALL FOUR TASKS COMPLETE
+
+| Task | Commit | Tests added | Suite |
+|------|--------|-------------|-------|
+| Opportunity Watchlists | 6186270 | 18 | 106/106 |
+| Email Alerts | a91d32f | 15 | 121/121 |
+| Export Filtered Results | af04f96 | 11 | 132/132 |
+| Dashboard Improvements | f9da58f | 10 | 142/142 |
+
+**Key files changed:**
+- `db.py` — `watchlist` table + CRUD; `get_contracts(all_rows=True)` flag
+- `app.py` — `/watchlist`, `/watch/<id>`, `/unwatch/<id>`, `/alerts`, `/contracts.csv` routes; dashboard passes `total_contracts` + `alert_configured`
+- `alerts.py` — new module; SMTP email builder + sender
+- `templates/` — `watchlist.html`, `alerts.html`; updated `base.html`, `contract_detail.html`, `contracts.html`, `dashboard.html`
+- `tests/` — `test_watchlist.py`, `test_alerts.py`, `test_export_csv.py`, `test_dashboard.py`
+
+**TASK.md is now empty.** Maintenance work available in MAINTENANCE.md.
