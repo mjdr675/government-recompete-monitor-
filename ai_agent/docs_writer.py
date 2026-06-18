@@ -30,7 +30,7 @@ def _read(path: Path) -> str:
     return text
 
 
-def plan(task: dict) -> str:
+def plan(task: dict, memory=None) -> str:
     readme = _read(_REPO_ROOT / "README.md")
     agent_readme = _read(_REPO_ROOT / "ai_agent" / "README.md")
 

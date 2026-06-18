@@ -30,7 +30,7 @@ def _read(path: Path) -> str:
     return text
 
 
-def plan(task: dict) -> str:
+def plan(task: dict, memory=None) -> str:
     tests_dir = _REPO_ROOT / "tests"
     existing_tests = ""
     if tests_dir.exists():

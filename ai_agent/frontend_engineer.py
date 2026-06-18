@@ -41,7 +41,7 @@ def _relevant_templates(task: dict) -> list[Path]:
     return relevant if relevant else all_templates
 
 
-def plan(task: dict) -> str:
+def plan(task: dict, memory=None) -> str:
     templates = _relevant_templates(task)
     context = "\n\n".join(
         f"### templates/{t.name}\n```html\n{_read(t)}\n```" for t in templates

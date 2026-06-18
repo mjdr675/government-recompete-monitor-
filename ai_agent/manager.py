@@ -19,6 +19,7 @@ from pathlib import Path
 from ai_agent import backend_engineer, frontend_engineer, qa_engineer
 from ai_agent import devops_engineer, docs_writer
 from ai_agent import llm as llm_module
+from ai_agent.memory import get_memory
 from ai_agent.reviewer import review
 
 REPO_ROOT = Path(__file__).parent.parent
@@ -165,6 +166,15 @@ def apply_patch(patch_content: str) -> None:
 def run(dry_run: bool = True) -> None:
     apply_patch_enabled = os.environ.get("APPLY_PATCH", "false").lower() == "true"
 
+    # --- Repository memory: update index for changed files ---
+    mem = get_memory(REPO_ROOT)
+    index_result = mem.update()
+    s = mem.stats()
+    print(f"\n[MEMORY] Index updated — {index_result['indexed']} re-indexed, "
+          f"{index_result['skipped']} unchanged")
+    print(f"[MEMORY] {s['files']} files | {s['functions']} functions | "
+          f"{s['routes']} routes | {s['templates']} template refs")
+
     print("\n[MANAGER] Loading tasks...")
     tasks = load_all_tasks()
     open_count = sum(1 for t in tasks if t["status"] == "OPEN")
@@ -189,10 +199,10 @@ def run(dry_run: bool = True) -> None:
         write_task_log(task, role, "skipped — no LLM key")
         return
 
-    # --- Call specialist (hits LLM) ---
+    # --- Call specialist — passes memory so it can query the index ---
     print(f"\n[{role.upper()}] Calling LLM...")
     try:
-        patch_content = specialist.plan(task)
+        patch_content = specialist.plan(task, memory=mem)
     except Exception as exc:
         print(f"[ERROR] LLM call failed: {exc}")
         write_task_log(task, role, f"error — {exc}")

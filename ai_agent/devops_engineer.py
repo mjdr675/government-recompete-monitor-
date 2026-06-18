@@ -33,7 +33,7 @@ def _read(filename: str) -> str:
     return text
 
 
-def plan(task: dict) -> str:
+def plan(task: dict, memory=None) -> str:
     app_src = _read("app.py")
     config_context = "\n\n".join(
         f"### {f}\n```\n{_read(f)}\n```" for f in _CONFIG_FILES
