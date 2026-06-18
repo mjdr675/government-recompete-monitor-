@@ -1,0 +1,38 @@
+<!doctype html>
+<html>
+<head>
+  <title>{% block title %}Government Recompete Monitor{% endblock %}</title>
+  <style>
+    body{font-family:Arial,sans-serif;margin:32px;background:#f7f7f7;color:#222}
+    a{color:#1f4f8f;text-decoration:none}
+    a:hover{text-decoration:underline}
+    .nav{margin-bottom:24px}
+    .nav a{margin-right:18px;font-weight:bold}
+    h1{margin-bottom:4px}
+    .muted{color:#666;margin-bottom:18px}
+    .cards{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px}
+    .card{background:white;border-radius:10px;padding:18px;min-width:140px;box-shadow:0 1px 4px #ddd;transition:box-shadow .15s,background .15s;cursor:pointer;}
+    .card:hover{background:#f0f4ff;box-shadow:0 3px 10px #c7d2e8;}
+    .num{font-size:28px;font-weight:bold}
+    table{width:100%;border-collapse:collapse;background:white;margin:16px 0 28px}
+    th,td{padding:10px;border-bottom:1px solid #eee;text-align:left;vertical-align:top}
+    th{background:#fafafa}
+    input,select,button{padding:8px;margin-right:8px}
+    .priority-badge{display:inline-block;padding:4px 8px;border-radius:999px;font-weight:bold;font-size:12px;color:white}
+    .priority-critical{background:#b00020}
+    .priority-high{background:#d97706}
+    .priority-medium{background:#2563eb}
+    .priority-low{background:#4b5563}
+  </style>
+</head>
+<body>
+  <div class="nav">
+    <a href="/">Dashboard</a>
+    <a href="/contracts">Contracts</a>
+    <a href="/views">Views</a>
+    <a href="/ingest">Ingest</a>
+  </div>
+
+  {% block content %}{% endblock %}
+</body>
+</html>

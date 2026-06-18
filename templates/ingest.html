@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Ingest Data{% endblock %}
+
+{% block content %}
+<h1>Ingest Data</h1>
+<div class="muted">Import contracts via CSV upload or trigger a live API pull.</div>
+
+{% if message %}
+<div style="margin:16px 0;padding:12px 16px;background:#d1fae5;border-radius:8px;color:#065f46;">{{ message }}</div>
+{% endif %}
+{% if error %}
+<div style="margin:16px 0;padding:12px 16px;background:#fee2e2;border-radius:8px;color:#991b1b;">{{ error }}</div>
+{% endif %}
+
+<div class="cards" style="margin-top:24px;align-items:stretch;">
+
+  <div class="card" style="flex:1;min-width:280px;">
+    <h2 style="margin-top:0;">CSV Upload</h2>
+    <p class="muted">Upload a recompete report CSV. Rows are upserted into the database and a snapshot is saved for today.</p>
+    <form method="post" enctype="multipart/form-data">
+      <input type="hidden" name="action" value="csv">
+      <input type="file" name="file" accept=".csv" required style="display:block;margin-bottom:12px;">
+      <button type="submit">Upload &amp; Import</button>
+    </form>
+  </div>
+
+  <div class="card" style="flex:1;min-width:280px;">
+    <h2 style="margin-top:0;">API Pull</h2>
+    <p class="muted">Fetch fresh contract data from USASpending.gov and enrich with SAM.gov. Runs in the background — check the dashboard in a few minutes.</p>
+    <form method="post">
+      <input type="hidden" name="action" value="api">
+      <button type="submit">Start Pull</button>
+    </form>
+  </div>
+
+</div>
+{% endblock %}

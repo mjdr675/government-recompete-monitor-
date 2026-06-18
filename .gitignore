@@ -1,2 +1,12 @@
 __pycache__/
 *.pyc
+contracts.db
+ContractOpportunitiesFullCSV.csv
+sam_page.html
+urls.txt
+
+# Generated reports
+reports/
+
+# SQLite database
+contracts.db

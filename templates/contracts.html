@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Contracts{% endblock %}
+
+{% block content %}
+<h1>Contracts</h1>
+<div class="muted">Showing {{ start }}–{{ end }} of {{ total }} matching contracts</div>
+
+<form method="get">
+  <input name="q" value="{{ q }}" placeholder="Search vendor, agency, award...">
+  <select name="priority">
+    <option value="">All priorities</option>
+    {% for p in priorities %}
+      <option value="{{ p }}" {% if p == priority %}selected{% endif %}>{{ p }}</option>
+    {% endfor %}
+  </select>
+  <input name="days" value="{{ days }}" placeholder="Expiring within days" style="width:160px;">
+  <input type="hidden" name="sort" value="{{ sort }}">
+  <input type="hidden" name="dir" value="{{ direction }}">
+  <button type="submit">Filter</button>
+  <a href="/contracts">Reset</a>
+</form>
+
+{% macro sort_link(col, label) %}
+  {% set next_dir = "asc" if (sort == col and direction == "desc") else "desc" %}
+  {% set arrow = " ↓" if (sort == col and direction == "desc") else (" ↑" if sort == col else "") %}
+  <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&sort={{ col }}&dir={{ next_dir }}">{{ label }}{{ arrow }}</a>
+{% endmacro %}
+<table>
+<tr>
+  <th>{{ sort_link("priority", "Priority") }}</th>
+  <th>{{ sort_link("vendor", "Vendor") }}</th>
+  <th>{{ sort_link("agency", "Agency") }}</th>
+  <th>{{ sort_link("value", "Value") }}</th>
+  <th>{{ sort_link("end_date", "End Date") }}</th>
+  <th>{{ sort_link("days_remaining", "Days") }}</th>
+  <th>{{ sort_link("recompete_score", "Score") }}</th>
+</tr>
+{% for r in rows %}
+<tr>
+<td>
+  <a class="priority-badge priority-{{ (r["priority"] or "unknown").lower().replace(" ", "-").replace("_", "-") }}"
+     href="/contract/{{ r["internal_id"] }}">
+     {{ r["priority"] }}
+  </a>
+</td>
+<td><a href="/vendor/{{ r["vendor"]|urlencode }}">{{ r["vendor"] }}</a></td>
+<td><a href="/agency/{{ r["agency"]|urlencode }}">{{ r["agency"] }}</a></td>
+<td>${{ "{:,.0f}".format(r["value"] or 0) }}</td>
+<td>{{ r["end_date"] }}</td>
+<td>{{ r["days_remaining"] }}</td>
+<td>{{ r["recompete_score"] }}</td>
+</tr>
+{% else %}
+<tr><td colspan="7">No contracts found.</td></tr>
+{% endfor %}
+</table>
+
+<div style="margin-top:18px;">
+  {% if has_prev %}
+    <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&sort={{ sort }}&dir={{ direction }}&page={{ page - 1 }}">Previous</a>
+  {% endif %}
+
+  <span class="muted" style="margin:0 12px;">Page {{ page }}</span>
+
+  {% if has_next %}
+    <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&sort={{ sort }}&dir={{ direction }}&page={{ page + 1 }}">Next</a>
+  {% endif %}
+</div>
+{% endblock %}

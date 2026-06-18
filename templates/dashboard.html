@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<h1>Government Recompete Dashboard</h1>
+<div class="muted">Run date: {{ report.run_date }}</div>
+
+{% set change_links = {
+  "NEW":       "/contracts",
+  "NEW_TIER_A":"/contracts?priority=CRITICAL",
+  "UPGRADE":   "/contracts?priority=CRITICAL",
+  "DOWNGRADE": "/contracts?priority=LOW",
+  "REMOVED":   "/contracts"
+} %}
+<div class="cards">
+{% for key, value in report.summary.items() %}
+  <a href="{{ change_links.get(key, '/contracts') }}" class="card" style="text-decoration:none;color:inherit;">
+    <div class="muted">{{ key }}</div>
+    <div class="num">{{ value }}</div>
+  </a>
+{% endfor %}
+</div>
+
+<h2>Value Summary</h2>
+<table>
+<tr><th>Metric</th><th>Value</th></tr>
+{% for key,value in report.value_summary.items() %}
+<tr><td>{{ key }}</td><td>${{ "{:,.0f}".format(value or 0) }}</td></tr>
+{% endfor %}
+</table>
+
+<h2>Today's Changes</h2>
+{% set total_changes = report.summary.values() | sum %}
+{% if total_changes == 0 %}
+<div class="muted" style="margin-bottom:16px;">No changes detected for {{ report.run_date }}. Run a second ingest to compare snapshots.</div>
+{% else %}
+<table>
+<tr><th>Priority</th><th>Vendor</th><th>Agency</th><th>Value</th><th>Days</th><th>Score</th><th>Change</th></tr>
+{% for row in report.top_opportunities %}
+<tr>
+<td><span class="priority-badge priority-{{ (row[0] or 'unknown').lower() }}">{{ row[0] }}</span></td>
+<td><a href="/vendor/{{ row[1]|urlencode }}">{{ row[1] }}</a></td>
+<td><a href="/agency/{{ row[2]|urlencode }}">{{ row[2] }}</a></td>
+<td>${{ "{:,.0f}".format(row[3] or 0) }}</td>
+<td>{{ row[4] }}</td>
+<td>{{ row[5] }}</td>
+<td>{{ row[6] }}</td>
+</tr>
+{% endfor %}
+</table>
+{% endif %}
+
+<h2>Top Agencies</h2>
+<table>
+<tr><th>Agency</th><th>Count</th><th>Total Value</th></tr>
+{% for agency,count,value in report.top_agencies %}
+<tr><td>{{ agency }}</td><td>{{ count }}</td><td>${{ "{:,.0f}".format(value or 0) }}</td></tr>
+{% else %}
+<tr><td colspan="3">None</td></tr>
+{% endfor %}
+</table>
+
+<h2>Top Vendors</h2>
+<table>
+<tr><th>Vendor</th><th>Count</th><th>Total Value</th></tr>
+{% for vendor,count,value in report.top_vendors %}
+<tr><td>{{ vendor }}</td><td>{{ count }}</td><td>${{ "{:,.0f}".format(value or 0) }}</td></tr>
+{% else %}
+<tr><td colspan="3">None</td></tr>
+{% endfor %}
+</table>
+
+<h2>Top Contracts by Score</h2>
+<table>
+<tr><th>Priority</th><th>Vendor</th><th>Agency</th><th>Value</th><th>End Date</th><th>Days</th><th>Score</th></tr>
+{% for r in report.top_contracts %}
+<tr>
+<td><span class="priority-badge priority-{{ (r.priority or 'unknown').lower() }}">{{ r.priority }}</span></td>
+<td><a href="/vendor/{{ r.vendor|urlencode }}">{{ r.vendor }}</a></td>
+<td><a href="/agency/{{ r.agency|urlencode }}">{{ r.agency }}</a></td>
+<td>${{ "{:,.0f}".format(r.value or 0) }}</td>
+<td>{{ r.end_date }}</td>
+<td>{{ r.days_remaining }}</td>
+<td><a href="/contract/{{ r.internal_id }}">{{ r.recompete_score }}</a></td>
+</tr>
+{% else %}
+<tr><td colspan="7">No contracts loaded.</td></tr>
+{% endfor %}
+</table>
+{% endblock %}

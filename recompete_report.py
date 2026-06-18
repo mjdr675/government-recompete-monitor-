@@ -1,10 +1,16 @@
 import csv
+import sys
 import time
 from sam_lookup import lookup_solicitation
+from change_detector import detect_changes
+from db import init_db, upsert_contract, save_snapshot
 import requests
 from datetime import date, datetime, timedelta
 
 API_URL = "https://api.usaspending.gov/api/v2/search/spending_by_award/"
+
+NAICS_CODE = sys.argv[1] if len(sys.argv) > 1 else "561720"
+
 AWARD_DETAIL_URL = "https://api.usaspending.gov/api/v2/awards/{award_id}/"
 
 TODAY = date.today()
@@ -37,7 +43,7 @@ def fetch_contracts():
         payload = {
             "filters": {
                 "award_type_codes": ["A", "B", "C", "D"],
-                "naics_codes": ["561720"]
+                "naics_codes": [NAICS_CODE]
             },
             "fields": [
                 "Award ID",
@@ -222,6 +228,9 @@ def main():
 
     rows.sort(key=lambda r: (-int(r["recompete_score"]), -float(r["value"]), int(r["days_remaining"])))
 
+    for row in rows:
+        upsert_contract(row)
+
     fields = [
         "recompete_score", "priority", "score", "days_remaining", "contract", "vendor", "value",
         "start_date", "end_date", "agency", "sub_agency",
@@ -263,6 +272,16 @@ def main():
         writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
         writer.writerows(rows)
+
+    init_db()
+    for row in rows:
+        upsert_contract(row)
+
+    save_snapshot(str(TODAY), rows)
+    detect_changes(str(TODAY))
+
+    print(f"Saved {len(rows)} rows to contracts.db")
+    print(f"Saved snapshot for {TODAY}")
 
     print("Saved", len(rows), "upcoming recompete opportunities.")
     print("Enriched", enrich_count, "Tier A opportunities.")
