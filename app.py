@@ -34,7 +34,14 @@ def _require_auth():
 
 @app.before_request
 def check_auth():
+    if request.path == "/health":
+        return None
     return _require_auth()
+
+
+@app.route("/health")
+def health():
+    return {"status": "ok"}, 200
 
 
 @app.route("/")
@@ -164,4 +171,5 @@ def contract_detail(internal_id):
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=8000, debug=True)
+    port = int(os.environ.get("PORT", 8000))
+    app.run(host="0.0.0.0", port=port, debug=False)
