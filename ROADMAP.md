@@ -51,7 +51,7 @@ The goal of this phase is to acquire the first paying customer and establish
 product-market fit within a single company's BD workflow.
 
 ### Features
-- User accounts with email/password authentication
+- User accounts with email/password authentication ✓
 - Per-user saved searches and watchlists
 - Email alerts when watched contracts change status or approach expiration
 - Contract comparison page (select 2 contracts, compare side by side) ✓
@@ -65,7 +65,7 @@ product-market fit within a single company's BD workflow.
 
 ### Technical Goals
 - Replace SQLite with PostgreSQL for multi-user concurrent access
-- Session management (Flask-Login or equivalent)
+- Session management (Flask-Login or equivalent) ✓
 - Email delivery (transactional email service)
 - Background job queue for alert delivery
 - Automated nightly SAM.gov data refresh

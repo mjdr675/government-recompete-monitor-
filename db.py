@@ -59,6 +59,16 @@ def init_db():
             VALUES (new.rowid, new.internal_id, new.vendor, new.agency, new.award_id);
         END
         """)
+        con.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            email       TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at  TEXT NOT NULL,
+            is_active   INTEGER NOT NULL DEFAULT 1
+        )
+        """)
+        con.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
         con.commit()
 
 def upsert_contract(row):

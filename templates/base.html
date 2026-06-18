@@ -31,6 +31,11 @@
     <a href="/contracts">Contracts</a>
     <a href="/views">Views</a>
     <a href="/ingest">Ingest</a>
+    {% if g.user %}
+      <span style="float:right;font-size:13px;" class="muted">
+        {{ g.user['email'] }} &middot; <a href="/logout">Sign out</a>
+      </span>
+    {% endif %}
   </div>
 
   {% block content %}{% endblock %}

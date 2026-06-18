@@ -9,7 +9,7 @@ Description. Role hint: backend | frontend | qa | devops | docs
 
 ---
 
-### [OPEN] Auth bypass on /health exposes info to unauthenticated users
+### [DONE] Auth bypass on /health exposes info to unauthenticated users
 `/health` correctly skips auth, but the response should not reveal internal
 state if the app is ever extended. Keep it minimal: `{"status":"ok"}` only.
 Role: backend

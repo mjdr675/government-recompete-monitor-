@@ -4,10 +4,10 @@ import os
 import subprocess
 import sys
 from datetime import date
-from functools import wraps
 
-from flask import Flask, flash, redirect, render_template, request, Response
+from flask import Flask, flash, g, redirect, render_template, request, session, url_for
 
+from auth import bp as auth_bp
 from change_detector import detect_changes
 from db import connect, get_contracts, init_db, upsert_contract, save_snapshot
 from analytics import vendor_profile_analytics as vendor_profile_query
@@ -16,27 +16,18 @@ from report_builder import build_report
 from views import SAVED_VIEWS, build_view_query
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
+app.register_blueprint(auth_bp)
 
-_AUTH_USER = os.environ.get("AUTH_USER", "")
-_AUTH_PASS = os.environ.get("AUTH_PASS", "")
+_PUBLIC_PATHS = frozenset({"/health", "/login", "/register"})
 
-def _require_auth():
-    if not _AUTH_USER or not _AUTH_PASS:
-        return None
-    auth = request.authorization
-    if auth and auth.username == _AUTH_USER and auth.password == _AUTH_PASS:
-        return None
-    return Response(
-        "Authentication required.",
-        401,
-        {"WWW-Authenticate": 'Basic realm="Recompete Monitor"'},
-    )
 
 @app.before_request
-def check_auth():
-    if request.path == "/health":
+def require_login():
+    if request.path in _PUBLIC_PATHS:
         return None
-    return _require_auth()
+    if "user_id" not in session:
+        return redirect(url_for("auth.login", next=request.path))
 
 
 @app.route("/health")
