@@ -1,6 +1,7 @@
 from datetime import date
 
 from db import change_summary, get_changes
+from analytics import agency_summary
 
 today = str(date.today())
 summary = change_summary(today)
@@ -30,10 +31,8 @@ for t in ("NEW", "NEW_TIER_A", "UPGRADE", "DOWNGRADE", "REMOVED"):
 
     print()
 
-from analytics import agency_summary
-
 print("=" * 60)
-print("AGENCY SUMMARY")
+print("TOP AGENCIES")
 print("=" * 60)
 
 rows = agency_summary(today)
@@ -41,6 +40,8 @@ rows = agency_summary(today)
 if not rows:
     print("No agency changes today.")
 else:
-    for change_type, count in rows:
-        print(f"{change_type:<15} {count}")
-
+    for agency, changes, value in rows:
+        print(f"{agency}")
+        print(f"  Changes : {changes}")
+        print(f"  Value   : ${value:,.0f}")
+        print()

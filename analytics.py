@@ -126,12 +126,14 @@ def agency_summary(run_date):
     with connect() as con:
         cur = con.execute("""
             SELECT
-                change_type,
-                COUNT(*) AS cnt
-            FROM changes
-            WHERE run_date = ?
-            GROUP BY change_type
-            ORDER BY cnt DESC, change_type
+                c.agency,
+                COUNT(*) AS changes,
+                SUM(COALESCE(c.value,0)) AS total_value
+            FROM changes ch
+            JOIN contracts c
+                ON ch.internal_id = c.internal_id
+            WHERE ch.run_date = ?
+            GROUP BY c.agency
+            ORDER BY changes DESC, total_value DESC
         """, (run_date,))
         return cur.fetchall()
-
