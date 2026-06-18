@@ -31,6 +31,9 @@
   <button type="submit">Save Search</button>
 </form>
 <span style="margin-left:16px;font-size:13px;"><a href="/saved-searches">Manage saved searches</a></span>
+<span style="margin-left:16px;font-size:13px;">
+  <a href="/contracts.csv?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&sort={{ sort }}&dir={{ direction }}">&#8595; Export CSV</a>
+</span>
 
 {% macro sort_link(col, label) %}
   {% set next_dir = "asc" if (sort == col and direction == "desc") else "desc" %}

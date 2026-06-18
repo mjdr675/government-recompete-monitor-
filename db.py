@@ -423,7 +423,7 @@ def delete_saved_search(search_id: int) -> bool:
 
 _SORTABLE = {"recompete_score", "value", "days_remaining", "end_date", "priority", "vendor", "agency"}
 
-def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort="recompete_score", direction="desc", page=1, limit=25):
+def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort="recompete_score", direction="desc", page=1, limit=25, all_rows=False):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
@@ -459,7 +459,10 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
     order = "ASC" if direction == "asc" else "DESC"
 
     total = cur.execute(f"SELECT COUNT(*) {base}", params).fetchone()[0]
-    rows = cur.execute(f"SELECT c.* {base} ORDER BY c.{col} {order} LIMIT ? OFFSET ?", params + [limit, (page - 1) * limit]).fetchall()
+    if all_rows:
+        rows = cur.execute(f"SELECT c.* {base} ORDER BY c.{col} {order}", params).fetchall()
+    else:
+        rows = cur.execute(f"SELECT c.* {base} ORDER BY c.{col} {order} LIMIT ? OFFSET ?", params + [limit, (page - 1) * limit]).fetchall()
     conn.close()
 
     return {

@@ -260,6 +260,44 @@ def alerts_page():
     return render_template("alerts.html", config=alert_config(), result=result)
 
 
+@app.route("/contracts.csv")
+def contracts_csv():
+    q = request.args.get("q", "")
+    agency = request.args.get("agency", "")
+    priority = request.args.get("priority", "")
+    days = request.args.get("days", None)
+    min_value = request.args.get("min_value", None)
+    sort = request.args.get("sort", "recompete_score")
+    direction = request.args.get("dir", "desc")
+
+    result = get_contracts(
+        q=q,
+        agency=agency,
+        priority=priority,
+        days=int(days) if days else None,
+        min_value=float(min_value) if min_value else None,
+        sort=sort,
+        direction=direction,
+        all_rows=True,
+    )
+
+    fields = ["internal_id", "award_id", "vendor", "agency", "sub_agency",
+              "value", "start_date", "end_date", "days_remaining",
+              "competition_type", "solicitation_id", "recompete_score", "priority"]
+
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
+    writer.writeheader()
+    for row in result["contracts"]:
+        writer.writerow({f: row[f] for f in fields})
+
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=contracts.csv"},
+    )
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     app.run(host="0.0.0.0", port=port, debug=False)

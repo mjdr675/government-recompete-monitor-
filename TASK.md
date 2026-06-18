@@ -27,7 +27,7 @@ Implement daily email alerts for:
 
 ---
 
-### [OPEN] Export Filtered Results
+### [DONE] Export Filtered Results
 
 Allow exporting filtered contract results to CSV.
 
