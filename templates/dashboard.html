@@ -3,37 +3,67 @@
 
 {% block content %}
 <h1>Government Recompete Dashboard</h1>
+<div class="muted" style="margin-bottom:20px;">Run date: {{ report.run_date }} &nbsp;·&nbsp; {{ total_contracts }} contracts loaded</div>
 
-{% if saved_searches %}
-<div style="margin-bottom:12px;">
-  <strong>Saved Searches:</strong>
-  {% for s in saved_searches %}
-    <a href="/saved-searches/{{ s.id }}/load" style="margin-left:12px;">{{ s.name }}</a>
-  {% endfor %}
-  <a href="/saved-searches" style="margin-left:16px;color:#666;font-size:13px;">Manage →</a>
-</div>
-{% endif %}
+<!-- ── Quick-access row ─────────────────────────────────────────── -->
+<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px;">
 
-{% if watched %}
-<div style="margin-bottom:20px;">
-  <strong>&#9733; Watchlist</strong> <span class="muted" style="font-size:13px;">({{ watched|length }} contract{{ 's' if watched|length != 1 else '' }})</span>
-  <a href="/watchlist" style="margin-left:12px;font-size:13px;">View all →</a>
-  <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:10px;">
-  {% for r in watched[:5] %}
-    <a href="/contract/{{ r["internal_id"] }}" style="background:white;border-radius:8px;padding:10px 14px;box-shadow:0 1px 4px #ddd;text-decoration:none;color:inherit;min-width:160px;">
-      <div style="font-size:12px;margin-bottom:2px;">
-        <span class="priority-badge priority-{{ (r["priority"] or "unknown").lower() }}" style="font-size:11px;">{{ r["priority"] }}</span>
+  <!-- Watchlist -->
+  <div style="background:white;border-radius:10px;padding:16px 20px;box-shadow:0 1px 4px #ddd;min-width:220px;flex:1;">
+    <div style="font-weight:bold;margin-bottom:8px;">&#9733; Watchlist
+      <span class="muted" style="font-weight:normal;font-size:13px;margin-left:6px;">{{ watched|length }} contract{{ 's' if watched|length != 1 else '' }}</span>
+    </div>
+    {% if watched %}
+      {% for r in watched[:3] %}
+      <div style="margin-bottom:4px;font-size:13px;">
+        <a href="/contract/{{ r["internal_id"] }}">{{ r["vendor"][:28] }}</a>
+        <span class="muted">· {{ r["days_remaining"] }}d</span>
       </div>
-      <div style="font-weight:bold;font-size:13px;">{{ r["vendor"][:30] }}</div>
-      <div class="muted" style="font-size:12px;">{{ r["days_remaining"] }} days · ${{ "{:,.0f}".format(r["value"] or 0) }}</div>
-    </a>
-  {% endfor %}
+      {% endfor %}
+      {% if watched|length > 3 %}
+      <div style="font-size:12px;margin-top:4px;"><a href="/watchlist">+{{ watched|length - 3 }} more →</a></div>
+      {% else %}
+      <div style="font-size:12px;margin-top:4px;"><a href="/watchlist">View watchlist →</a></div>
+      {% endif %}
+    {% else %}
+      <div class="muted" style="font-size:13px;">Nothing watched yet.</div>
+      <div style="font-size:12px;margin-top:4px;"><a href="/contracts">Browse contracts to watch →</a></div>
+    {% endif %}
   </div>
+
+  <!-- Saved Searches -->
+  <div style="background:white;border-radius:10px;padding:16px 20px;box-shadow:0 1px 4px #ddd;min-width:220px;flex:1;">
+    <div style="font-weight:bold;margin-bottom:8px;">&#128269; Saved Searches
+      <span class="muted" style="font-weight:normal;font-size:13px;margin-left:6px;">{{ saved_searches|length }}</span>
+    </div>
+    {% if saved_searches %}
+      {% for s in saved_searches[:4] %}
+      <div style="margin-bottom:4px;font-size:13px;">
+        <a href="/saved-searches/{{ s.id }}/load">{{ s.name }}</a>
+      </div>
+      {% endfor %}
+      <div style="font-size:12px;margin-top:4px;"><a href="/saved-searches">Manage →</a></div>
+    {% else %}
+      <div class="muted" style="font-size:13px;">No saved searches yet.</div>
+      <div style="font-size:12px;margin-top:4px;"><a href="/contracts">Search contracts to save →</a></div>
+    {% endif %}
+  </div>
+
+  <!-- Alerts -->
+  <div style="background:white;border-radius:10px;padding:16px 20px;box-shadow:0 1px 4px #ddd;min-width:220px;flex:1;">
+    <div style="font-weight:bold;margin-bottom:8px;">&#9993; Email Alerts</div>
+    {% if alert_configured %}
+      <div style="font-size:13px;color:#166534;">&#10003; Configured</div>
+      <div style="font-size:12px;margin-top:6px;"><a href="/alerts">Send alert or change settings →</a></div>
+    {% else %}
+      <div class="muted" style="font-size:13px;">Not configured.</div>
+      <div style="font-size:12px;margin-top:4px;"><a href="/alerts">Set up email alerts →</a></div>
+    {% endif %}
+  </div>
+
 </div>
-{% endif %}
 
-<div class="muted">Run date: {{ report.run_date }}</div>
-
+<!-- ── Change summary cards ─────────────────────────────────────── -->
 {% set change_links = {
   "NEW":       "/contracts",
   "NEW_TIER_A":"/contracts?priority=CRITICAL",
@@ -113,7 +143,7 @@
 <td><a href="/contract/{{ r.internal_id }}">{{ r.recompete_score }}</a></td>
 </tr>
 {% else %}
-<tr><td colspan="7">No contracts loaded.</td></tr>
+<tr><td colspan="7">No contracts loaded. <a href="/ingest">Ingest data →</a></td></tr>
 {% endfor %}
 </table>
 {% endblock %}

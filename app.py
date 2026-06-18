@@ -54,11 +54,14 @@ def health():
 
 @app.route("/")
 def dashboard():
+    total_contracts = get_contracts(limit=1)["total"]
     return render_template(
         "dashboard.html",
         report=build_report(date.today().isoformat()),
         saved_searches=get_saved_searches(),
         watched=get_watchlist(),
+        total_contracts=total_contracts,
+        alert_configured=bool(os.environ.get("ALERT_TO")),
     )
 
 

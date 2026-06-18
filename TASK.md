@@ -33,6 +33,6 @@ Allow exporting filtered contract results to CSV.
 
 ---
 
-### [OPEN] Dashboard Improvements
+### [DONE] Dashboard Improvements
 
 Improve usability and make saved searches, watchlists, and alerts visible immediately after login.
