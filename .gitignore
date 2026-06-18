@@ -10,3 +10,7 @@ reports/
 
 # SQLite database
 contracts.db
+
+# Agent secrets
+ai_agent/.env
+ingest.log
