@@ -24,6 +24,9 @@ def record_daily_changes(today=None, yesterday=None):
         priority, agency, vendor, value, days, award = row
         insert_change(today, "NEW", award, None, priority, describe(row))
 
+        if priority in ("HIGH", "CRITICAL"):
+            insert_change(today, "NEW_TIER_A", award, None, priority, describe(row))
+
     for row in list_removed_opportunities(today, yesterday, limit=100):
         priority, agency, vendor, value, days, award = row
         insert_change(today, "REMOVED", award, priority, None, describe(row))
