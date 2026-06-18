@@ -1,7 +1,7 @@
 from datetime import date
 
 from db import change_summary, get_changes
-from analytics import agency_summary, top_opportunities
+from analytics import agency_summary, top_opportunities, value_summary, vendor_summary
 
 today = str(date.today())
 summary = change_summary(today)
@@ -31,6 +31,24 @@ for t in ("NEW", "NEW_TIER_A", "UPGRADE", "DOWNGRADE", "REMOVED"):
 
     print()
 
+
+
+print("=" * 60)
+print("VALUE SUMMARY")
+print("=" * 60)
+
+values = value_summary(today)
+
+new_value = values.get("NEW", 0) + values.get("NEW_TIER_A", 0)
+upgrade_value = values.get("UPGRADE", 0)
+removed_value = values.get("REMOVED", 0)
+net_value = new_value + upgrade_value - removed_value
+
+print(f"New Value      : ${new_value:,.0f}")
+print(f"Upgraded Value : ${upgrade_value:,.0f}")
+print(f"Removed Value  : ${removed_value:,.0f}")
+print(f"Net Change     : ${net_value:,.0f}")
+print()
 print("=" * 60)
 print("TOP AGENCIES")
 print("=" * 60)
@@ -46,6 +64,22 @@ else:
         print(f"  Value   : ${value:,.0f}")
         print()
 
+
+
+print("=" * 60)
+print("TOP VENDORS")
+print("=" * 60)
+
+rows = vendor_summary(today)
+
+if not rows:
+    print("No vendor changes today.")
+else:
+    for vendor, changes, value in rows:
+        print(vendor or "(Unknown Vendor)")
+        print(f"  Changes : {changes}")
+        print(f"  Value   : ${value:,.0f}")
+        print()
 print("=" * 60)
 print("TOP OPPORTUNITIES")
 print("=" * 60)

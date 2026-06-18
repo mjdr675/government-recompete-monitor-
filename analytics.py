@@ -182,3 +182,45 @@ def top_opportunities(run_date, limit=10):
                 CAST(c.days_remaining AS INTEGER) ASC
             LIMIT ?
         """, (run_date, limit)).fetchall()
+
+def value_summary(run_date):
+    """
+    Dollar summary of opportunity changes for a given run_date.
+    """
+    from db import connect
+
+    with connect() as con:
+        cur = con.execute("""
+            SELECT
+                ch.change_type,
+                SUM(COALESCE(CAST(c.value AS REAL), 0)) AS total_value
+            FROM changes ch
+            JOIN contracts c
+                ON ch.internal_id = c.internal_id
+            WHERE ch.run_date = ?
+            GROUP BY ch.change_type
+        """, (run_date,))
+
+        return {change_type: total_value or 0 for change_type, total_value in cur.fetchall()}
+
+def vendor_summary(run_date):
+    """
+    Vendors with the most opportunity changes.
+    """
+    from db import connect
+
+    with connect() as con:
+        cur = con.execute("""
+            SELECT
+                c.vendor,
+                COUNT(*) AS changes,
+                SUM(COALESCE(CAST(c.value AS REAL),0)) AS total_value
+            FROM changes ch
+            JOIN contracts c
+                ON ch.internal_id = c.internal_id
+            WHERE ch.run_date = ?
+            GROUP BY c.vendor
+            ORDER BY changes DESC, total_value DESC
+            LIMIT 10
+        """, (run_date,))
+        return cur.fetchall()
