@@ -2,6 +2,7 @@ import csv
 import sys
 import time
 from sam_lookup import lookup_solicitation
+from change_detector import detect_changes
 from db import init_db, upsert_contract, save_snapshot
 import requests
 from datetime import date, datetime, timedelta
@@ -227,6 +228,9 @@ def main():
 
     rows.sort(key=lambda r: (-int(r["recompete_score"]), -float(r["value"]), int(r["days_remaining"])))
 
+    for row in rows:
+        upsert_contract(row)
+
     fields = [
         "recompete_score", "priority", "score", "days_remaining", "contract", "vendor", "value",
         "start_date", "end_date", "agency", "sub_agency",
@@ -274,6 +278,7 @@ def main():
         upsert_contract(row)
 
     save_snapshot(str(TODAY), rows)
+    detect_changes(str(TODAY))
 
     print(f"Saved {len(rows)} rows to contracts.db")
     print(f"Saved snapshot for {TODAY}")
