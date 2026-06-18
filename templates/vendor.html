@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Vendor Profile{% endblock %}
+
+{% block content %}
+<h1>{{ vendor }}</h1>
+<div class="muted">Vendor intelligence profile</div>
+
+<div class="cards">
+  <div class="card">
+    <div class="muted">Pipeline Value</div>
+    <div class="num">${{ "{:,.0f}".format(profile.summary.pipeline_value or 0) }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Contracts</div>
+    <div class="num">{{ profile.summary.contracts }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Critical</div>
+    <div class="num">{{ profile.summary.critical_contracts }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Avg Score</div>
+    <div class="num">{{ "{:.1f}".format(profile.summary.avg_score or 0) }}</div>
+  </div>
+</div>
+
+<h2>Agencies Served</h2>
+<table>
+<tr><th>Agency</th><th>Contracts</th></tr>
+{% for a in profile.agencies %}
+<tr><td>{{ a.agency }}</td><td>{{ a.contracts }}</td></tr>
+{% endfor %}
+</table>
+
+<h2>Upcoming Expirations</h2>
+<table>
+<tr>
+<th>Priority</th>
+<th>Contract</th>
+<th>Agency</th>
+<th>Value</th>
+<th>End Date</th>
+<th>Days Remaining</th>
+<th>Score</th>
+</tr>
+{% for r in profile.upcoming %}
+<tr>
+<td>
+<span class="priority-badge priority-{{ (r.priority or 'unknown').lower().replace(' ','-').replace('_','-') }}">
+{{ r.priority }}
+</span>
+</td>
+<td><a href="/contract/{{ r.internal_id }}">{{ r.internal_id[:12] }}...</a></td>
+<td>{{ r.agency }}</td>
+<td>${{ "{:,.0f}".format(r.value or 0) }}</td>
+<td>{{ r.end_date }}</td>
+<td>{{ r.days_remaining }}</td>
+<td>{{ r.recompete_score }}</td>
+</tr>
+{% endfor %}
+</table>
+{% endblock %}

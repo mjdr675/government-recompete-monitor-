@@ -52,3 +52,45 @@ def top_opportunities(run_date, limit=10):
             ORDER BY c.recompete_score DESC, c.value DESC
             LIMIT ?
         """, (run_date, limit)).fetchall()
+
+def vendor_profile(con, vendor):
+    con.row_factory = lambda cur, row: {col[0]: row[i] for i, col in enumerate(cur.description)}
+
+    summary = con.execute("""
+        SELECT
+            COUNT(*) AS contracts,
+            COALESCE(SUM(value),0) AS pipeline_value,
+            COALESCE(AVG(recompete_score),0) AS avg_score,
+            SUM(CASE WHEN priority='CRITICAL' THEN 1 ELSE 0 END) AS critical_contracts
+        FROM contracts
+        WHERE vendor = ?
+    """, (vendor,)).fetchone()
+
+    agencies = con.execute("""
+        SELECT agency, COUNT(*) AS contracts
+        FROM contracts
+        WHERE vendor = ?
+        GROUP BY agency
+        ORDER BY contracts DESC, agency
+    """, (vendor,)).fetchall()
+
+    upcoming = con.execute("""
+        SELECT
+            internal_id,
+            agency,
+            value,
+            end_date,
+            days_remaining,
+            priority,
+            recompete_score
+        FROM contracts
+        WHERE vendor = ?
+        ORDER BY days_remaining ASC
+        LIMIT 10
+    """, (vendor,)).fetchall()
+
+    return {
+        "summary": summary,
+        "agencies": agencies,
+        "upcoming": upcoming,
+    }

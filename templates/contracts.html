@@ -27,7 +27,7 @@
      {{ r["priority"] }}
   </a>
 </td>
-<td>{{ r["vendor"] }}</td>
+<td><a href="/vendor/{{ r["vendor"]|urlencode }}">{{ r["vendor"] }}</a></td>
 <td>{{ r["agency"] }}</td>
 <td>${{ "{:,.0f}".format(r["value"] or 0) }}</td>
 <td>{{ r["end_date"] }}</td>

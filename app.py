@@ -3,6 +3,7 @@ from flask import Flask, request, render_template_string, render_template
 
 from db import connect
 from report_builder import build_report
+from analytics import vendor_profile
 
 app = Flask(__name__)
 
@@ -211,6 +212,17 @@ def contracts():
         has_next=offset + per_page < count,
     )
 
+
+
+@app.route("/vendor/<path:vendor>")
+def vendor_detail(vendor):
+    with connect() as con:
+        profile = vendor_profile(con, vendor)
+
+    if not profile["summary"] or profile["summary"]["contracts"] == 0:
+        return "Vendor not found", 404
+
+    return render_template("vendor.html", css=BASE_CSS, vendor=vendor, profile=profile)
 
 @app.route("/contract/<internal_id>")
 def contract_detail(internal_id):
