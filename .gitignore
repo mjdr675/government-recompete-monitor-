@@ -17,3 +17,6 @@ ingest.log
 
 # Repository memory DB (rebuilt automatically)
 .ai_agent_memory.db
+
+# Patcher failure reports (generated at runtime)
+patches/failures/
