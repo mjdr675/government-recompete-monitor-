@@ -20,6 +20,7 @@ from ai_agent import backend_engineer, frontend_engineer, qa_engineer
 from ai_agent import devops_engineer, docs_writer
 from ai_agent import llm as llm_module
 from ai_agent.memory import get_memory
+from ai_agent.patcher import execute as patcher_execute, list_pending
 from ai_agent.reviewer import review
 
 REPO_ROOT = Path(__file__).parent.parent
@@ -148,16 +149,23 @@ def write_task_log(task: dict, role: str, outcome: str) -> None:
     print(f"[TASK_LOG] Written to {TASK_LOG_FILE.name}")
 
 # ---------------------------------------------------------------------------
-# Apply stage (gated — enable with APPLY_PATCH=true + DRY_RUN=false)
+# Apply stage — delegates to patcher.execute()
 # ---------------------------------------------------------------------------
 
-def apply_patch(patch_content: str) -> None:
-    """
-    Future: parse Before/After blocks and write file changes.
-    Blocked until APPLY_PATCH=true is set explicitly.
-    """
-    print("[APPLY] apply_patch() is not implemented yet.")
-    print("[APPLY] Set APPLY_PATCH=true only after reviewing the patch file.")
+def apply_patch(patch_path: Path, dry_run: bool) -> None:
+    result = patcher_execute(
+        patch_path=patch_path,
+        repo_root=REPO_ROOT,
+        dry_run=dry_run,
+        handoff_path=HANDOFF_FILE,
+        task_log_path=TASK_LOG_FILE,
+    )
+    if result.success and result.commit_sha:
+        print(f"[APPLY] Committed: {result.commit_sha}")
+    elif result.rolled_back:
+        print(f"[APPLY] Tests failed — repository restored. Report: {result.failure_report}")
+    elif not result.success:
+        print(f"[APPLY] Failed: {result.error}")
 
 # ---------------------------------------------------------------------------
 # Main
@@ -232,12 +240,13 @@ def run(dry_run: bool = True) -> None:
 
     # --- Apply gate ---
     if not dry_run and apply_patch_enabled and safe:
-        print("\n[APPLY] APPLY_PATCH=true and DRY_RUN=false — applying patch...")
-        apply_patch(patch_content)
+        print("\n[APPLY] APPLY_PATCH=true and DRY_RUN=false — executing patcher...")
+        apply_patch(patch_path, dry_run=False)
     elif not dry_run and apply_patch_enabled and not safe:
-        print("\n[APPLY] Patch blocked by review — not applied.")
+        print("\n[APPLY] Patch blocked by reviewer — not applied.")
     else:
         print(
-            "\n[DRY_RUN] Patch not applied.\n"
-            "To apply: set DRY_RUN=false APPLY_PATCH=true (after reviewing the patch)."
+            "\n[DRY_RUN] Patch saved for review. To apply:\n"
+            f"  DRY_RUN=false APPLY_PATCH=true python ai_agent/agent.py\n"
+            f"  or: python -m ai_agent.patcher --apply"
         )
