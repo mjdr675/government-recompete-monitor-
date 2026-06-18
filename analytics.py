@@ -119,3 +119,19 @@ def list_priority_changes(today, yesterday, direction="up", limit=25):
             ORDER BY c.recompete_score DESC
             LIMIT ?
         """, (today, yesterday, limit)).fetchall()
+
+def agency_summary(run_date):
+    from db import connect
+
+    with connect() as con:
+        cur = con.execute("""
+            SELECT
+                change_type,
+                COUNT(*) AS cnt
+            FROM changes
+            WHERE run_date = ?
+            GROUP BY change_type
+            ORDER BY cnt DESC, change_type
+        """, (run_date,))
+        return cur.fetchall()
+
