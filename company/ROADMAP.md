@@ -157,4 +157,4 @@ $50,000 MRR. Multiple customers on annual plans.
 - Anything that removes human judgment from the capture process
 
 The product is an intelligence tool, not an autonomous agent for the customer's
-business. See `VISION.md — AI Philosophy` for the reasoning.
+business. See `company/VISION.md — AI Philosophy` for the reasoning.

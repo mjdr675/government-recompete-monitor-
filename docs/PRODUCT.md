@@ -1,7 +1,7 @@
 # PRODUCT.md — Architecture Reference
 
 This document describes how the product is built. For what it does and why,
-see `VISION.md`. For where it is going, see `ROADMAP.md`.
+see `company/VISION.md`. For where it is going, see `company/ROADMAP.md`.
 
 ---
 
@@ -88,7 +88,7 @@ Kept in sync via SQLite triggers on INSERT, UPDATE, and DELETE.
 
 **Known limitation:**
 SQLite is single-writer. Phase 2 migration to PostgreSQL is required for multi-
-user concurrent access. See `ROADMAP.md — Phase 2`.
+user concurrent access. See `company/ROADMAP.md — Phase 2`.
 
 ---
 
@@ -228,7 +228,7 @@ are re-parsed. Full re-index available via `force=True`.
 
 **Database:** SQLite file on Railway's ephemeral filesystem. Data is lost on
 redeploy. Phase 2 migration to Railway PostgreSQL plugin resolves this.
-See `ROADMAP.md — Phase 2, Technical Goals`.
+See `company/ROADMAP.md — Phase 2, Technical Goals`.
 
 ---
 
@@ -266,4 +266,4 @@ python -m pytest --tb=short -q
 ```
 
 All tests must pass before any commit. The patcher enforces this gate automatically.
-See `STYLE.md — Testing` for standards on writing new tests.
+See `docs/STYLE.md — Testing` for standards on writing new tests.

@@ -108,7 +108,7 @@ human judgment on bid/no-bid decisions.
 
 ## Long-Term Roadmap
 
-See `ROADMAP.md` for phased details. The directional arc is:
+See `company/ROADMAP.md` for phased details. The directional arc is:
 
 1. **Data access** — ingest, normalize, and score federal contract data
 2. **Intelligence** — surface patterns, score opportunities, alert on changes

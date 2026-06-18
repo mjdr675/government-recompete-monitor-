@@ -65,3 +65,27 @@ Reviewed for cross-document duplication and consistency before commit. All tests
 
 **One bug fixed during test run:** duplicate-email test accessed /register while still logged in
 (view redirects authenticated users); fixed by logging out first in the test.
+
+## 2026-06-18 21:54 UTC — [DOCS] Reorganize repository documentation structure
+
+**Role:** human-directed  
+**Outcome:** structure reorganized — 84 tests still passing  
+
+**Moves (git mv, history preserved):**
+- CEO.md → company/CEO.md
+- VISION.md → company/VISION.md
+- ROADMAP.md → company/ROADMAP.md
+- COMPETITORS.md → company/COMPETITORS.md
+- PRODUCT.md → docs/PRODUCT.md
+- STYLE.md → docs/STYLE.md
+
+**New files created:**
+- company/SPRINT.md — active sprint tracker
+- company/CUSTOMERS.md — customer registry / sales CRM
+- company/FEATURE_SCORECARD.md — scoring rubric for feature prioritization
+- company/PRODUCT_BACKLOG.md — long-term feature backlog (not auto-picked by agent)
+- company/RELEASE_PLAN.md — milestone-based release schedule
+- docs/ARCHITECTURE.md — full system architecture reference
+
+**Cross-references updated** in all moved documents to use new paths (company/ and docs/ prefixes).
+No Python code was changed. No application behavior changed.

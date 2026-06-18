@@ -135,10 +135,10 @@ LIMIT ?
 ## Documentation
 
 **What belongs in docs:**
-- Operating decisions that cannot be inferred from code (`CEO.md`)
-- Product direction and customer reasoning (`VISION.md`, `ROADMAP.md`)
-- Architecture that spans multiple files (`PRODUCT.md`)
-- Standards that must be explicitly agreed upon (`STYLE.md`, `COMPETITORS.md`)
+- Operating decisions that cannot be inferred from code (`company/CEO.md`)
+- Product direction and customer reasoning (`company/VISION.md`, `company/ROADMAP.md`)
+- Architecture that spans multiple files (`docs/PRODUCT.md`, `docs/ARCHITECTURE.md`)
+- Standards that must be explicitly agreed upon (`docs/STYLE.md`, `company/COMPETITORS.md`)
 - Agent run logs (`HANDOFF.md`, `TASK_LOG.md`)
 
 **What does not belong in docs:**
@@ -190,7 +190,7 @@ than ~10 tests for the same component; use plain functions otherwise.
 - String checks: `assert "Acme Corp" in body` not `assert body`
 - One logical assertion per test function — split if you have `and`
 
-All tests must pass before any commit. See `PRODUCT.md — Testing Strategy` for
+All tests must pass before any commit. See `docs/PRODUCT.md — Testing Strategy` for
 test file locations and how the patcher gate works.
 
 ---
@@ -230,6 +230,8 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 ```
 /                        # Repo root
 ├── app.py               # Flask entry point — routes only
+├── auth.py              # Authentication blueprint
+├── users.py             # User model and password hashing
 ├── db.py                # Database layer — schema, queries
 ├── analytics.py         # Aggregation queries
 ├── report_builder.py    # Dashboard report assembly
@@ -249,12 +251,20 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 │   └── *_engineer.py    # Specialist agents
 ├── patches/             # Proposed and applied patch records
 ├── backlog/             # Prioritized task lists
-├── CEO.md               # Engineering operating manual
-├── VISION.md            # Product vision
-├── ROADMAP.md           # Phased product roadmap
-├── PRODUCT.md           # Architecture reference
-├── STYLE.md             # This file
-├── COMPETITORS.md       # Market landscape
+├── company/             # Business and product documents
+│   ├── CEO.md           # Engineering operating manual
+│   ├── VISION.md        # Product vision
+│   ├── ROADMAP.md       # Phased product roadmap
+│   ├── COMPETITORS.md   # Market landscape
+│   ├── SPRINT.md        # Current sprint
+│   ├── CUSTOMERS.md     # Customer registry
+│   ├── FEATURE_SCORECARD.md  # Feature prioritization
+│   ├── PRODUCT_BACKLOG.md    # Long-term backlog
+│   └── RELEASE_PLAN.md  # Release schedule
+├── docs/                # Technical documentation
+│   ├── PRODUCT.md       # Architecture reference
+│   ├── STYLE.md         # This file
+│   └── ARCHITECTURE.md  # System architecture deep-dive
 ├── HANDOFF.md           # Agent run log
 └── TASK_LOG.md          # One-line-per-run table
 ```

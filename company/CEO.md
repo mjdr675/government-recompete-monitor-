@@ -98,5 +98,5 @@ Ideas are never automatically executed.
 
 ## Deployment
 
-The production application runs on Railway. See `PRODUCT.md` for architecture.
-See `ROADMAP.md` for where the product is going.
+The production application runs on Railway. See `docs/PRODUCT.md` for architecture.
+See `company/ROADMAP.md` for where the product is going.
