@@ -1,0 +1,15 @@
+<!doctype html>
+<html>
+<head>
+  <title>{% block title %}Government Recompete Monitor{% endblock %}</title>
+  {{ css|safe }}
+</head>
+<body>
+  <div class="nav">
+    <a href="/">Dashboard</a>
+    <a href="/contracts">Contracts</a>
+  </div>
+
+  {% block content %}{% endblock %}
+</body>
+</html>

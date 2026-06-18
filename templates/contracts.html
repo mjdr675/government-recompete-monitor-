@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Contracts{% endblock %}
+
+{% block content %}
+<h1>Contracts</h1>
+<div class="muted">Showing {{ start }}–{{ end }} of {{ count }} matching contracts</div>
+
+<form method="get">
+  <input name="q" value="{{ q }}" placeholder="Search vendor, agency, award...">
+  <select name="priority">
+    <option value="">All priorities</option>
+    {% for p in priorities %}
+      <option value="{{ p }}" {% if p == priority %}selected{% endif %}>{{ p }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit">Filter</button>
+  <a href="/contracts">Reset</a>
+</form>
+
+<table>
+<tr><th>Priority</th><th>Vendor</th><th>Agency</th><th>Value</th><th>End Date</th><th>Days</th><th>Score</th></tr>
+{% for r in rows %}
+<tr>
+<td>
+  <a class="priority-badge priority-{{ (r["priority"] or "unknown").lower().replace(" ", "-").replace("_", "-") }}"
+     href="/contract/{{ r["internal_id"] }}">
+     {{ r["priority"] }}
+  </a>
+</td>
+<td>{{ r["vendor"] }}</td>
+<td>{{ r["agency"] }}</td>
+<td>${{ "{:,.0f}".format(r["value"] or 0) }}</td>
+<td>{{ r["end_date"] }}</td>
+<td>{{ r["days_remaining"] }}</td>
+<td>{{ r["recompete_score"] }}</td>
+</tr>
+{% else %}
+<tr><td colspan="7">No contracts found.</td></tr>
+{% endfor %}
+</table>
+
+<div style="margin-top:18px;">
+  {% if has_prev %}
+    <a href="/contracts?q={{ q }}&priority={{ priority }}&page={{ page - 1 }}">Previous</a>
+  {% endif %}
+
+  <span class="muted" style="margin:0 12px;">Page {{ page }}</span>
+
+  {% if has_next %}
+    <a href="/contracts?q={{ q }}&priority={{ priority }}&page={{ page + 1 }}">Next</a>
+  {% endif %}
+</div>
+{% endblock %}

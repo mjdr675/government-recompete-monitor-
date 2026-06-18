@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Contract Detail{% endblock %}
+
+{% block content %}
+<h1>Contract Detail</h1>
+<div class="muted">{{ row["internal_id"] }}</div>
+
+<table>
+  {% for key, value in row.items() %}
+  <tr><th>{{ key }}</th><td>{{ value }}</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

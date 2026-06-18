@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<h1>Government Recompete Dashboard</h1>
+<div class="muted">Run date: {{ report.run_date }}</div>
+
+<div class="cards">
+{% for key,value in report.summary.items() %}
+  <div class="card">
+    <div class="muted">{{ key }}</div>
+    <div class="num">{{ value }}</div>
+  </div>
+{% endfor %}
+</div>
+
+<h2>Value Summary</h2>
+<table>
+<tr><th>Metric</th><th>Value</th></tr>
+{% for key,value in report.value_summary.items() %}
+<tr><td>{{ key }}</td><td>${{ "{:,.0f}".format(value or 0) }}</td></tr>
+{% endfor %}
+</table>
+
+<h2>Top Opportunities</h2>
+<table>
+<tr><th>Priority</th><th>Vendor</th><th>Agency</th><th>Value</th><th>Days</th><th>Score</th><th>Change</th></tr>
+{% for row in report.top_opportunities %}
+<tr>
+<td>{{ row[0] }}</td><td>{{ row[1] }}</td><td>{{ row[2] }}</td>
+<td>${{ "{:,.0f}".format(row[3] or 0) }}</td><td>{{ row[4] }}</td><td>{{ row[5] }}</td><td>{{ row[6] }}</td>
+</tr>
+{% else %}
+<tr><td colspan="7">No changes yet. A second snapshot date is needed.</td></tr>
+{% endfor %}
+</table>
+
+<h2>Top Agencies</h2>
+<table>
+<tr><th>Agency</th><th>Count</th><th>Total Value</th></tr>
+{% for agency,count,value in report.top_agencies %}
+<tr><td>{{ agency }}</td><td>{{ count }}</td><td>${{ "{:,.0f}".format(value or 0) }}</td></tr>
+{% else %}
+<tr><td colspan="3">None</td></tr>
+{% endfor %}
+</table>
+
+<h2>Top Vendors</h2>
+<table>
+<tr><th>Vendor</th><th>Count</th><th>Total Value</th></tr>
+{% for vendor,count,value in report.top_vendors %}
+<tr><td>{{ vendor }}</td><td>{{ count }}</td><td>${{ "{:,.0f}".format(value or 0) }}</td></tr>
+{% else %}
+<tr><td colspan="3">None</td></tr>
+{% endfor %}
+</table>
+{% endblock %}
