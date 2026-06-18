@@ -17,7 +17,7 @@ Allow authenticated users to:
 
 ---
 
-### [OPEN] Email Alerts
+### [DONE] Email Alerts
 
 Implement daily email alerts for:
 

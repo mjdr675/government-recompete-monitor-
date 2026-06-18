@@ -21,6 +21,7 @@ from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
 from report_builder import build_report
 from views import SAVED_VIEWS, build_view_query
+from alerts import alert_config, send_alert
 
 app = Flask(__name__)
 
@@ -248,6 +249,15 @@ def watch(internal_id):
 def unwatch(internal_id):
     unwatch_contract(internal_id)
     return redirect(request.form.get("next") or f"/contract/{internal_id}")
+
+
+@app.route("/alerts", methods=["GET", "POST"])
+def alerts_page():
+    result = None
+    if request.method == "POST":
+        run_date = request.form.get("run_date") or date.today().isoformat()
+        result = send_alert(run_date)
+    return render_template("alerts.html", config=alert_config(), result=result)
 
 
 if __name__ == "__main__":
