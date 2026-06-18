@@ -137,3 +137,34 @@ def insert_change(run_date, change_type, internal_id, old_priority=None, new_pri
         VALUES (?, ?, ?, ?, ?, ?)
         """, (run_date, change_type, internal_id, old_priority, new_priority, description))
         con.commit()
+
+def get_changes(run_date, change_type=None):
+    init_changes_table()
+    with connect() as con:
+        if change_type:
+            cur = con.execute("""
+                SELECT change_type, internal_id, old_priority, new_priority, description
+                FROM changes
+                WHERE run_date = ? AND change_type = ?
+                ORDER BY id
+            """, (run_date, change_type))
+        else:
+            cur = con.execute("""
+                SELECT change_type, internal_id, old_priority, new_priority, description
+                FROM changes
+                WHERE run_date = ?
+                ORDER BY change_type, id
+            """, (run_date,))
+        return cur.fetchall()
+
+def change_summary(run_date):
+    init_changes_table()
+    with connect() as con:
+        cur = con.execute("""
+            SELECT change_type, COUNT(*)
+            FROM changes
+            WHERE run_date = ?
+            GROUP BY change_type
+            ORDER BY change_type
+        """, (run_date,))
+        return dict(cur.fetchall())
