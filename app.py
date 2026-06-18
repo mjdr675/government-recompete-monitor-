@@ -65,6 +65,7 @@ def contracts():
     agency = request.args.get("agency", "")
     priority = request.args.get("priority", "")
     days = request.args.get("days", None)
+    min_value = request.args.get("min_value", None)
     sort = request.args.get("sort", "recompete_score")
     direction = request.args.get("dir", "desc")
     page = int(request.args.get("page", 1))
@@ -74,6 +75,7 @@ def contracts():
         agency=agency,
         priority=priority,
         days=int(days) if days else None,
+        min_value=float(min_value) if min_value else None,
         sort=sort,
         direction=direction,
         page=page,
@@ -94,6 +96,7 @@ def contracts():
         agency=agency,
         priority=priority,
         days=days or "",
+        min_value=min_value or "",
         sort=sort,
         direction=direction,
     )

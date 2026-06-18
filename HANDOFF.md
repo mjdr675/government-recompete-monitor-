@@ -48,3 +48,15 @@ Files likely involved: tests/
 - `tests/test_saved_searches.py` — 20 tests (8 db-layer, 12 HTTP routes), all passing
 
 **Test results:** 77/77 passed
+
+---
+
+## 2026-06-18 — Add min_value filter to get_contracts()
+**Status:** COMPLETE
+
+**Changes:**
+- `db.py` — `get_contracts()` now accepts `min_value=None`; appends `AND c.value >= ?` when set
+- `app.py` — `/contracts` reads `request.args.get('min_value')`, converts to float, passes to `get_contracts()`, and echoes back as `min_value` template context
+- `tests/test_min_value_filter.py` — 11 new tests: boundary conditions, combined filters, pagination, and HTTP route behaviour
+
+**Test results:** 88/88 passed

@@ -14,7 +14,7 @@ STATUS values: OPEN | IN_PROGRESS | DONE | SKIPPED
 
 ---
 
-### [OPEN] Add min_value filter to get_contracts()
+### [DONE] Add min_value filter to get_contracts()
 `get_contracts()` in `db.py` has no `min_value` param so the High Value Contracts
 view silently returns all contracts. Add `min_value=None` param, filter with
 `AND c.value >= ?` when set, and pass `request.args.get('min_value')` through

@@ -376,7 +376,7 @@ def delete_saved_search(search_id: int) -> bool:
 
 _SORTABLE = {"recompete_score", "value", "days_remaining", "end_date", "priority", "vendor", "agency"}
 
-def get_contracts(q="", agency="", priority="", days=None, sort="recompete_score", direction="desc", page=1, limit=25):
+def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort="recompete_score", direction="desc", page=1, limit=25):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
@@ -403,6 +403,10 @@ def get_contracts(q="", agency="", priority="", days=None, sort="recompete_score
     if days is not None:
         base += " AND c.days_remaining <= ?"
         params.append(int(days))
+
+    if min_value is not None:
+        base += " AND c.value >= ?"
+        params.append(float(min_value))
 
     col = sort if sort in _SORTABLE else "recompete_score"
     order = "ASC" if direction == "asc" else "DESC"

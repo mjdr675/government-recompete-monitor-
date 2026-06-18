@@ -18,15 +18,18 @@
 
 ---
 
+## Min-value Filter — DONE (2026-06-18)
+
+- [x] `get_contracts()` accepts `min_value=None`; filters `c.value >= ?` when set
+- [x] `/contracts` route reads `request.args.get('min_value')` and passes it through
+- [x] "High Value Contracts" view now correctly filters to contracts ≥ $1M
+- [x] 11 new tests — all passing; full suite 88/88
+
+---
+
 ## Next Highest-Value Feature Recommendation
 
-**Add min_value filter to get_contracts()**  
-(`TASK.md` — currently OPEN)
+**Add /health unit test** (`TASK.md` — OPEN)  
+Trivial one-file addition that closes a test-coverage gap on the health endpoint.
 
-The "High Value Contracts" view in `views.py` passes `min_value: 1000000` as a
-filter, but `get_contracts()` in `db.py` ignores it — so the view silently returns
-all contracts. This is a correctness bug directly impacting the product's core
-value proposition (surfacing high-value recompetes). It is small, well-scoped,
-and completely described in `TASK.md`.
-
-Runner-up: **Add /health unit test** — trivial, closes a gap in test coverage.
+Runner-up: **Human-readable labels in views.html** — polish item, low effort.
