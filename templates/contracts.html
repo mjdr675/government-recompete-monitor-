@@ -25,8 +25,13 @@
   {% set arrow = " ↓" if (sort == col and direction == "desc") else (" ↑" if sort == col else "") %}
   <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&sort={{ col }}&dir={{ next_dir }}">{{ label }}{{ arrow }}</a>
 {% endmacro %}
+<div style="margin-bottom:8px;">
+  <button id="compare-btn" disabled onclick="compareSelected()">Compare selected</button>
+  <span id="compare-hint" class="muted" style="margin-left:8px;">Select exactly 2 contracts</span>
+</div>
 <table>
 <tr>
+  <th></th>
   <th>{{ sort_link("priority", "Priority") }}</th>
   <th>{{ sort_link("vendor", "Vendor") }}</th>
   <th>{{ sort_link("agency", "Agency") }}</th>
@@ -37,6 +42,7 @@
 </tr>
 {% for r in rows %}
 <tr>
+<td><input type="checkbox" class="cmp-check" value="{{ r['internal_id'] }}" onchange="updateCompare()"></td>
 <td>
   <a class="priority-badge priority-{{ (r["priority"] or "unknown").lower().replace(" ", "-").replace("_", "-") }}"
      href="/contract/{{ r["internal_id"] }}">
@@ -51,9 +57,24 @@
 <td>{{ r["recompete_score"] }}</td>
 </tr>
 {% else %}
-<tr><td colspan="7">No contracts found.</td></tr>
+<tr><td colspan="8">No contracts found.</td></tr>
 {% endfor %}
 </table>
+
+<script>
+function updateCompare() {
+  var checked = document.querySelectorAll('.cmp-check:checked');
+  var btn = document.getElementById('compare-btn');
+  btn.disabled = checked.length !== 2;
+}
+function compareSelected() {
+  var checked = document.querySelectorAll('.cmp-check:checked');
+  if (checked.length === 2) {
+    window.location.href = '/compare?a=' + encodeURIComponent(checked[0].value) +
+                           '&b=' + encodeURIComponent(checked[1].value);
+  }
+}
+</script>
 
 <div style="margin-top:18px;">
   {% if has_prev %}

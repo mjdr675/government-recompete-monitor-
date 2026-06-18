@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Compare Contracts{% endblock %}
+
+{% block content %}
+<h1>Compare Contracts</h1>
+
+{% if not id_a and not id_b %}
+  <p class="muted">Enter two contract IDs to compare.</p>
+  <form method="get">
+    <input name="a" placeholder="Contract ID A" style="width:220px;">
+    <input name="b" placeholder="Contract ID B" style="width:220px;">
+    <button type="submit">Compare</button>
+  </form>
+
+{% elif a is none or b is none %}
+  <p class="muted">
+    {% if a is none %}Contract <strong>{{ id_a }}</strong> not found.{% endif %}
+    {% if b is none %}Contract <strong>{{ id_b }}</strong> not found.{% endif %}
+  </p>
+  <a href="/compare">Try again</a>
+
+{% else %}
+
+{% macro pct(va, vb) %}
+  {% if va and vb and va != vb %}
+    <span class="muted" style="font-size:11px;">
+      ({% if va > vb %}+{% endif %}{{ "{:+,.0f}".format(va - vb) }})
+    </span>
+  {% endif %}
+{% endmacro %}
+
+<table>
+  <tr>
+    <th style="width:26%;">Field</th>
+    <th style="width:37%;"><a href="/contract/{{ a['internal_id'] }}">{{ a['award_id'] or a['internal_id'] }}</a></th>
+    <th style="width:37%;"><a href="/contract/{{ b['internal_id'] }}">{{ b['award_id'] or b['internal_id'] }}</a></th>
+  </tr>
+  <tr>
+    <td>Agency</td>
+    <td><a href="/agency/{{ a['agency']|urlencode }}">{{ a['agency'] }}</a></td>
+    <td><a href="/agency/{{ b['agency']|urlencode }}">{{ b['agency'] }}</a></td>
+  </tr>
+  <tr>
+    <td>Vendor</td>
+    <td><a href="/vendor/{{ a['vendor']|urlencode }}">{{ a['vendor'] }}</a></td>
+    <td><a href="/vendor/{{ b['vendor']|urlencode }}">{{ b['vendor'] }}</a></td>
+  </tr>
+  <tr>
+    <td>Value</td>
+    <td>${{ "{:,.0f}".format(a['value'] or 0) }} {{ pct(a['value'], b['value']) }}</td>
+    <td>${{ "{:,.0f}".format(b['value'] or 0) }} {{ pct(b['value'], a['value']) }}</td>
+  </tr>
+  <tr>
+    <td>End Date</td>
+    <td>{{ a['end_date'] or '—' }}</td>
+    <td>{{ b['end_date'] or '—' }}</td>
+  </tr>
+  <tr>
+    <td>Priority</td>
+    <td><span class="priority-badge priority-{{ (a['priority'] or 'unknown').lower() }}">{{ a['priority'] or '—' }}</span></td>
+    <td><span class="priority-badge priority-{{ (b['priority'] or 'unknown').lower() }}">{{ b['priority'] or '—' }}</span></td>
+  </tr>
+  <tr>
+    <td>Recompete Score</td>
+    <td>{{ a['recompete_score'] or '—' }} {{ pct(a['recompete_score'], b['recompete_score']) }}</td>
+    <td>{{ b['recompete_score'] or '—' }} {{ pct(b['recompete_score'], a['recompete_score']) }}</td>
+  </tr>
+</table>
+
+<p style="margin-top:8px;">
+  <a href="/contract/{{ a['internal_id'] }}">Full detail: {{ a['award_id'] or a['internal_id'] }}</a>
+  &nbsp;·&nbsp;
+  <a href="/contract/{{ b['internal_id'] }}">Full detail: {{ b['award_id'] or b['internal_id'] }}</a>
+</p>
+{% endif %}
+
+<p style="margin-top:18px;"><a href="/contracts">← Back to Contracts</a></p>
+{% endblock %}

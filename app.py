@@ -41,6 +41,7 @@ def check_auth():
 
 @app.route("/health")
 def health():
+    # Railway polls this endpoint to confirm the app is running.
     return {"status": "ok"}, 200
 
 
@@ -168,6 +169,26 @@ def contract_detail(internal_id):
         return redirect("/contracts")
 
     return render_template("contract_detail.html", row=row)
+
+
+@app.route("/compare")
+def compare():
+    def _fetch(internal_id):
+        if not internal_id:
+            return None
+        con = connect()
+        con.row_factory = lambda cur, row: {col[0]: row[i] for i, col in enumerate(cur.description)}
+        row = con.execute(
+            "SELECT * FROM contracts WHERE internal_id=?",
+            (internal_id,),
+        ).fetchone()
+        con.close()
+        return row
+
+    id_a = request.args.get("a", "").strip()
+    id_b = request.args.get("b", "").strip()
+    return render_template("compare.html", a=_fetch(id_a), b=_fetch(id_b),
+                           id_a=id_a, id_b=id_b)
 
 
 if __name__ == "__main__":

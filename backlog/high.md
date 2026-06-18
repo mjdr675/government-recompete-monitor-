@@ -4,6 +4,12 @@ Important features and fixes — do after critical items.
 
 ---
 
+### [DONE] Contract comparison page
+Add a `/compare` route and `templates/compare.html` showing two contracts side by side:
+agency, vendor, value, end date, priority, recompete_score. Add checkboxes to the
+contracts list so users can select two and click "Compare".
+Role: frontend
+
 ### [OPEN] Add min_value filter to get_contracts()
 `get_contracts()` in `db.py` has no `min_value` param so the High Value
 Contracts view silently returns all contracts. Add `min_value=None` param,
