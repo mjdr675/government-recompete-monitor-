@@ -2,7 +2,7 @@ import csv
 import sys
 import time
 from sam_lookup import lookup_solicitation
-from db import init_db, upsert_contract
+from db import init_db, upsert_contract, save_snapshot
 import requests
 from datetime import date, datetime, timedelta
 
@@ -272,7 +272,11 @@ def main():
     init_db()
     for row in rows:
         upsert_contract(row)
+
+    save_snapshot(str(TODAY), rows)
+
     print(f"Saved {len(rows)} rows to contracts.db")
+    print(f"Saved snapshot for {TODAY}")
 
     print("Saved", len(rows), "upcoming recompete opportunities.")
     print("Enriched", enrich_count, "Tier A opportunities.")

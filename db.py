@@ -69,3 +69,38 @@ def upsert_contract(row):
             updated_at=CURRENT_TIMESTAMP
         """, values)
         con.commit()
+
+def init_snapshots_table():
+    with connect() as con:
+        con.execute("""
+        CREATE TABLE IF NOT EXISTS snapshots (
+            run_date TEXT,
+            internal_id TEXT,
+            recompete_score INTEGER,
+            priority TEXT,
+            PRIMARY KEY (run_date, internal_id)
+        )
+        """)
+        con.commit()
+
+def save_snapshot(run_date, rows):
+    init_snapshots_table()
+    with connect() as con:
+        con.executemany("""
+        INSERT OR REPLACE INTO snapshots (
+            run_date, internal_id, recompete_score, priority
+        )
+        VALUES (
+            :run_date, :internal_id, :recompete_score, :priority
+        )
+        """, [
+            {
+                "run_date": run_date,
+                "internal_id": row.get("internal_id"),
+                "recompete_score": row.get("recompete_score"),
+                "priority": row.get("priority")
+            }
+            for row in rows
+            if row.get("internal_id")
+        ])
+        con.commit()
