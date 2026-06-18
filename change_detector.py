@@ -1,5 +1,7 @@
 from db import connect, clear_changes_for_date, insert_change
 
+_PRIORITY_RANK = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+
 def detect_changes(run_date):
     clear_changes_for_date(run_date)
 
@@ -68,9 +70,12 @@ def detect_changes(run_date):
         new_priority = today_rows[internal_id]
 
         if old_priority != new_priority:
+            old_rank = _PRIORITY_RANK.get(old_priority, 0)
+            new_rank = _PRIORITY_RANK.get(new_priority, 0)
+            change_type = "UPGRADE" if new_rank > old_rank else "DOWNGRADE"
             insert_change(
                 run_date,
-                "PRIORITY",
+                change_type,
                 internal_id,
                 old_priority,
                 new_priority,

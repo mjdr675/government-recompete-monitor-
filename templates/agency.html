@@ -30,7 +30,7 @@
 {% for r in profile.upcoming %}
 <tr>
 <td><span class="priority-badge priority-{{ (r.priority or 'unknown').lower().replace(' ','-').replace('_','-') }}">{{ r.priority }}</span></td>
-<td><a href="/contract/{{ r.internal_id }}">{{ r.internal_id[:12] }}...</a></td>
+<td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
 <td><a href="/vendor/{{ r.vendor|urlencode }}">{{ r.vendor }}</a></td>
 <td>${{ "{:,.0f}".format(r.value or 0) }}</td>
 <td>{{ r.end_date }}</td>

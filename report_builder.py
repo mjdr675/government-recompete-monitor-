@@ -1,6 +1,7 @@
 from db import change_summary, get_changes
 from analytics import (
     agency_summary,
+    top_contracts_overall,
     top_opportunities,
     value_summary,
     vendor_summary,
@@ -32,4 +33,5 @@ def build_report(run_date):
         "top_agencies": agency_summary(run_date),
         "top_vendors": vendor_summary(run_date),
         "top_opportunities": top_opportunities(run_date, limit=10),
+        "top_contracts": top_contracts_overall(limit=25),
     }

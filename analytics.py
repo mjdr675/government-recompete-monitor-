@@ -53,7 +53,18 @@ def top_opportunities(run_date, limit=10):
             LIMIT ?
         """, (run_date, limit)).fetchall()
 
-def vendor_profile(con, vendor):
+def top_contracts_overall(limit=25):
+    with connect() as con:
+        con.row_factory = lambda cur, row: {col[0]: row[i] for i, col in enumerate(cur.description)}
+        return con.execute("""
+            SELECT internal_id, vendor, agency, value, end_date,
+                   days_remaining, priority, recompete_score
+            FROM contracts
+            ORDER BY recompete_score DESC, value DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+
+def vendor_profile_analytics(con, vendor):
     con.row_factory = lambda cur, row: {col[0]: row[i] for i, col in enumerate(cur.description)}
 
     summary = con.execute("""
@@ -77,6 +88,7 @@ def vendor_profile(con, vendor):
     upcoming = con.execute("""
         SELECT
             internal_id,
+            award_id,
             agency,
             value,
             end_date,
@@ -123,6 +135,7 @@ def agency_profile(con, agency):
     upcoming = con.execute("""
         SELECT
             internal_id,
+            award_id,
             vendor,
             value,
             end_date,

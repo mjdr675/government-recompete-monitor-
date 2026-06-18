@@ -1,13 +1,40 @@
 {% extends "base.html" %}
-{% block title %}Contract Detail{% endblock %}
+{% block title %}Contract {{ row["award_id"] or row["internal_id"] }}{% endblock %}
 
 {% block content %}
-<h1>Contract Detail</h1>
+<h1>{{ row["award_id"] or row["internal_id"] }}</h1>
 <div class="muted">{{ row["internal_id"] }}</div>
 
-<table>
-  {% for key, value in row.items() %}
-  <tr><th>{{ key }}</th><td>{{ value }}</td></tr>
-  {% endfor %}
+<div class="cards" style="margin-top:18px;">
+  <div class="card">
+    <div class="muted">Value</div>
+    <div class="num">${{ "{:,.0f}".format(row["value"] or 0) }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Recompete Score</div>
+    <div class="num">{{ row["recompete_score"] }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Days Remaining</div>
+    <div class="num">{{ row["days_remaining"] }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Priority</div>
+    <div class="num">
+      <span class="priority-badge priority-{{ (row["priority"] or "unknown").lower() }}">{{ row["priority"] }}</span>
+    </div>
+  </div>
+</div>
+
+<table style="margin-top:8px;">
+  <tr><th>Vendor</th><td><a href="/vendor/{{ row["vendor"]|urlencode }}">{{ row["vendor"] }}</a></td></tr>
+  <tr><th>Agency</th><td><a href="/agency/{{ row["agency"]|urlencode }}">{{ row["agency"] }}</a></td></tr>
+  <tr><th>Sub-Agency</th><td>{{ row["sub_agency"] }}</td></tr>
+  <tr><th>Award ID</th><td>{{ row["award_id"] }}</td></tr>
+  <tr><th>Solicitation ID</th><td>{{ row["solicitation_id"] }}</td></tr>
+  <tr><th>Competition Type</th><td>{{ row["competition_type"] }}</td></tr>
+  <tr><th>Start Date</th><td>{{ row["start_date"] }}</td></tr>
+  <tr><th>End Date</th><td>{{ row["end_date"] }}</td></tr>
+  <tr><th>Updated</th><td>{{ row["updated_at"] }}</td></tr>
 </table>
 {% endblock %}

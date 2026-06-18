@@ -1,158 +1,167 @@
+import csv
+import io
+import os
+import subprocess
+import sys
 from datetime import date
-from flask import Flask, request, render_template
+from functools import wraps
 
-from db import connect
+from flask import Flask, flash, redirect, render_template, request, Response
+
+from change_detector import detect_changes
+from db import connect, get_contracts, init_db, upsert_contract, save_snapshot
+from analytics import vendor_profile_analytics as vendor_profile_query
+from analytics import agency_profile as agency_profile_query
 from report_builder import build_report
-from analytics import vendor_profile, agency_profile
+from views import SAVED_VIEWS, build_view_query
 
 app = Flask(__name__)
 
-BASE_CSS = """
-<style>
-body{font-family:Arial,sans-serif;margin:32px;background:#f7f7f7;color:#222}
-a{color:#222}.nav{margin-bottom:24px}.nav a{margin-right:18px;font-weight:bold}
-h1{margin-bottom:4px}.muted{color:#666;margin-bottom:24px}
-.cards{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px}
-.card{background:white;border-radius:10px;padding:18px;min-width:140px;box-shadow:0 1px 4px #ddd}
-.num{font-size:28px;font-weight:bold}
-table{width:100%;border-collapse:collapse;background:white;margin-bottom:28px}
-th,td{text-align:left;padding:10px;border-bottom:1px solid #eee;vertical-align:top}
-th{background:#222;color:white}.section{margin-top:28px}
-input,select{padding:8px;margin-right:8px;margin-bottom:12px}
-.badge{font-weight:bold}
+_AUTH_USER = os.environ.get("AUTH_USER", "")
+_AUTH_PASS = os.environ.get("AUTH_PASS", "")
 
-.priority-badge {
-  display: inline-block;
-  padding: 4px 9px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  text-decoration: none;
-  color: #111827;
-  background: #e5e7eb;
-}
-.priority-critical { background: #fecaca; color: #7f1d1d; }
-.priority-high { background: #fed7aa; color: #7c2d12; }
-.priority-medium { background: #fef3c7; color: #78350f; }
-.priority-low { background: #dcfce7; color: #14532d; }
-.priority-unknown { background: #e5e7eb; color: #374151; }
+def _require_auth():
+    if not _AUTH_USER or not _AUTH_PASS:
+        return None
+    auth = request.authorization
+    if auth and auth.username == _AUTH_USER and auth.password == _AUTH_PASS:
+        return None
+    return Response(
+        "Authentication required.",
+        401,
+        {"WWW-Authenticate": 'Basic realm="Recompete Monitor"'},
+    )
 
-
-.contract-row { cursor: pointer; }
-.contract-row:hover { background: #f9fafb; }
-
-</style>
-"""
+@app.before_request
+def check_auth():
+    return _require_auth()
 
 
 @app.route("/")
 def dashboard():
-    return render_template("dashboard.html", css=BASE_CSS, report=build_report(str(date.today())))
+    return render_template("dashboard.html", report=build_report(date.today().isoformat()))
+
 
 @app.route("/contracts")
 def contracts():
-    q = request.args.get("q", "").strip()
-    priority = request.args.get("priority", "").strip()
-    page = max(request.args.get("page", 1, type=int), 1)
-    per_page = 50
-    offset = (page - 1) * per_page
+    q = request.args.get("q", "")
+    agency = request.args.get("agency", "")
+    priority = request.args.get("priority", "")
+    days = request.args.get("days", None)
+    sort = request.args.get("sort", "recompete_score")
+    direction = request.args.get("dir", "desc")
+    page = int(request.args.get("page", 1))
 
-    where = []
-    params = []
-
-    if q:
-        like = f"%{q}%"
-        where.append("(vendor LIKE ? OR agency LIKE ? OR award_id LIKE ?)")
-        params.extend([like, like, like])
-
-    if priority:
-        where.append("priority = ?")
-        params.append(priority)
-
-    where_sql = "WHERE " + " AND ".join(where) if where else ""
-
-    with connect() as con:
-        con.row_factory = lambda cur, row: {col[0]: row[i] for i, col in enumerate(cur.description)}
-        rows = con.execute(f"""
-            SELECT internal_id, priority, vendor, agency, value, end_date, days_remaining, recompete_score
-            FROM contracts
-            {where_sql}
-            ORDER BY recompete_score DESC, value DESC
-            LIMIT ? OFFSET ?
-        """, params + [per_page, offset]).fetchall()
-
-        count = con.execute(f"SELECT COUNT(*) AS c FROM contracts {where_sql}", params).fetchone()["c"]
-
-        priorities = [
-            r["priority"] for r in con.execute("""
-                SELECT DISTINCT priority
-                FROM contracts
-                WHERE priority IS NOT NULL
-                ORDER BY priority
-            """).fetchall()
-        ]
+    result = get_contracts(
+        q=q,
+        agency=agency,
+        priority=priority,
+        days=int(days) if days else None,
+        sort=sort,
+        direction=direction,
+        page=page,
+        limit=25,
+    )
 
     return render_template(
         "contracts.html",
-        css=BASE_CSS,
-        rows=rows,
-        count=count,
+        rows=result["contracts"],
+        total=result["total"],
+        start=result["start"] + 1 if result["count"] else 0,
+        end=result["start"] + result["count"],
+        page=result["page"],
+        has_prev=result["page"] > 1,
+        has_next=result["start"] + result["count"] < result["total"],
+        priorities=["CRITICAL", "HIGH", "MEDIUM", "LOW"],
         q=q,
-        priority=priority,
-        priorities=priorities,
-        page=page,
-        per_page=per_page,
-        offset=offset,
-        start=offset + 1 if count else 0,
-        end=min(offset + per_page, count),
-        has_prev=page > 1,
-        has_next=offset + per_page < count,
-    )
-
-
-
-@app.route("/vendor/<path:vendor>")
-def vendor_detail(vendor):
-    with connect() as con:
-        profile = vendor_profile(con, vendor)
-
-    if not profile["summary"] or profile["summary"]["contracts"] == 0:
-        return "Vendor not found", 404
-
-    return render_template("vendor.html", css=BASE_CSS, vendor=vendor, profile=profile)
-
-
-
-@app.route("/agency/<path:agency>")
-def agency_detail(agency):
-    with connect() as con:
-        profile = agency_profile(con, agency)
-
-    if not profile["summary"] or profile["summary"]["contracts"] == 0:
-        return "Agency not found", 404
-
-    return render_template(
-        "agency.html",
-        css=BASE_CSS,
         agency=agency,
-        profile=profile,
+        priority=priority,
+        days=days or "",
+        sort=sort,
+        direction=direction,
     )
+
+
+@app.route("/vendor/<name>")
+def vendor_profile(name):
+    con = connect()
+    profile = vendor_profile_query(con, name)
+    con.close()
+    return render_template("vendor.html", vendor=name, profile=profile)
+
+
+@app.route("/agency/<name>")
+def agency_profile(name):
+    con = connect()
+    profile = agency_profile_query(con, name)
+    con.close()
+    return render_template("agency.html", agency=name, profile=profile)
+
+
+@app.route("/views")
+def views_list():
+    return render_template("views.html", views=SAVED_VIEWS)
+
+
+@app.route("/views/<view_id>")
+def views_detail(view_id):
+    qs = build_view_query(view_id)
+    if not qs:
+        return redirect("/contracts")
+    return redirect(f"/contracts?{qs}")
+
+
+@app.route("/ingest", methods=["GET", "POST"])
+def ingest():
+    message = None
+    error = None
+
+    if request.method == "POST":
+        action = request.form.get("action")
+
+        if action == "csv":
+            f = request.files.get("file")
+            if not f or not f.filename.endswith(".csv"):
+                error = "Please upload a .csv file."
+            else:
+                text = f.read().decode("utf-8", errors="replace")
+                reader = csv.DictReader(io.StringIO(text))
+                rows = list(reader)
+                init_db()
+                for row in rows:
+                    upsert_contract(row)
+                run_date = date.today().isoformat()
+                save_snapshot(run_date, rows)
+                detect_changes(run_date)
+                message = f"Imported {len(rows)} contracts from CSV."
+
+        elif action == "api":
+            subprocess.Popen(
+                [sys.executable, "recompete_report.py"],
+                cwd=os.path.dirname(os.path.abspath(__file__)),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            message = "API pull started in background. Refresh the dashboard in a few minutes."
+
+    return render_template("ingest.html", message=message, error=error)
+
 
 @app.route("/contract/<internal_id>")
 def contract_detail(internal_id):
-    with connect() as con:
-        con.row_factory = lambda cur, row: {col[0]: row[i] for i, col in enumerate(cur.description)}
-        row = con.execute("""
-            SELECT *
-            FROM contracts
-            WHERE internal_id = ?
-        """, (internal_id,)).fetchone()
+    con = connect()
+    con.row_factory = lambda cur, row: {col[0]: row[i] for i, col in enumerate(cur.description)}
+    row = con.execute(
+        "SELECT * FROM contracts WHERE internal_id=?",
+        (internal_id,),
+    ).fetchone()
+    con.close()
 
     if not row:
-        return "Contract not found", 404
+        return redirect("/contracts")
 
-    return render_template("contract_detail.html", css=BASE_CSS, row=row)
+    return render_template("contract_detail.html", row=row)
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000, debug=True)
+    app.run(host="127.0.0.1", port=8000, debug=True)

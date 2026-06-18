@@ -28,6 +28,37 @@ def init_db():
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
         """)
+        con.execute("CREATE INDEX IF NOT EXISTS idx_contracts_vendor ON contracts(vendor)")
+        con.execute("CREATE INDEX IF NOT EXISTS idx_contracts_agency ON contracts(agency)")
+        con.execute("CREATE INDEX IF NOT EXISTS idx_contracts_priority ON contracts(priority)")
+        con.execute("CREATE INDEX IF NOT EXISTS idx_contracts_score ON contracts(recompete_score DESC)")
+        con.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS contracts_fts USING fts5(
+            internal_id UNINDEXED,
+            vendor, agency, award_id,
+            content='contracts', content_rowid='rowid'
+        )
+        """)
+        con.execute("""
+        CREATE TRIGGER IF NOT EXISTS contracts_ai AFTER INSERT ON contracts BEGIN
+            INSERT INTO contracts_fts(rowid, internal_id, vendor, agency, award_id)
+            VALUES (new.rowid, new.internal_id, new.vendor, new.agency, new.award_id);
+        END
+        """)
+        con.execute("""
+        CREATE TRIGGER IF NOT EXISTS contracts_ad AFTER DELETE ON contracts BEGIN
+            INSERT INTO contracts_fts(contracts_fts, rowid, internal_id, vendor, agency, award_id)
+            VALUES ('delete', old.rowid, old.internal_id, old.vendor, old.agency, old.award_id);
+        END
+        """)
+        con.execute("""
+        CREATE TRIGGER IF NOT EXISTS contracts_au AFTER UPDATE ON contracts BEGIN
+            INSERT INTO contracts_fts(contracts_fts, rowid, internal_id, vendor, agency, award_id)
+            VALUES ('delete', old.rowid, old.internal_id, old.vendor, old.agency, old.award_id);
+            INSERT INTO contracts_fts(rowid, internal_id, vendor, agency, award_id)
+            VALUES (new.rowid, new.internal_id, new.vendor, new.agency, new.award_id);
+        END
+        """)
         con.commit()
 
 def upsert_contract(row):
@@ -276,3 +307,48 @@ def get_changes(run_date, change_type):
               AND ch.change_type = ?
             ORDER BY c.recompete_score DESC, c.value DESC
         """, (run_date, change_type)).fetchall()
+
+_SORTABLE = {"recompete_score", "value", "days_remaining", "end_date", "priority", "vendor", "agency"}
+
+def get_contracts(q="", agency="", priority="", days=None, sort="recompete_score", direction="desc", page=1, limit=25):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    if q:
+        base = """
+            FROM contracts c
+            JOIN contracts_fts f ON c.rowid = f.rowid
+            WHERE contracts_fts MATCH ?
+        """
+        params = [q + "*"]
+    else:
+        base = "FROM contracts c WHERE 1=1"
+        params = []
+
+    if agency:
+        base += " AND c.agency LIKE ?"
+        params.append(f"%{agency}%")
+
+    if priority:
+        base += " AND c.priority = ?"
+        params.append(priority)
+
+    if days is not None:
+        base += " AND c.days_remaining <= ?"
+        params.append(int(days))
+
+    col = sort if sort in _SORTABLE else "recompete_score"
+    order = "ASC" if direction == "asc" else "DESC"
+
+    total = cur.execute(f"SELECT COUNT(*) {base}", params).fetchone()[0]
+    rows = cur.execute(f"SELECT c.* {base} ORDER BY c.{col} {order} LIMIT ? OFFSET ?", params + [limit, (page - 1) * limit]).fetchall()
+    conn.close()
+
+    return {
+        "contracts": rows,
+        "page": page,
+        "start": (page - 1) * limit,
+        "total": total,
+        "count": len(rows),
+    }

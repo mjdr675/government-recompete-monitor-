@@ -50,7 +50,7 @@
 {{ r.priority }}
 </span>
 </td>
-<td><a href="/contract/{{ r.internal_id }}">{{ r.internal_id[:12] }}...</a></td>
+<td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
 <td><a href="/agency/{{ r.agency|urlencode }}">{{ r.agency }}</a></td>
 <td>${{ "{:,.0f}".format(r.value or 0) }}</td>
 <td>{{ r.end_date }}</td>
