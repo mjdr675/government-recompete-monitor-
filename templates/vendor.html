@@ -1,62 +1,213 @@
 {% extends "base.html" %}
-{% block title %}Vendor Profile{% endblock %}
+{% block title %}{{ vendor }} — Vendor Intelligence{% endblock %}
 
 {% block content %}
+<div style="margin-bottom:6px;font-size:13px;" class="muted">
+  <a href="/contracts">Contracts</a> &rsaquo; Vendor Profile
+</div>
 <h1>{{ vendor }}</h1>
-<div class="muted">Vendor intelligence profile</div>
+<div class="muted">Vendor intelligence profile &nbsp;·&nbsp; {{ profile.summary.contracts }} active contract{{ 's' if profile.summary.contracts != 1 else '' }}</div>
 
+{# ── Risk banner ─────────────────────────────────────────────────── #}
+{% set risks = [] %}
+{% if profile.risk.expiring_soon %}{% set _ = risks.append(profile.risk.expiring_soon|length ~ " contract" ~ ("s" if profile.risk.expiring_soon|length != 1 else "") ~ " expiring within 90 days") %}{% endif %}
+{% if profile.risk.critical %}{% set _ = risks.append(profile.risk.critical|length ~ " CRITICAL contract" ~ ("s" if profile.risk.critical|length != 1 else "")) %}{% endif %}
+{% if profile.risk.agencies_multi_recompete %}{% set _ = risks.append(profile.risk.agencies_multi_recompete|length ~ " agency cluster" ~ ("s" if profile.risk.agencies_multi_recompete|length != 1 else "") ~ " with multiple recompetes") %}{% endif %}
+{% if risks %}
+<div style="background:#fef2f2;border-left:4px solid #b00020;padding:12px 16px;border-radius:0 6px 6px 0;margin:16px 0 24px;">
+  <strong style="color:#b00020;">&#9888; Risk Indicators</strong>
+  <ul style="margin:6px 0 0;padding-left:20px;color:#7f1d1d;">
+    {% for r in risks %}<li>{{ r }}</li>{% endfor %}
+    {% if profile.risk.largest_contract %}
+    <li>Largest contract: <a href="/contract/{{ profile.risk.largest_contract.internal_id }}" style="color:#7f1d1d;">
+      ${{ "{:,.0f}".format(profile.risk.largest_contract.value or 0) }} · {{ profile.risk.largest_contract.agency }}
+    </a></li>
+    {% endif %}
+  </ul>
+</div>
+{% endif %}
+
+{# ── Summary cards (7) ───────────────────────────────────────────── #}
 <div class="cards">
   <div class="card">
-    <div class="muted">Pipeline Value</div>
-    <div class="num">${{ "{:,.0f}".format(profile.summary.pipeline_value or 0) }}</div>
-  </div>
-  <div class="card">
-    <div class="muted">Contracts</div>
+    <div class="muted">Active Contracts</div>
     <div class="num">{{ profile.summary.contracts }}</div>
   </div>
   <div class="card">
-    <div class="muted">Critical</div>
-    <div class="num">{{ profile.summary.critical_contracts }}</div>
+    <div class="muted">Pipeline Value</div>
+    <div class="num" style="font-size:22px;">${{ "{:,.0f}".format(profile.summary.pipeline_value or 0) }}</div>
   </div>
   <div class="card">
-    <div class="muted">Avg Score</div>
+    <div class="muted">Avg Recompete Score</div>
     <div class="num">{{ "{:.1f}".format(profile.summary.avg_score or 0) }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Critical Contracts</div>
+    <div class="num" style="color:{% if profile.summary.critical_contracts %}#b00020{% endif %};">{{ profile.summary.critical_contracts }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Avg Days Remaining</div>
+    <div class="num">{{ "{:.0f}".format(profile.summary.avg_days_remaining or 0) }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Earliest Expiration</div>
+    <div class="num" style="font-size:18px;">{{ profile.summary.earliest_expiration or "—" }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Latest Expiration</div>
+    <div class="num" style="font-size:18px;">{{ profile.summary.latest_expiration or "—" }}</div>
   </div>
 </div>
 
-<h2>Agencies Served</h2>
+{# ── Charts ──────────────────────────────────────────────────────── #}
+{% if profile.summary.contracts %}
+<h2>Charts</h2>
+<div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:32px;">
+
+  <div style="background:white;border-radius:10px;padding:18px;box-shadow:0 1px 4px #ddd;flex:2;min-width:320px;">
+    <div style="font-weight:bold;margin-bottom:10px;font-size:14px;">Pipeline Value by Agency</div>
+    <canvas id="chartAgency" height="220"></canvas>
+  </div>
+
+  <div style="background:white;border-radius:10px;padding:18px;box-shadow:0 1px 4px #ddd;flex:1;min-width:220px;">
+    <div style="font-weight:bold;margin-bottom:10px;font-size:14px;">Contracts by Priority</div>
+    <canvas id="chartPriority" height="220"></canvas>
+  </div>
+
+  <div style="background:white;border-radius:10px;padding:18px;box-shadow:0 1px 4px #ddd;flex:2;min-width:320px;">
+    <div style="font-weight:bold;margin-bottom:10px;font-size:14px;">Contracts Expiring per Month</div>
+    <canvas id="chartMonthly" height="220"></canvas>
+  </div>
+
+</div>
+{% endif %}
+
+{# ── Agency Breakdown ────────────────────────────────────────────── #}
+<h2>Agency Breakdown</h2>
 <table>
-<tr><th>Agency</th><th>Contracts</th></tr>
+<tr>
+  <th>Agency</th>
+  <th>Contracts</th>
+  <th>Pipeline Value</th>
+  <th>Avg Score</th>
+</tr>
 {% for a in profile.agencies %}
-<tr><td><a href="/agency/{{ a.agency|urlencode }}">{{ a.agency }}</a></td><td>{{ a.contracts }}</td></tr>
+<tr>
+  <td><a href="/agency/{{ a.agency|urlencode }}">{{ a.agency }}</a></td>
+  <td>{{ a.contracts }}</td>
+  <td>${{ "{:,.0f}".format(a.pipeline_value or 0) }}</td>
+  <td>{{ "{:.1f}".format(a.avg_score or 0) }}</td>
+</tr>
+{% else %}
+<tr><td colspan="4">No agency data.</td></tr>
 {% endfor %}
 </table>
 
-<h2>Upcoming Expirations</h2>
+{# ── Upcoming Recompetes ─────────────────────────────────────────── #}
+<h2>Upcoming Recompetes</h2>
 <table>
 <tr>
-<th>Priority</th>
-<th>Contract</th>
-<th>Agency</th>
-<th>Value</th>
-<th>End Date</th>
-<th>Days Remaining</th>
-<th>Score</th>
+  <th>Contract</th>
+  <th>Agency</th>
+  <th>Value</th>
+  <th>End Date</th>
+  <th>Days</th>
+  <th>Priority</th>
+  <th>Score</th>
 </tr>
 {% for r in profile.upcoming %}
+<tr {% if (r.days_remaining or 9999) < 90 %}style="background:#fff7f7;"{% endif %}>
+  <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
+  <td><a href="/agency/{{ r.agency|urlencode }}">{{ r.agency }}</a></td>
+  <td>${{ "{:,.0f}".format(r.value or 0) }}</td>
+  <td>{{ r.end_date }}</td>
+  <td>
+    {% if (r.days_remaining or 9999) < 90 %}
+    <strong style="color:#b00020;">{{ r.days_remaining }}</strong>
+    {% else %}
+    {{ r.days_remaining }}
+    {% endif %}
+  </td>
+  <td><span class="priority-badge priority-{{ (r.priority or 'unknown').lower() }}">{{ r.priority }}</span></td>
+  <td>{{ r.recompete_score }}</td>
+</tr>
+{% else %}
+<tr><td colspan="7">No contracts found.</td></tr>
+{% endfor %}
+</table>
+
+{# ── Timeline ────────────────────────────────────────────────────── #}
+{% if profile.upcoming %}
+<h2>Expiration Timeline</h2>
+<div style="background:white;border-radius:10px;padding:20px;box-shadow:0 1px 4px #ddd;margin-bottom:28px;">
+  {% set max_value = profile.upcoming | map(attribute='value') | select | max | default(1) %}
+  {% for r in profile.upcoming %}
+  {% set bar_pct = [((r.value or 0) / (max_value or 1) * 85), 4] | max %}
+  {% set urgency = (r.days_remaining or 9999) < 90 %}
+  <div style="display:flex;align-items:center;margin-bottom:10px;gap:12px;">
+    <div style="width:90px;text-align:right;font-size:12px;color:#666;flex-shrink:0;">{{ r.end_date or "—" }}</div>
+    <div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:{{ "#b00020" if urgency else ("#d97706" if r.priority == "HIGH" else "#2563eb") }};"></div>
+    <div style="flex:1;background:#f3f4f6;border-radius:4px;height:22px;position:relative;overflow:hidden;">
+      <div style="width:{{ bar_pct }}%;height:100%;background:{{ "#fee2e2" if urgency else "#dbeafe" }};border-radius:4px;"></div>
+      <div style="position:absolute;top:3px;left:8px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+        <a href="/contract/{{ r.internal_id }}" style="color:#1f4f8f;">{{ r.award_id or r.internal_id }}</a>
+        <span style="color:#888;margin-left:6px;">{{ r.agency }}</span>
+      </div>
+    </div>
+    <div style="width:70px;text-align:right;font-size:12px;flex-shrink:0;{% if urgency %}color:#b00020;font-weight:bold;{% else %}color:#666;{% endif %}">
+      {{ r.days_remaining }}d
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{# ── Related Vendors ─────────────────────────────────────────────── #}
+{% if profile.related_vendors %}
+<h2>Related Vendors</h2>
+<div class="muted" style="margin-top:-12px;">Competitors present in the same agencies.</div>
+<table>
+<tr><th>Vendor</th><th>Shared Agencies</th><th>Their Contracts</th></tr>
+{% for v in profile.related_vendors %}
 <tr>
-<td>
-<span class="priority-badge priority-{{ (r.priority or 'unknown').lower().replace(' ','-').replace('_','-') }}">
-{{ r.priority }}
-</span>
-</td>
-<td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
-<td><a href="/agency/{{ r.agency|urlencode }}">{{ r.agency }}</a></td>
-<td>${{ "{:,.0f}".format(r.value or 0) }}</td>
-<td>{{ r.end_date }}</td>
-<td>{{ r.days_remaining }}</td>
-<td>{{ r.recompete_score }}</td>
+  <td><a href="/vendor/{{ v.vendor|urlencode }}">{{ v.vendor }}</a></td>
+  <td>{{ v.shared_agencies }}</td>
+  <td>{{ v.contracts }}</td>
 </tr>
 {% endfor %}
 </table>
+{% endif %}
+
+{% endblock %}
+
+{# ── Chart.js scripts ────────────────────────────────────────────── #}
+{% block scripts %}
+{% if profile.summary.contracts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const _opts = {
+  responsive: true,
+  plugins: { legend: { display: false } },
+  scales: { y: { beginAtZero: true } },
+};
+
+new Chart(document.getElementById("chartAgency"), {
+  type: "bar",
+  data: {{ profile.charts.pipeline_by_agency | tojson }},
+  options: { ...structuredClone(_opts), plugins: { legend: { display: false } } },
+});
+
+new Chart(document.getElementById("chartPriority"), {
+  type: "doughnut",
+  data: {{ profile.charts.priority | tojson }},
+  options: { responsive: true, plugins: { legend: { position: "bottom" } } },
+});
+
+new Chart(document.getElementById("chartMonthly"), {
+  type: "bar",
+  data: {{ profile.charts.expiring_by_month | tojson }},
+  options: _opts,
+});
+</script>
+{% endif %}
 {% endblock %}

@@ -98,3 +98,19 @@ Files likely involved: tests/
 - `tests/` — `test_watchlist.py`, `test_alerts.py`, `test_export_csv.py`, `test_dashboard.py`
 
 **TASK.md is now empty.** Maintenance work available in MAINTENANCE.md.
+
+---
+
+## 2026-06-18 — Sprint 4: Vendor Intelligence Dashboard
+**Status:** COMPLETE
+
+**New files:**
+- `charts.py` — reusable Chart.js data formatters: `bar_chart`, `pie_chart`, `priority_pie`, `agency_bar`, `monthly_bar`
+- `templates/vendor.html` — full rewrite; 7 summary cards, risk banner, 3 charts, agency breakdown, upcoming recompetes table, CSS timeline, related vendors
+- `tests/test_vendor_intelligence.py` — 54 tests across 7 test classes
+
+**Modified files:**
+- `analytics.py` — `vendor_profile_analytics` completely replaced: 7-card extended summary, agency breakdown with pipeline_value + avg_score, full upcoming list (no 10-row cap), chart data via charts.py, risk indicators, related vendors; single connection, no duplicate SQL
+- `templates/base.html` — added `{% block scripts %}` hook for page-specific JS
+
+**Test results:** 196/196 passed

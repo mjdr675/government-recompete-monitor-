@@ -11,3 +11,4 @@ Append-only log. Each row = one agent run.
 | 2026-06-18 | engineering | Email Alerts | TASK.md | complete — commit a91d32f, 121/121 |
 | 2026-06-18 | engineering | Export Filtered Results to CSV | TASK.md | complete — commit af04f96, 132/132 |
 | 2026-06-18 | engineering | Dashboard Improvements | TASK.md | complete — commit f9da58f, 142/142 |
+| 2026-06-18 | engineering | Vendor Intelligence Dashboard (Sprint 4) | sprint | complete — 196/196 tests pass |

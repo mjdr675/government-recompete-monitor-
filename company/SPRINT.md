@@ -1,14 +1,24 @@
 # Sprint Status
 
-## Current Sprint
+## Sprint 4 — Vendor Intelligence Dashboard — COMPLETE (2026-06-18)
 
-**Goal:** Become useful enough that a real government contractor would use the product every day.
+**Goal:** Rich vendor profile page that helps capture managers quickly understand an incumbent contractor.
 
-### Priority Order
-1. Opportunity Watchlists
-2. Email Alerts
-3. Export CSV
-4. Dashboard Improvements
+### Delivered
+- [x] 7 summary cards: Active Contracts, Pipeline Value, Avg Score, Critical Contracts, Avg Days Remaining, Earliest/Latest Expiration
+- [x] Agency Breakdown table: agency, contracts, pipeline value, avg score — sorted by pipeline value
+- [x] Upcoming Recompetes table: full list, soonest first, rows highlighted red when <90 days
+- [x] Expiration Timeline: CSS visual, soonest at top, bar width proportional to contract value
+- [x] 3 Chart.js charts: Pipeline Value by Agency, Contracts by Priority (doughnut), Expiring per Month
+- [x] Risk Indicators banner: <90-day expiries, critical contracts, multi-recompete agencies, largest contract
+- [x] Related Vendors section: competitors sharing the same agencies
+- [x] `charts.py` reusable helper module (bar_chart, pie_chart, priority_pie, agency_bar, monthly_bar)
+- [x] Single-connection analytics, no duplicate SQL
+- [x] 54 new tests; full suite 196/196
+
+---
+
+## Previous Sprint — Customer Features
 
 ### Tasks
 
