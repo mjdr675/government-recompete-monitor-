@@ -1,26 +1,30 @@
 from datetime import date
 
-from db import change_summary, get_changes
-from analytics import agency_summary, top_opportunities, value_summary, vendor_summary
+from report_builder import CHANGE_TYPES, build_report
+
+
+def money(value):
+    return f"${float(value or 0):,.0f}"
+
 
 today = str(date.today())
-summary = change_summary(today)
+report = build_report(today)
 
 print("=" * 60)
 print("Government Recompete Daily Report")
-print(today)
+print(report["run_date"])
 print("=" * 60)
 
-for t in ("NEW", "NEW_TIER_A", "UPGRADE", "DOWNGRADE", "REMOVED"):
-    print(f"{t:<15}: {summary.get(t, 0)}")
+for t in CHANGE_TYPES:
+    print(f"{t:<15}: {report['summary'].get(t, 0)}")
 
 print()
 
-for t in ("NEW", "NEW_TIER_A", "UPGRADE", "DOWNGRADE", "REMOVED"):
+for t in CHANGE_TYPES:
     print(t)
     print("-" * 60)
 
-    rows = get_changes(today, t)
+    rows = report["changes"].get(t, [])
 
     if not rows:
         print("None\n")
@@ -31,29 +35,22 @@ for t in ("NEW", "NEW_TIER_A", "UPGRADE", "DOWNGRADE", "REMOVED"):
 
     print()
 
-
-
 print("=" * 60)
 print("VALUE SUMMARY")
 print("=" * 60)
 
-values = value_summary(today)
-
-new_value = values.get("NEW", 0) + values.get("NEW_TIER_A", 0)
-upgrade_value = values.get("UPGRADE", 0)
-removed_value = values.get("REMOVED", 0)
-net_value = new_value + upgrade_value - removed_value
-
-print(f"New Value      : ${new_value:,.0f}")
-print(f"Upgraded Value : ${upgrade_value:,.0f}")
-print(f"Removed Value  : ${removed_value:,.0f}")
-print(f"Net Change     : ${net_value:,.0f}")
+values = report["value_summary"]
+print(f"New Value      : {money(values['new_value'])}")
+print(f"Upgraded Value : {money(values['upgrade_value'])}")
+print(f"Removed Value  : {money(values['removed_value'])}")
+print(f"Net Change     : {money(values['net_value'])}")
 print()
+
 print("=" * 60)
 print("TOP AGENCIES")
 print("=" * 60)
 
-rows = agency_summary(today)
+rows = report["top_agencies"]
 
 if not rows:
     print("No agency changes today.")
@@ -61,16 +58,14 @@ else:
     for agency, changes, value in rows:
         print(f"{agency}")
         print(f"  Changes : {changes}")
-        print(f"  Value   : ${value:,.0f}")
+        print(f"  Value   : {money(value)}")
         print()
-
-
 
 print("=" * 60)
 print("TOP VENDORS")
 print("=" * 60)
 
-rows = vendor_summary(today)
+rows = report["top_vendors"]
 
 if not rows:
     print("No vendor changes today.")
@@ -78,24 +73,23 @@ else:
     for vendor, changes, value in rows:
         print(vendor or "(Unknown Vendor)")
         print(f"  Changes : {changes}")
-        print(f"  Value   : ${value:,.0f}")
+        print(f"  Value   : {money(value)}")
         print()
+
 print("=" * 60)
 print("TOP OPPORTUNITIES")
 print("=" * 60)
 
-rows = top_opportunities(today, limit=10)
+rows = report["top_opportunities"]
 
 if not rows:
     print("No top opportunities today.")
 else:
     for i, r in enumerate(rows, 1):
-        value = float(r["value"] or 0)
-        print(f"{i}. {r['priority']} | ${value:,.0f} | {r['change_type']}")
+        print(f"{i}. {r['priority']} | {money(r['value'])} | {r['change_type']}")
         print(f"   Agency         : {r.get('agency') or ''}")
         print(f"   Vendor         : {r.get('vendor') or ''}")
         print(f"   Days Remaining : {r.get('days_remaining') or ''}")
         print(f"   Score          : {r.get('recompete_score') or ''}")
         print(f"   Award ID       : {r.get('award_id') or ''}")
         print()
-
