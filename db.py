@@ -27,3 +27,45 @@ def init_db():
         )
         """)
         con.commit()
+
+def upsert_contract(row):
+    fields = [
+        "internal_id", "award_id", "vendor", "agency", "sub_agency",
+        "value", "start_date", "end_date", "days_remaining",
+        "competition_type", "solicitation_id", "recompete_score",
+        "priority", "raw_json"
+    ]
+
+    values = {field: row.get(field) for field in fields}
+
+    with connect() as con:
+        con.execute("""
+        INSERT INTO contracts (
+            internal_id, award_id, vendor, agency, sub_agency,
+            value, start_date, end_date, days_remaining,
+            competition_type, solicitation_id, recompete_score,
+            priority, raw_json, updated_at
+        )
+        VALUES (
+            :internal_id, :award_id, :vendor, :agency, :sub_agency,
+            :value, :start_date, :end_date, :days_remaining,
+            :competition_type, :solicitation_id, :recompete_score,
+            :priority, :raw_json, CURRENT_TIMESTAMP
+        )
+        ON CONFLICT(internal_id) DO UPDATE SET
+            award_id=excluded.award_id,
+            vendor=excluded.vendor,
+            agency=excluded.agency,
+            sub_agency=excluded.sub_agency,
+            value=excluded.value,
+            start_date=excluded.start_date,
+            end_date=excluded.end_date,
+            days_remaining=excluded.days_remaining,
+            competition_type=excluded.competition_type,
+            solicitation_id=excluded.solicitation_id,
+            recompete_score=excluded.recompete_score,
+            priority=excluded.priority,
+            raw_json=excluded.raw_json,
+            updated_at=CURRENT_TIMESTAMP
+        """, values)
+        con.commit()
