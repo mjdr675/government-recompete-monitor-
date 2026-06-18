@@ -1,5 +1,5 @@
 """
-AI coding agent scaffold — safe read-only plan mode by default.
+AI agent entry point — delegates to manager.py for multi-agent orchestration.
 
 Usage:
     DRY_RUN=true python ai_agent/agent.py        # plan only (default)
@@ -25,6 +25,10 @@ AGENT_DIR = Path(__file__).parent
 REPO_ROOT = AGENT_DIR.parent
 TASK_FILE = REPO_ROOT / "TASK.md"
 HANDOFF_FILE = REPO_ROOT / "HANDOFF.md"
+
+# Make repo root importable when running as `python ai_agent/agent.py`
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 # ---------------------------------------------------------------------------
 # Config
@@ -246,39 +250,14 @@ def main() -> None:
         print(f"    git checkout -b {AGENT_BRANCH}")
         sys.exit(1)
 
-    # 1. PLAN
     print("\n--- Git status ---")
     print(git_status() or "(clean)")
     print("\n--- Recent commits ---")
     print(git_log())
 
-    tasks = load_tasks()
-    task = next_open_task(tasks)
-    if not task:
-        print("\n[DONE] No OPEN tasks in TASK.md.")
-        return
-
-    print(f"\n--- Task ---\n[{task['status']}] {task['title']}")
-    print(task["body"].strip())
-
-    plan = plan_task(task)
-    print(f"\n--- Plan ---\n{plan}")
-
-    # 2. EDIT (disabled until AI API is wired up)
-    edited = False
-    if not DRY_RUN:
-        edited = edit_files(plan)
-
-    # 3. TEST
-    if edited:
-        print("\n--- Tests ---")
-        run_tests()
-
-    # 4. COMMIT
-    committed = commit_changes(task) if edited else False
-
-    # 5. HANDOFF
-    write_handoff(task, plan, committed)
+    # Delegate to manager for task selection, role assignment, planning, and logging
+    from ai_agent.manager import run as manager_run
+    manager_run(dry_run=DRY_RUN)
 
     print("\n[AGENT] Run complete.")
     if DRY_RUN:

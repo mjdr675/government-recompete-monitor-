@@ -21,3 +21,13 @@ M .gitignore
 ?? TASK.md
 ?? ai_agent/
 ```
+
+## 2026-06-18 20:17 UTC — [QA] Auth bypass on /health exposes info to unauthenticated users
+**Source:** critical.md  
+**Assigned to:** qa  
+**Status:** plan generated (dry-run)
+
+**Plan:**
+[QA STUB] Plan for: Auth bypass on /health exposes info to unauthenticated users
+Steps would be generated here by the AI API.
+Files likely involved: tests/
