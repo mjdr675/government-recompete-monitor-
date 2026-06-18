@@ -137,3 +137,48 @@ def agency_summary(run_date):
             ORDER BY changes DESC, total_value DESC
         """, (run_date,))
         return cur.fetchall()
+
+def top_opportunities(run_date, limit=10):
+    """
+    Highest-value new or upgraded opportunities for a given run_date.
+    Reads from changes and joins current contract details.
+    """
+    from db import connect
+
+    with connect() as con:
+        con.row_factory = lambda cursor, row: {
+            col[0]: row[idx] for idx, col in enumerate(cursor.description)
+        }
+
+        return con.execute("""
+            SELECT
+                ch.run_date,
+                ch.change_type,
+                ch.old_priority,
+                ch.new_priority,
+                ch.description,
+                c.internal_id,
+                c.award_id,
+                c.agency,
+                c.vendor,
+                c.value,
+                c.priority,
+                c.recompete_score,
+                c.days_remaining
+            FROM changes ch
+            JOIN contracts c
+                ON ch.internal_id = c.internal_id
+            WHERE ch.run_date = ?
+              AND ch.change_type IN ('NEW', 'NEW_TIER_A', 'UPGRADE')
+            ORDER BY
+                CASE c.priority
+                    WHEN 'CRITICAL' THEN 4
+                    WHEN 'HIGH' THEN 3
+                    WHEN 'MEDIUM' THEN 2
+                    WHEN 'LOW' THEN 1
+                    ELSE 0
+                END DESC,
+                CAST(c.value AS REAL) DESC,
+                CAST(c.days_remaining AS INTEGER) ASC
+            LIMIT ?
+        """, (run_date, limit)).fetchall()

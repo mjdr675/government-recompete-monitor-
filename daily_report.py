@@ -1,7 +1,7 @@
 from datetime import date
 
 from db import change_summary, get_changes
-from analytics import agency_summary
+from analytics import agency_summary, top_opportunities
 
 today = str(date.today())
 summary = change_summary(today)
@@ -45,3 +45,23 @@ else:
         print(f"  Changes : {changes}")
         print(f"  Value   : ${value:,.0f}")
         print()
+
+print("=" * 60)
+print("TOP OPPORTUNITIES")
+print("=" * 60)
+
+rows = top_opportunities(today, limit=10)
+
+if not rows:
+    print("No top opportunities today.")
+else:
+    for i, r in enumerate(rows, 1):
+        value = float(r["value"] or 0)
+        print(f"{i}. {r['priority']} | ${value:,.0f} | {r['change_type']}")
+        print(f"   Agency         : {r.get('agency') or ''}")
+        print(f"   Vendor         : {r.get('vendor') or ''}")
+        print(f"   Days Remaining : {r.get('days_remaining') or ''}")
+        print(f"   Score          : {r.get('recompete_score') or ''}")
+        print(f"   Award ID       : {r.get('award_id') or ''}")
+        print()
+
