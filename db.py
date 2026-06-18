@@ -104,3 +104,36 @@ def save_snapshot(run_date, rows):
             if row.get("internal_id")
         ])
         con.commit()
+
+def init_changes_table():
+    with connect() as con:
+        con.execute("""
+        CREATE TABLE IF NOT EXISTS changes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_date TEXT,
+            change_type TEXT,
+            internal_id TEXT,
+            old_priority TEXT,
+            new_priority TEXT,
+            description TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+        con.commit()
+
+def clear_changes_for_date(run_date):
+    init_changes_table()
+    with connect() as con:
+        con.execute("DELETE FROM changes WHERE run_date = ?", (run_date,))
+        con.commit()
+
+def insert_change(run_date, change_type, internal_id, old_priority=None, new_priority=None, description=""):
+    init_changes_table()
+    with connect() as con:
+        con.execute("""
+        INSERT INTO changes (
+            run_date, change_type, internal_id, old_priority, new_priority, description
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, (run_date, change_type, internal_id, old_priority, new_priority, description))
+        con.commit()
