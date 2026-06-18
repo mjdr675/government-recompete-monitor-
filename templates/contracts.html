@@ -20,6 +20,18 @@
   <a href="/contracts">Reset</a>
 </form>
 
+<form method="post" action="/saved-searches/save" style="margin:12px 0 0;display:inline-flex;align-items:center;gap:8px;">
+  <input type="hidden" name="q" value="{{ q }}">
+  <input type="hidden" name="agency" value="{{ agency }}">
+  <input type="hidden" name="priority" value="{{ priority }}">
+  <input type="hidden" name="days" value="{{ days }}">
+  <input type="hidden" name="sort" value="{{ sort }}">
+  <input type="hidden" name="direction" value="{{ direction }}">
+  <input name="name" placeholder="Save search as…" style="width:200px;">
+  <button type="submit">Save Search</button>
+</form>
+<span style="margin-left:16px;font-size:13px;"><a href="/saved-searches">Manage saved searches</a></span>
+
 {% macro sort_link(col, label) %}
   {% set next_dir = "asc" if (sort == col and direction == "desc") else "desc" %}
   {% set arrow = " ↓" if (sort == col and direction == "desc") else (" ↑" if sort == col else "") %}

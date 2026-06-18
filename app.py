@@ -6,10 +6,16 @@ import sys
 from datetime import date
 from functools import wraps
 
+from urllib.parse import urlencode
+
 from flask import Flask, flash, redirect, render_template, request, Response
 
 from change_detector import detect_changes
-from db import connect, get_contracts, init_db, upsert_contract, save_snapshot
+from db import (
+    connect, get_contracts, init_db, upsert_contract, save_snapshot,
+    create_saved_search, get_saved_searches, get_saved_search,
+    rename_saved_search, delete_saved_search,
+)
 from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
 from report_builder import build_report
@@ -46,7 +52,11 @@ def health():
 
 @app.route("/")
 def dashboard():
-    return render_template("dashboard.html", report=build_report(date.today().isoformat()))
+    return render_template(
+        "dashboard.html",
+        report=build_report(date.today().isoformat()),
+        saved_searches=get_saved_searches(),
+    )
 
 
 @app.route("/contracts")
@@ -168,6 +178,54 @@ def contract_detail(internal_id):
         return redirect("/contracts")
 
     return render_template("contract_detail.html", row=row)
+
+
+@app.route("/saved-searches")
+def saved_searches():
+    return render_template("saved_searches.html", searches=get_saved_searches())
+
+
+@app.route("/saved-searches/save", methods=["POST"])
+def saved_searches_save():
+    name = request.form.get("name", "").strip()
+    if not name:
+        return redirect(request.referrer or "/contracts")
+    filters = {
+        k: v for k, v in {
+            "q": request.form.get("q", ""),
+            "agency": request.form.get("agency", ""),
+            "priority": request.form.get("priority", ""),
+            "days": request.form.get("days", ""),
+            "sort": request.form.get("sort", ""),
+            "direction": request.form.get("direction", ""),
+        }.items()
+        if v
+    }
+    create_saved_search(name, filters)
+    return redirect("/saved-searches")
+
+
+@app.route("/saved-searches/<int:search_id>/load")
+def saved_searches_load(search_id):
+    search = get_saved_search(search_id)
+    if not search:
+        return redirect("/saved-searches")
+    qs = urlencode(search["filters"])
+    return redirect(f"/contracts?{qs}" if qs else "/contracts")
+
+
+@app.route("/saved-searches/<int:search_id>/rename", methods=["POST"])
+def saved_searches_rename(search_id):
+    name = request.form.get("name", "").strip()
+    if name:
+        rename_saved_search(search_id, name)
+    return redirect("/saved-searches")
+
+
+@app.route("/saved-searches/<int:search_id>/delete", methods=["POST"])
+def saved_searches_delete(search_id):
+    delete_saved_search(search_id)
+    return redirect("/saved-searches")
 
 
 if __name__ == "__main__":

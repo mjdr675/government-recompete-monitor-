@@ -3,6 +3,16 @@
 
 {% block content %}
 <h1>Government Recompete Dashboard</h1>
+
+{% if saved_searches %}
+<div style="margin-bottom:20px;">
+  <strong>Saved Searches:</strong>
+  {% for s in saved_searches %}
+    <a href="/saved-searches/{{ s.id }}/load" style="margin-left:12px;">{{ s.name }}</a>
+  {% endfor %}
+  <a href="/saved-searches" style="margin-left:16px;color:#666;font-size:13px;">Manage →</a>
+</div>
+{% endif %}
 <div class="muted">Run date: {{ report.run_date }}</div>
 
 {% set change_links = {

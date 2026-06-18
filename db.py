@@ -308,6 +308,72 @@ def get_changes(run_date, change_type):
             ORDER BY c.recompete_score DESC, c.value DESC
         """, (run_date, change_type)).fetchall()
 
+def init_saved_searches_table():
+    with connect() as con:
+        con.execute("""
+        CREATE TABLE IF NOT EXISTS saved_searches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            filters TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+        con.commit()
+
+def create_saved_search(name: str, filters: dict) -> int:
+    import json as _json
+    init_saved_searches_table()
+    with connect() as con:
+        cur = con.execute(
+            "INSERT INTO saved_searches (name, filters) VALUES (?, ?)",
+            (name, _json.dumps(filters)),
+        )
+        con.commit()
+        return cur.lastrowid
+
+def get_saved_searches() -> list:
+    import json as _json
+    init_saved_searches_table()
+    with connect() as con:
+        rows = con.execute(
+            "SELECT id, name, filters, created_at FROM saved_searches ORDER BY id DESC"
+        ).fetchall()
+    return [
+        {"id": r[0], "name": r[1], "filters": _json.loads(r[2]), "created_at": r[3]}
+        for r in rows
+    ]
+
+def get_saved_search(search_id: int) -> dict | None:
+    import json as _json
+    init_saved_searches_table()
+    with connect() as con:
+        row = con.execute(
+            "SELECT id, name, filters, created_at FROM saved_searches WHERE id = ?",
+            (search_id,),
+        ).fetchone()
+    if not row:
+        return None
+    return {"id": row[0], "name": row[1], "filters": _json.loads(row[2]), "created_at": row[3]}
+
+def rename_saved_search(search_id: int, name: str) -> bool:
+    init_saved_searches_table()
+    with connect() as con:
+        cur = con.execute(
+            "UPDATE saved_searches SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (name, search_id),
+        )
+        con.commit()
+        return cur.rowcount > 0
+
+def delete_saved_search(search_id: int) -> bool:
+    init_saved_searches_table()
+    with connect() as con:
+        cur = con.execute("DELETE FROM saved_searches WHERE id = ?", (search_id,))
+        con.commit()
+        return cur.rowcount > 0
+
+
 _SORTABLE = {"recompete_score", "value", "days_remaining", "end_date", "priority", "vendor", "agency"}
 
 def get_contracts(q="", agency="", priority="", days=None, sort="recompete_score", direction="desc", page=1, limit=25):
