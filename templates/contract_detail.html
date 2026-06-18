@@ -3,7 +3,18 @@
 
 {% block content %}
 <h1>{{ row["award_id"] or row["internal_id"] }}</h1>
-<div class="muted">{{ row["internal_id"] }}</div>
+<div class="muted" style="display:flex;align-items:center;gap:16px;">
+  <span>{{ row["internal_id"] }}</span>
+  {% if watched %}
+  <form method="post" action="/unwatch/{{ row["internal_id"] }}" style="display:inline;">
+    <button type="submit" style="background:#b00020;color:white;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;">&#9733; Watching — Remove</button>
+  </form>
+  {% else %}
+  <form method="post" action="/watch/{{ row["internal_id"] }}" style="display:inline;">
+    <button type="submit" style="background:#1f4f8f;color:white;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;">&#9733; Watch this contract</button>
+  </form>
+  {% endif %}
+</div>
 
 <div class="cards" style="margin-top:18px;">
   <div class="card">

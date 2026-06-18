@@ -308,6 +308,53 @@ def get_changes(run_date, change_type):
             ORDER BY c.recompete_score DESC, c.value DESC
         """, (run_date, change_type)).fetchall()
 
+def init_watchlist_table():
+    with connect() as con:
+        con.execute("""
+        CREATE TABLE IF NOT EXISTS watchlist (
+            internal_id TEXT PRIMARY KEY,
+            added_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+        con.commit()
+
+def watch_contract(internal_id: str) -> None:
+    init_watchlist_table()
+    with connect() as con:
+        con.execute(
+            "INSERT OR IGNORE INTO watchlist (internal_id) VALUES (?)",
+            (internal_id,),
+        )
+        con.commit()
+
+def unwatch_contract(internal_id: str) -> None:
+    init_watchlist_table()
+    with connect() as con:
+        con.execute("DELETE FROM watchlist WHERE internal_id = ?", (internal_id,))
+        con.commit()
+
+def is_watched(internal_id: str) -> bool:
+    init_watchlist_table()
+    with connect() as con:
+        row = con.execute(
+            "SELECT 1 FROM watchlist WHERE internal_id = ?", (internal_id,)
+        ).fetchone()
+    return row is not None
+
+def get_watchlist() -> list:
+    init_watchlist_table()
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("""
+        SELECT c.*
+        FROM watchlist w
+        JOIN contracts c ON c.internal_id = w.internal_id
+        ORDER BY c.recompete_score DESC, c.value DESC
+    """).fetchall()
+    conn.close()
+    return rows
+
+
 def init_saved_searches_table():
     with connect() as con:
         con.execute("""

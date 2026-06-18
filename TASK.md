@@ -6,7 +6,7 @@ Complete these strictly from top to bottom.
 
 ---
 
-### [OPEN] Opportunity Watchlists
+### [DONE] Opportunity Watchlists
 
 Allow authenticated users to:
 

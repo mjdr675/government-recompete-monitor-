@@ -5,7 +5,7 @@
 <h1>Government Recompete Dashboard</h1>
 
 {% if saved_searches %}
-<div style="margin-bottom:20px;">
+<div style="margin-bottom:12px;">
   <strong>Saved Searches:</strong>
   {% for s in saved_searches %}
     <a href="/saved-searches/{{ s.id }}/load" style="margin-left:12px;">{{ s.name }}</a>
@@ -13,6 +13,25 @@
   <a href="/saved-searches" style="margin-left:16px;color:#666;font-size:13px;">Manage →</a>
 </div>
 {% endif %}
+
+{% if watched %}
+<div style="margin-bottom:20px;">
+  <strong>&#9733; Watchlist</strong> <span class="muted" style="font-size:13px;">({{ watched|length }} contract{{ 's' if watched|length != 1 else '' }})</span>
+  <a href="/watchlist" style="margin-left:12px;font-size:13px;">View all →</a>
+  <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:10px;">
+  {% for r in watched[:5] %}
+    <a href="/contract/{{ r["internal_id"] }}" style="background:white;border-radius:8px;padding:10px 14px;box-shadow:0 1px 4px #ddd;text-decoration:none;color:inherit;min-width:160px;">
+      <div style="font-size:12px;margin-bottom:2px;">
+        <span class="priority-badge priority-{{ (r["priority"] or "unknown").lower() }}" style="font-size:11px;">{{ r["priority"] }}</span>
+      </div>
+      <div style="font-weight:bold;font-size:13px;">{{ r["vendor"][:30] }}</div>
+      <div class="muted" style="font-size:12px;">{{ r["days_remaining"] }} days · ${{ "{:,.0f}".format(r["value"] or 0) }}</div>
+    </a>
+  {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 <div class="muted">Run date: {{ report.run_date }}</div>
 
 {% set change_links = {

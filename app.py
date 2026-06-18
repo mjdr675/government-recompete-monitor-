@@ -15,6 +15,7 @@ from db import (
     connect, get_contracts, init_db, upsert_contract, save_snapshot,
     create_saved_search, get_saved_searches, get_saved_search,
     rename_saved_search, delete_saved_search,
+    watch_contract, unwatch_contract, is_watched, get_watchlist,
 )
 from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
@@ -56,6 +57,7 @@ def dashboard():
         "dashboard.html",
         report=build_report(date.today().isoformat()),
         saved_searches=get_saved_searches(),
+        watched=get_watchlist(),
     )
 
 
@@ -180,7 +182,7 @@ def contract_detail(internal_id):
     if not row:
         return redirect("/contracts")
 
-    return render_template("contract_detail.html", row=row)
+    return render_template("contract_detail.html", row=row, watched=is_watched(internal_id))
 
 
 @app.route("/saved-searches")
@@ -229,6 +231,23 @@ def saved_searches_rename(search_id):
 def saved_searches_delete(search_id):
     delete_saved_search(search_id)
     return redirect("/saved-searches")
+
+
+@app.route("/watchlist")
+def watchlist():
+    return render_template("watchlist.html", contracts=get_watchlist())
+
+
+@app.route("/watch/<internal_id>", methods=["POST"])
+def watch(internal_id):
+    watch_contract(internal_id)
+    return redirect(request.form.get("next") or f"/contract/{internal_id}")
+
+
+@app.route("/unwatch/<internal_id>", methods=["POST"])
+def unwatch(internal_id):
+    unwatch_contract(internal_id)
+    return redirect(request.form.get("next") or f"/contract/{internal_id}")
 
 
 if __name__ == "__main__":

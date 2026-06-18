@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Watchlist{% endblock %}
+
+{% block content %}
+<h1>Watchlist</h1>
+<div class="muted">Contracts you are monitoring.</div>
+
+{% if contracts %}
+<table style="margin-top:20px;">
+<tr>
+  <th>Priority</th>
+  <th>Vendor</th>
+  <th>Agency</th>
+  <th>Value</th>
+  <th>End Date</th>
+  <th>Days</th>
+  <th>Score</th>
+  <th></th>
+</tr>
+{% for r in contracts %}
+<tr>
+  <td>
+    <a class="priority-badge priority-{{ (r["priority"] or "unknown").lower() }}"
+       href="/contract/{{ r["internal_id"] }}">{{ r["priority"] }}</a>
+  </td>
+  <td><a href="/vendor/{{ r["vendor"]|urlencode }}">{{ r["vendor"] }}</a></td>
+  <td><a href="/agency/{{ r["agency"]|urlencode }}">{{ r["agency"] }}</a></td>
+  <td>${{ "{:,.0f}".format(r["value"] or 0) }}</td>
+  <td>{{ r["end_date"] }}</td>
+  <td>{{ r["days_remaining"] }}</td>
+  <td><a href="/contract/{{ r["internal_id"] }}">{{ r["recompete_score"] }}</a></td>
+  <td>
+    <form method="post" action="/unwatch/{{ r["internal_id"] }}">
+      <input type="hidden" name="next" value="/watchlist">
+      <button type="submit" style="color:#b00020;background:none;border:none;cursor:pointer;padding:4px;">Remove</button>
+    </form>
+  </td>
+</tr>
+{% endfor %}
+</table>
+{% else %}
+<div class="muted" style="margin-top:24px;">
+  Your watchlist is empty. Open any <a href="/contracts">contract</a> and click <strong>Watch</strong> to add it here.
+</div>
+{% endif %}
+{% endblock %}
