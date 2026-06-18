@@ -29,3 +29,18 @@ for t in ("NEW", "NEW_TIER_A", "UPGRADE", "DOWNGRADE", "REMOVED"):
         print(desc)
 
     print()
+
+from analytics import agency_summary
+
+print("=" * 60)
+print("AGENCY SUMMARY")
+print("=" * 60)
+
+rows = agency_summary(today)
+
+if not rows:
+    print("No agency changes today.")
+else:
+    for change_type, count in rows:
+        print(f"{change_type:<15} {count}")
+
