@@ -1,5 +1,6 @@
 import csv
 import time
+from sam_lookup import lookup_solicitation
 import requests
 from datetime import date, datetime, timedelta
 
@@ -231,8 +232,32 @@ def main():
         "performance_city", "performance_state", "performance_country",
         "performance_zip", "competition_type", "solicitation_procedure",
         "pricing_type", "psc_code", "psc_description",
-        "parent_contract", "parent_contract_type"
+        "parent_contract", "parent_contract_type",
+        "sam_title", "sam_type", "sam_due_date",
+        "sam_set_aside", "sam_naics", "sam_url"
     ]
+
+    sam_cache = {}
+    sam_count = 0
+
+    for row in rows:
+        sid = row.get("solicitation_id", "")
+        sam = None
+
+        if sid:
+            if sid not in sam_cache:
+                sam_cache[sid] = lookup_solicitation(sid)
+            sam = sam_cache[sid]
+
+        if sam:
+            row.update(sam)
+            sam_count += 1
+
+        for field in [
+            "sam_title", "sam_type", "sam_due_date",
+            "sam_set_aside", "sam_naics", "sam_url"
+        ]:
+            row.setdefault(field, "")
 
     with open("janitorial_recompete_report.csv", "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
@@ -241,6 +266,7 @@ def main():
 
     print("Saved", len(rows), "upcoming recompete opportunities.")
     print("Enriched", enrich_count, "Tier A opportunities.")
+    print("SAM.gov matches", sam_count, "solicitations.")
 
 if __name__ == "__main__":
     main()
