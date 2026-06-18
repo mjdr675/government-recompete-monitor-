@@ -31,3 +31,16 @@ M .gitignore
 [QA STUB] Plan for: Auth bypass on /health exposes info to unauthenticated users
 Steps would be generated here by the AI API.
 Files likely involved: tests/
+
+## 2026-06-18 21:12 UTC — [DOCS] Establish company operating documents
+
+**Role:** human-directed  
+**Outcome:** created 6 permanent operating documents  
+**Files created:** CEO.md, VISION.md, ROADMAP.md, PRODUCT.md, STYLE.md, COMPETITORS.md  
+
+These documents form the permanent operating system for the engineering organization.
+They define mission, success metrics, engineering principles, AI responsibilities,
+backlog governance, product vision, pricing philosophy, competitive positioning,
+architecture reference, coding standards, and phased roadmap.
+
+Reviewed for cross-document duplication and consistency before commit. All tests pass.
