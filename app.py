@@ -1,5 +1,5 @@
 from datetime import date
-from flask import Flask, request, render_template_string, render_template
+from flask import Flask, request, render_template
 
 from db import connect
 from report_builder import build_report
@@ -44,109 +44,6 @@ input,select{padding:8px;margin-right:8px;margin-bottom:12px}
 </style>
 """
 
-DASHBOARD = """
-<!doctype html><html><head><title>Government Recompete Monitor</title>{{ css|safe }}</head><body>
-<div class="nav"><a href="/">Dashboard</a><a href="/contracts">Contracts</a></div>
-<h1>Government Recompete Monitor</h1>
-<div class="muted">Daily dashboard for {{ report.run_date }}</div>
-
-<div class="cards">
-{% for key,value in report.summary.items() %}
-<div class="card"><div>{{ key }}</div><div class="num">{{ value }}</div></div>
-{% endfor %}
-</div>
-
-<h2>Value Summary</h2>
-<table>
-<tr><th>Metric</th><th>Value</th></tr>
-{% for key,value in report.value_summary.items() %}
-<tr><td>{{ key }}</td><td>${{ "{:,.0f}".format(value or 0) }}</td></tr>
-{% endfor %}
-</table>
-
-<h2>Top Opportunities</h2>
-<table>
-<tr><th>Priority</th><th>Vendor</th><th>Agency</th><th>Value</th><th>Days</th><th>Score</th><th>Change</th></tr>
-{% for row in report.top_opportunities %}
-<tr>
-<td>{{ row[0] }}</td><td>{{ row[1] }}</td><td>{{ row[2] }}</td>
-<td>${{ "{:,.0f}".format(row[3] or 0) }}</td><td>{{ row[4] }}</td><td>{{ row[5] }}</td><td>{{ row[6] }}</td>
-</tr>
-{% else %}
-<tr><td colspan="7">No changes yet. A second snapshot date is needed.</td></tr>
-{% endfor %}
-</table>
-
-<h2>Top Agencies</h2>
-<table><tr><th>Agency</th><th>Count</th><th>Total Value</th></tr>
-{% for agency,count,value in report.top_agencies %}
-<tr><td>{{ agency }}</td><td>{{ count }}</td><td>${{ "{:,.0f}".format(value or 0) }}</td></tr>
-{% else %}<tr><td colspan="3">None</td></tr>{% endfor %}
-</table>
-
-<h2>Top Vendors</h2>
-<table><tr><th>Vendor</th><th>Count</th><th>Total Value</th></tr>
-{% for vendor,count,value in report.top_vendors %}
-<tr><td>{{ vendor }}</td><td>{{ count }}</td><td>${{ "{:,.0f}".format(value or 0) }}</td></tr>
-{% else %}<tr><td colspan="3">None</td></tr>{% endfor %}
-</table>
-
-<div style="margin-top:18px;">
-  {% if has_prev %}
-    <a href="/contracts?q={{ q }}&priority={{ priority }}&page={{ page - 1 }}">Previous</a>
-  {% endif %}
-
-  <span class="muted" style="margin:0 12px;">Page {{ page }}</span>
-
-  {% if has_next %}
-    <a href="/contracts?q={{ q }}&priority={{ priority }}&page={{ page + 1 }}">Next</a>
-  {% endif %}
-</div>
-
-</body></html>
-"""
-
-CONTRACTS = """
-<!doctype html><html><head><title>Contracts</title>{{ css|safe }}</head><body>
-<div class="nav"><a href="/">Dashboard</a><a href="/contracts">Contracts</a></div>
-<h1>Contracts</h1>
-<div class="muted">Showing {{ start }}–{{ end }} of {{ count }} matching contracts</div>
-
-<form method="get">
-<input name="q" value="{{ q }}" placeholder="Search vendor, agency, award...">
-<select name="priority">
-<option value="">All priorities</option>
-{% for p in priorities %}
-<option value="{{ p }}" {% if p == priority %}selected{% endif %}>{{ p }}</option>
-{% endfor %}
-</select>
-<button type="submit">Filter</button>
-<a href="/contracts">Reset</a>
-</form>
-
-<table>
-<tr><th>Priority</th><th>Vendor</th><th>Agency</th><th>Value</th><th>End Date</th><th>Days</th><th>Score</th></tr>
-{% for r in rows %}
-<tr>
-<td>
-  <a class="priority-badge priority-{{ (r["priority"] or "unknown").lower().replace(" ", "-").replace("_", "-") }}"
-     href="/contract/{{ r["internal_id"] }}">
-     {{ r["priority"] }}
-  </a>
-</td>
-<td>{{ r["vendor"] }}</td>
-<td>{{ r["agency"] }}</td>
-<td>${{ "{:,.0f}".format(r["value"] or 0) }}</td>
-<td>{{ r["end_date"] }}</td>
-<td>{{ r["days_remaining"] }}</td>
-<td>{{ r["recompete_score"] }}</td>
-</tr>
-{% else %}
-<tr><td colspan="7">No contracts found.</td></tr>
-{% endfor %}
-</table>
-</body></html>
-"""
 
 @app.route("/")
 def dashboard():
