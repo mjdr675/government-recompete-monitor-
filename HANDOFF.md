@@ -60,3 +60,20 @@ Files likely involved: tests/
 - `tests/test_min_value_filter.py` — 11 new tests: boundary conditions, combined filters, pagination, and HTTP route behaviour
 
 **Test results:** 88/88 passed
+
+---
+
+## 2026-06-18 — Planning reorganization: sprint vs. maintenance separation
+
+**Status:** COMPLETE (no application changes)
+
+**What changed:**
+- `MAINTENANCE.md` created — holds all maintenance work (test coverage, logging, UI polish, etc.). Tasks migrated from old TASK.md with their original statuses preserved.
+- `TASK.md` rewritten — now contains only active customer-facing sprint tasks (Watchlists, Email Alerts, Export CSV, Dashboard Improvements). No maintenance tasks.
+- `company/SPRINT.md` updated — new sprint goal ("useful enough that a real contractor uses it daily"), priority-ordered task list, completed history section.
+- `company/CEO.md` created — records the engineering principle: customer-facing value before maintenance; maintenance only when blocking a feature, fixing a production bug, or the sprint queue is empty.
+
+**Workflow going forward:**
+1. Work TASK.md top to bottom — these are sprint tasks only.
+2. When TASK.md is empty, consult MAINTENANCE.md for the next maintenance item.
+3. Never do maintenance while sprint tasks remain unless it directly blocks progress.
