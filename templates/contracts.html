@@ -28,7 +28,7 @@
   </a>
 </td>
 <td><a href="/vendor/{{ r["vendor"]|urlencode }}">{{ r["vendor"] }}</a></td>
-<td>{{ r["agency"] }}</td>
+<td><a href="/agency/{{ r["agency"]|urlencode }}">{{ r["agency"] }}</a></td>
 <td>${{ "{:,.0f}".format(r["value"] or 0) }}</td>
 <td>{{ r["end_date"] }}</td>
 <td>{{ r["days_remaining"] }}</td>

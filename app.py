@@ -3,7 +3,7 @@ from flask import Flask, request, render_template_string, render_template
 
 from db import connect
 from report_builder import build_report
-from analytics import vendor_profile
+from analytics import vendor_profile, agency_profile
 
 app = Flask(__name__)
 
@@ -223,6 +223,23 @@ def vendor_detail(vendor):
         return "Vendor not found", 404
 
     return render_template("vendor.html", css=BASE_CSS, vendor=vendor, profile=profile)
+
+
+
+@app.route("/agency/<path:agency>")
+def agency_detail(agency):
+    with connect() as con:
+        profile = agency_profile(con, agency)
+
+    if not profile["summary"] or profile["summary"]["contracts"] == 0:
+        return "Agency not found", 404
+
+    return render_template(
+        "agency.html",
+        css=BASE_CSS,
+        agency=agency,
+        profile=profile,
+    )
 
 @app.route("/contract/<internal_id>")
 def contract_detail(internal_id):

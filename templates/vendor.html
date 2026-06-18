@@ -28,7 +28,7 @@
 <table>
 <tr><th>Agency</th><th>Contracts</th></tr>
 {% for a in profile.agencies %}
-<tr><td>{{ a.agency }}</td><td>{{ a.contracts }}</td></tr>
+<tr><td><a href="/agency/{{ a.agency|urlencode }}">{{ a.agency }}</a></td><td>{{ a.contracts }}</td></tr>
 {% endfor %}
 </table>
 
@@ -51,7 +51,7 @@
 </span>
 </td>
 <td><a href="/contract/{{ r.internal_id }}">{{ r.internal_id[:12] }}...</a></td>
-<td>{{ r.agency }}</td>
+<td><a href="/agency/{{ r.agency|urlencode }}">{{ r.agency }}</a></td>
 <td>${{ "{:,.0f}".format(r.value or 0) }}</td>
 <td>{{ r.end_date }}</td>
 <td>{{ r.days_remaining }}</td>

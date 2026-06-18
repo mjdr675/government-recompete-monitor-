@@ -94,3 +94,49 @@ def vendor_profile(con, vendor):
         "agencies": agencies,
         "upcoming": upcoming,
     }
+
+def agency_profile(con, agency):
+    con.row_factory = lambda cur, row: {col[0]: row[i] for i, col in enumerate(cur.description)}
+
+    summary = con.execute("""
+        SELECT
+            COUNT(*) AS contracts,
+            COALESCE(SUM(value),0) AS pipeline_value,
+            COALESCE(AVG(recompete_score),0) AS avg_score,
+            SUM(CASE WHEN priority='CRITICAL' THEN 1 ELSE 0 END) AS critical_contracts
+        FROM contracts
+        WHERE agency = ?
+    """, (agency,)).fetchone()
+
+    vendors = con.execute("""
+        SELECT
+            vendor,
+            COUNT(*) AS contracts,
+            SUM(value) AS pipeline_value
+        FROM contracts
+        WHERE agency = ?
+        GROUP BY vendor
+        ORDER BY pipeline_value DESC, contracts DESC
+        LIMIT 10
+    """, (agency,)).fetchall()
+
+    upcoming = con.execute("""
+        SELECT
+            internal_id,
+            vendor,
+            value,
+            end_date,
+            days_remaining,
+            priority,
+            recompete_score
+        FROM contracts
+        WHERE agency = ?
+        ORDER BY days_remaining ASC
+        LIMIT 10
+    """, (agency,)).fetchall()
+
+    return {
+        "summary": summary,
+        "vendors": vendors,
+        "upcoming": upcoming,
+    }
