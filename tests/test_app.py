@@ -192,6 +192,11 @@ def test_vendor_summary_cards_show_active_expired(client):
     assert "Top Score" in body
 
 
+def test_vendor_priority_doughnut_canvas_present(client):
+    rv = client.get("/vendor/Acme%20Corp")
+    assert b"priority-chart" in rv.data
+
+
 def test_vendor_timeline_canvas_present(client):
     rv = client.get("/vendor/Acme%20Corp")
     assert b"timeline-chart" in rv.data

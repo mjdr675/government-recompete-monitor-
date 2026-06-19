@@ -120,6 +120,9 @@
 </div>
 
 <h2>Pipeline by Priority</h2>
+<div style="max-width:360px;margin-bottom:20px">
+  <canvas id="priority-chart"></canvas>
+</div>
 <div style="overflow-x:auto">
 <table>
 <tr><th>Priority</th><th>Contracts</th><th>Total Value</th><th>Avg Value</th></tr>
@@ -216,6 +219,28 @@
         plugins: { legend: { display: false } },
         scales: {
           y: { ticks: { callback: function(v) { return '$' + (v/1e6).toFixed(1) + 'M'; } } }
+        }
+      }
+    });
+  }
+
+  var priorityColors = { 'CRITICAL': '#b00020', 'HIGH': '#d97706', 'MEDIUM': '#2563eb', 'LOW': '#4b5563' };
+  var priorityData = {{ profile.pipeline_by_priority | tojson }};
+  if (priorityData.length > 0) {
+    new Chart(document.getElementById('priority-chart'), {
+      type: 'doughnut',
+      data: {
+        labels: priorityData.map(function(r) { return r.priority || 'Unknown'; }),
+        datasets: [{
+          data: priorityData.map(function(r) { return r.total_value; }),
+          backgroundColor: priorityData.map(function(r) { return priorityColors[r.priority] || '#999'; })
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'right' },
+          tooltip: { callbacks: { label: function(ctx) { return '$' + ctx.raw.toLocaleString(); } } }
         }
       }
     });
