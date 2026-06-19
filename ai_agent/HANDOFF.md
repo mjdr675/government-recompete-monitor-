@@ -12,7 +12,7 @@ The objective is to safely improve this repository through small, production-qua
 
 ## Last completed task
 
-Built full production Vendor Intelligence page across 12 commits (a8531b5→d7c95eb).
+Fixed FTS rebuild bug in `save_snapshot()`. Commit: `12d722c`.
 
 Sections delivered:
 - Executive summary: 7 cards (pipeline, contracts, active, expired, critical, avg score, top score)
@@ -37,6 +37,10 @@ Commit: `1810440`.
 Backlog items marked [DONE]: "SQLite DB lost on Railway redeploy" (critical.md),
 "Days-remaining filter accepts negative values" (bugs.md).
 
+## Previously completed (excerpt)
+
+Built full production Vendor Intelligence page (12 commits, a8531b5→d7c95eb). Test count 90→110.
+
 ## Next candidates
 
-- **FTS rebuild after save_snapshot()** (`backlog/bugs.md`) — `save_snapshot()` bypasses FTS triggers; needs a manual `INSERT INTO contracts_fts(contracts_fts) VALUES ('rebuild')` call after the ingest loop.
+- No open backlog items remain. All bugs.md and critical.md items are [DONE].

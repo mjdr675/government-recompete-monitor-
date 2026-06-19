@@ -4,7 +4,7 @@ Confirmed bugs — triage and fix promptly.
 
 ---
 
-### [OPEN] FTS rebuild not called after save_snapshot()
+### [DONE] FTS rebuild not called after save_snapshot()
 `save_snapshot()` in `db.py` inserts rows via raw SQL, bypassing the FTS
 triggers. After the loop, open a new connection and run:
   `INSERT INTO contracts_fts(contracts_fts) VALUES ('rebuild')`

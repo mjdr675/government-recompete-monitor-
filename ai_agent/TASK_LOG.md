@@ -1,5 +1,17 @@
 # Task Log
 
+## 2026-06-19 — Fix FTS rebuild not called after save_snapshot()
+
+**Bug:** `save_snapshot()` uses `INSERT ... ON CONFLICT DO UPDATE` which fires `AFTER INSERT` triggers (not `AFTER UPDATE`), so `contracts_au` never runs during ingest. Stale FTS entries accumulate, causing full-text search to return wrong or missing results.
+
+**Fix:** Added `INSERT INTO contracts_fts(contracts_fts) VALUES ('rebuild')` at the end of the ingest loop in `save_snapshot()` (`db.py`), before the final commit.
+
+**Tests added:** 5 tests in `tests/test_db.py` — vendor/agency FTS search, upsert update reflected in FTS, empty id skipped, multi-row all searchable.
+
+**Result:** 115 passed (was 110). Committed as `12d722c`. Backlog item marked [DONE].
+
+---
+
 ## 2026-06-19 — Build production Vendor Intelligence page
 
 **Task:** Full vendor intelligence page with all required sections.
