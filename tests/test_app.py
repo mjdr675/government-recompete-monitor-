@@ -192,6 +192,34 @@ def test_vendor_summary_cards_show_active_expired(client):
     assert "Top Score" in body
 
 
+def test_vendor_win_loss_section_present(client):
+    rv = client.get("/vendor/Acme%20Corp")
+    body = rv.data.decode()
+    assert "Win / Loss" in body
+    # Acme's days_remaining is NULL → should show Unknown bucket
+    assert "Unknown" in body
+
+
+def test_vendor_win_loss_shows_active_bucket(test_db, client):
+    import db as db_module
+    with db_module.connect() as con:
+        con.execute(
+            "INSERT INTO contracts "
+            "(internal_id, award_id, vendor, agency, value, end_date, priority, recompete_score, days_remaining) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("ID-WL", "AWARD-WL", "Acme Corp", "DOD", 300_000, "2027-03-01", "MEDIUM", 60, 30),
+        )
+        con.commit()
+    rv = client.get("/vendor/Acme%20Corp")
+    assert b"Active" in rv.data
+
+
+def test_vendor_change_events_empty_list_no_error(client):
+    # changes table has no rows — page should still render without error
+    rv = client.get("/vendor/Acme%20Corp")
+    assert rv.status_code == 200
+
+
 def test_vendor_score_analysis_section_present(client):
     rv = client.get("/vendor/Acme%20Corp")
     body = rv.data.decode()

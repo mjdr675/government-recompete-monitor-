@@ -68,6 +68,41 @@
 <p class="muted">No active contracts found for this vendor.</p>
 {% endif %}
 
+<h2>Win / Loss Indicators</h2>
+<div class="cards" style="margin-bottom:16px">
+{% for r in profile.win_loss_summary %}
+<div class="card">
+  <div class="muted">{{ r.status }}</div>
+  <div class="num">{{ r.contracts }}</div>
+  <div class="muted" style="font-size:12px">${{ "{:,.0f}".format(r.total_value or 0) }}</div>
+</div>
+{% endfor %}
+</div>
+{% if profile.change_events %}
+<h3 style="margin-top:0">Recent Events</h3>
+<div style="overflow-x:auto">
+<table>
+<tr><th>Event</th><th>Date</th><th>Contract</th><th>Agency</th><th>Value</th><th>Priority</th></tr>
+{% for e in profile.change_events %}
+<tr>
+  <td>
+    {% if e.change_type == 'NEW' %}
+      <span class="priority-badge" style="background:#16a34a">Won</span>
+    {% else %}
+      <span class="priority-badge" style="background:#b00020">Ended</span>
+    {% endif %}
+  </td>
+  <td>{{ e.run_date }}</td>
+  <td>{{ e.award_id or '—' }}</td>
+  <td>{{ e.agency or '—' }}</td>
+  <td>${{ "{:,.0f}".format(e.value or 0) }}</td>
+  <td>{{ e.priority or '—' }}</td>
+</tr>
+{% endfor %}
+</table>
+</div>
+{% endif %}
+
 <h2>Recompete Score Analysis</h2>
 <p class="muted">Vendor avg: <strong>{{ "{:.1f}".format(profile.summary.avg_score or 0) }}</strong> &nbsp;|&nbsp; Platform avg: <strong>{{ "{:.1f}".format(profile.summary.platform_avg_score or 0) }}</strong></p>
 <div style="overflow-x:auto">

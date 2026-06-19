@@ -112,6 +112,39 @@ def vendor_profile_analytics(con, vendor):
         LIMIT 25
     """, (vendor,)).fetchall()
 
+    win_loss_summary = con.execute("""
+        SELECT
+            CASE
+                WHEN COALESCE(days_remaining, -1) > 0 THEN 'Active'
+                WHEN days_remaining = 0              THEN 'Expiring Today'
+                WHEN days_remaining IS NULL          THEN 'Unknown'
+                ELSE 'Expired'
+            END AS status,
+            COUNT(*) AS contracts,
+            COALESCE(SUM(value), 0) AS total_value
+        FROM contracts
+        WHERE vendor = ?
+        GROUP BY status
+        ORDER BY status
+    """, (vendor,)).fetchall()
+
+    # Change events (NEW = award win, REMOVED = contract ended/lost).
+    # Note: if a REMOVED contract was also deleted from contracts, the JOIN
+    # will not find it — this is a known schema limitation.
+    # The changes table is created lazily; guard against it not existing yet.
+    try:
+        change_events = con.execute("""
+            SELECT ch.change_type, ch.run_date, c.award_id, c.agency, c.value, c.priority
+            FROM changes ch
+            JOIN contracts c ON ch.internal_id = c.internal_id
+            WHERE c.vendor = ?
+              AND ch.change_type IN ('NEW', 'REMOVED')
+            ORDER BY ch.run_date DESC
+            LIMIT 20
+        """, (vendor,)).fetchall()
+    except Exception:
+        change_events = []
+
     score_distribution = con.execute("""
         SELECT
             CASE
@@ -176,6 +209,8 @@ def vendor_profile_analytics(con, vendor):
         "active": active,
         "pipeline_by_priority": pipeline_by_priority,
         "score_distribution": score_distribution,
+        "win_loss_summary": win_loss_summary,
+        "change_events": change_events,
     }
 
 def agency_profile(con, agency):
