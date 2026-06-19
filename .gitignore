@@ -24,3 +24,7 @@ patches/failures/
 # Runtime logs
 logs/
 *.log
+
+# Runtime logs
+logs/
+*.log
