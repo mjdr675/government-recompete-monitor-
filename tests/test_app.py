@@ -442,3 +442,106 @@ def test_agency_upcoming_urgency_styling_for_expired(test_db, client):
 def test_agency_has_responsive_table_wrapper(client):
     rv = client.get("/agency/DOD")
     assert b"overflow-x:auto" in rv.data
+
+
+# ---------------------------------------------------------------------------
+# / customer dashboard tests
+# ---------------------------------------------------------------------------
+
+def test_dashboard_returns_200(client):
+    rv = client.get("/")
+    assert rv.status_code == 200
+
+
+def test_dashboard_shows_total_pipeline(client):
+    rv = client.get("/")
+    body = rv.data.decode()
+    assert "Total Pipeline" in body
+    # Both contracts combined: 1M + 2M = 3M
+    assert "3,000,000" in body
+
+
+def test_dashboard_shows_total_contracts(client):
+    rv = client.get("/")
+    body = rv.data.decode()
+    assert "Total Contracts" in body
+
+
+def test_dashboard_shows_critical_section(client):
+    rv = client.get("/")
+    body = rv.data.decode()
+    assert "Critical" in body
+
+
+def test_dashboard_critical_opportunities_section_present(client):
+    rv = client.get("/")
+    body = rv.data.decode()
+    assert "Critical Opportunities" in body
+
+
+def test_dashboard_upcoming_expirations_section_present(client):
+    rv = client.get("/")
+    body = rv.data.decode()
+    assert "Upcoming Expirations" in body
+
+
+def test_dashboard_recommended_opportunities_section_present(client):
+    rv = client.get("/")
+    body = rv.data.decode()
+    assert "Recommended Opportunities" in body
+
+
+def test_dashboard_recent_changes_section_present(client):
+    rv = client.get("/")
+    body = rv.data.decode()
+    assert "Recent Changes" in body
+
+
+def test_dashboard_top_agencies_section_present(client):
+    rv = client.get("/")
+    body = rv.data.decode()
+    assert "Top Agencies" in body
+
+
+def test_dashboard_top_vendors_section_present(client):
+    rv = client.get("/")
+    body = rv.data.decode()
+    assert "Top Vendors" in body
+
+
+def test_dashboard_navigation_links_present(client):
+    rv = client.get("/")
+    body = rv.data.decode()
+    assert "/contracts" in body
+    assert "/views" in body
+    assert "/ingest" in body
+
+
+def test_dashboard_critical_contract_shown_in_critical_section(test_db, client):
+    import db as db_module
+    with db_module.connect() as con:
+        con.execute(
+            "INSERT INTO contracts "
+            "(internal_id, award_id, vendor, agency, value, end_date, priority, recompete_score, days_remaining) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("ID-CRIT", "AWARD-CRIT", "CritVendor", "NSA", 5_000_000, "2026-08-01", "CRITICAL", 99, 45),
+        )
+        con.commit()
+    rv = client.get("/")
+    body = rv.data.decode()
+    assert "CritVendor" in body
+
+
+def test_dashboard_upcoming_contract_shown_when_expiring_soon(test_db, client):
+    import db as db_module
+    with db_module.connect() as con:
+        con.execute(
+            "INSERT INTO contracts "
+            "(internal_id, award_id, vendor, agency, value, end_date, priority, recompete_score, days_remaining) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("ID-UPC", "AWARD-UPC", "SoonVendor", "FBI", 800_000, "2026-07-15", "HIGH", 75, 26),
+        )
+        con.commit()
+    rv = client.get("/")
+    body = rv.data.decode()
+    assert "SoonVendor" in body

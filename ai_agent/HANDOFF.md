@@ -12,20 +12,19 @@ The objective is to safely improve this repository through small, production-qua
 
 ## Last completed task
 
-Task 041 — Agency Intelligence. Brought agency profile page to full Vendor Intelligence parity.
+Task 042 — Customer Dashboard. Rebuilt homepage as a useful customer-facing dashboard.
 
 Sections delivered:
-- Executive summary: 7 cards (pipeline, contracts, active, expired, critical, avg score, top score)
-- Active contracts table (days_remaining > 0, LIMIT 50)
-- Contract timeline bar chart (Chart.js 4.x via CDN, quarterly buckets)
-- Win/loss indicators (inferred from days_remaining + changes table)
-- Recompete score distribution with platform average comparison
-- Pipeline by priority table + doughnut chart
-- Vendor leaderboard (active count, share %, top score)
-- Upcoming expirations (competition_type, urgency colors, LIMIT 25)
-- Responsive table wrappers (overflow-x:auto)
+- 5 summary cards: Total Pipeline, Total Contracts, Active, Critical, Avg Score
+- Quick nav buttons: All Contracts, Critical Only, Expiring 90 Days, Saved Views, Ingest
+- Critical Opportunities section (CRITICAL priority + days_remaining > 0)
+- Upcoming Expirations (next 90 days, urgency coloring)
+- Recommended Opportunities (top contracts by recompete score, from top_contracts_overall)
+- Recent Changes (existing change-log table preserved)
+- Side-by-side Top Agencies + Top Vendors (all-time pipeline values, linked)
+- `dashboard_analytics(con)` added to analytics.py for platform-wide stats
 
-Test count: 115 → 133 (+18 tests). All pass.
+Test count: 133 → 146 (+13 tests). All pass.
 
 ## Previously completed
 

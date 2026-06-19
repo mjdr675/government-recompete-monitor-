@@ -1,5 +1,20 @@
 # Task Log
 
+## 2026-06-19 — Task 042: Customer Dashboard
+
+**Task:** Build a useful customer-facing dashboard landing page.
+
+**Changes:**
+- `analytics.py`: Added `dashboard_analytics(con)` — platform summary (total_pipeline, total_contracts, active_contracts, critical_contracts, avg_score), upcoming expirations (next 90 days), critical active contracts, top 5 agencies and vendors by pipeline.
+- `app.py`: Updated `dashboard()` route to call `dashboard_analytics(con)` and pass `analytics` to template alongside existing `report`.
+- `templates/dashboard.html`: Full rewrite — 5 platform summary cards, quick-nav action buttons, Critical Opportunities section, Upcoming Expirations, Recommended Opportunities (top score), Recent Changes, side-by-side Top Agencies + Top Vendors.
+
+**Tests added:** 13 tests in `tests/test_app.py` covering all sections and key data checks.
+
+**Result:** 146 passed (was 133). Not pushed.
+
+---
+
 ## 2026-06-19 — Task 041: Agency Intelligence
 
 **Task:** Bring agency profile page to full Vendor Intelligence quality parity.
