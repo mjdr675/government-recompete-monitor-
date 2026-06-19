@@ -283,6 +283,7 @@ def early_access():
     return render_template("early_access.html", message=message, error=error)
 
 
+@app.route("/ingest", methods=["GET", "POST"])
 def ingest():
     message = None
     error = None
