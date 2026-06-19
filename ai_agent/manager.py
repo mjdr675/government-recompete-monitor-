@@ -10,10 +10,13 @@ Environment switches:
                     Disabled by default — enable only after review.
 """
 
+import json
 import os
 import re
 import sys
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 
 from ai_agent import backend_engineer, frontend_engineer, qa_engineer
@@ -250,3 +253,310 @@ def run(dry_run: bool = True) -> None:
             f"  DRY_RUN=false APPLY_PATCH=true python ai_agent/agent.py\n"
             f"  or: python -m ai_agent.patcher --apply"
         )
+
+
+# ---------------------------------------------------------------------------
+# Queue-based task manager (Task 044)
+# ---------------------------------------------------------------------------
+
+_AGENT_DIR = Path(__file__).parent
+
+QUEUE_DIR = _AGENT_DIR / "queue"
+DONE_DIR = _AGENT_DIR / "done"
+FAILED_DIR = _AGENT_DIR / "failed"
+LOGS_DIR = _AGENT_DIR / "logs"
+MORNING_REPORT_PATH = _AGENT_DIR / "morning_report.md"
+QUEUE_STATE_FILE = _AGENT_DIR / ".queue_state.json"
+
+
+class TaskState(str, Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+@dataclass
+class TaskInfo:
+    filename: str
+    state: TaskState
+    started_at: str | None = None
+    note: str = ""
+
+    @property
+    def name(self) -> str:
+        return self.filename.removesuffix(".md")
+
+
+class QueueManager:
+    """
+    Manages the ai_agent/queue/ task pipeline.
+
+    State machine:  queued → running → completed
+                                     ↘ failed
+
+    State is persisted in .queue_state.json so a crashed or interrupted
+    run can be detected and resumed on the next invocation.
+
+    Usage:
+        mgr = QueueManager()
+        task = mgr.next_task()          # first queued (or interrupted)
+        mgr.mark_running(task.filename)
+        # ... do work ...
+        mgr.mark_done(task.filename)    # moves file to done/
+        mgr.generate_morning_report()   # writes morning_report.md
+    """
+
+    def __init__(
+        self,
+        queue_dir: Path = QUEUE_DIR,
+        done_dir: Path = DONE_DIR,
+        failed_dir: Path = FAILED_DIR,
+        logs_dir: Path = LOGS_DIR,
+        report_path: Path = MORNING_REPORT_PATH,
+        state_file: Path = QUEUE_STATE_FILE,
+    ) -> None:
+        self.queue_dir = queue_dir
+        self.done_dir = done_dir
+        self.failed_dir = failed_dir
+        self.logs_dir = logs_dir
+        self.report_path = report_path
+        self._state_file = state_file
+        self._state: dict = self._load_state()
+
+    # -- State persistence --
+
+    def _load_state(self) -> dict:
+        if self._state_file.exists():
+            try:
+                return json.loads(self._state_file.read_text())
+            except (json.JSONDecodeError, OSError):
+                return {}
+        return {}
+
+    def _save_state(self) -> None:
+        self._state_file.write_text(json.dumps(self._state, indent=2))
+
+    # -- Task discovery --
+
+    def _md_files(self, directory: Path) -> list[str]:
+        if not directory.exists():
+            return []
+        return sorted(p.name for p in directory.glob("*.md"))
+
+    def all_tasks(self) -> list[TaskInfo]:
+        """Return all known tasks across all state buckets, sorted by filename."""
+        running_file = self._state.get("running")
+        tasks: list[TaskInfo] = []
+
+        for name in self._md_files(self.done_dir):
+            tasks.append(TaskInfo(filename=name, state=TaskState.COMPLETED))
+
+        for name in self._md_files(self.failed_dir):
+            tasks.append(TaskInfo(filename=name, state=TaskState.FAILED))
+
+        for name in self._md_files(self.queue_dir):
+            if name == running_file:
+                tasks.append(TaskInfo(
+                    filename=name,
+                    state=TaskState.RUNNING,
+                    started_at=self._state.get("started_at"),
+                ))
+            else:
+                tasks.append(TaskInfo(filename=name, state=TaskState.QUEUED))
+
+        return tasks
+
+    def queued(self) -> list[TaskInfo]:
+        return [t for t in self.all_tasks() if t.state == TaskState.QUEUED]
+
+    def running(self) -> TaskInfo | None:
+        return next((t for t in self.all_tasks() if t.state == TaskState.RUNNING), None)
+
+    def completed(self) -> list[TaskInfo]:
+        return [t for t in self.all_tasks() if t.state == TaskState.COMPLETED]
+
+    def failed(self) -> list[TaskInfo]:
+        return [t for t in self.all_tasks() if t.state == TaskState.FAILED]
+
+    def next_task(self) -> TaskInfo | None:
+        """Returns the running (interrupted) task if any, otherwise the first queued task."""
+        r = self.running()
+        if r:
+            return r
+        q = self.queued()
+        return q[0] if q else None
+
+    # -- State transitions --
+
+    def mark_running(self, filename: str) -> None:
+        """Mark a queued task as running and persist state."""
+        self._state = {"running": filename, "started_at": _ts()}
+        self._save_state()
+        self._write_log(filename, f"START {_ts()}")
+
+    def mark_done(self, filename: str) -> None:
+        """Move task file to done/ and clear running state."""
+        self._move(self.queue_dir / filename, self.done_dir / filename)
+        if self._state.get("running") == filename:
+            self._state = {"running": None, "started_at": None}
+            self._save_state()
+        self._write_log(filename, f"DONE  {_ts()}")
+
+    def mark_failed(self, filename: str, note: str = "") -> None:
+        """Move task file to failed/ and clear running state."""
+        self._move(self.queue_dir / filename, self.failed_dir / filename)
+        if self._state.get("running") == filename:
+            self._state = {"running": None, "started_at": None}
+            self._save_state()
+        self._write_log(filename, f"FAIL  {_ts()} {note}".rstrip())
+
+    @staticmethod
+    def _move(src: Path, dst: Path) -> None:
+        if src.exists():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            src.rename(dst)
+
+    # -- Logging --
+
+    def _write_log(self, filename: str, message: str) -> None:
+        self.logs_dir.mkdir(parents=True, exist_ok=True)
+        stem = filename.removesuffix(".md")
+        log_path = self.logs_dir / f"{stem}.log"
+        with open(log_path, "a") as f:
+            f.write(message + "\n")
+
+    # -- Status / reporting --
+
+    def status(self) -> dict[str, list[str]]:
+        tasks = self.all_tasks()
+        return {
+            "queued":    [t.filename for t in tasks if t.state == TaskState.QUEUED],
+            "running":   [t.filename for t in tasks if t.state == TaskState.RUNNING],
+            "completed": [t.filename for t in tasks if t.state == TaskState.COMPLETED],
+            "failed":    [t.filename for t in tasks if t.state == TaskState.FAILED],
+        }
+
+    def generate_morning_report(self) -> str:
+        """Write ai_agent/morning_report.md and return its contents."""
+        s = self.status()
+        lines = [
+            f"# Morning Report — {_ts()}",
+            "",
+            "## Summary",
+            f"- Queued:    {len(s['queued'])}",
+            f"- Running:   {len(s['running'])}",
+            f"- Completed: {len(s['completed'])}",
+            f"- Failed:    {len(s['failed'])}",
+            "",
+        ]
+
+        if s["running"]:
+            lines += ["## In Progress", ""]
+            for fname in s["running"]:
+                started = self._state.get("started_at", "unknown")
+                lines.append(f"- `{fname}` (started {started})")
+            lines.append("")
+
+        if s["queued"]:
+            lines += ["## Queued", ""]
+            for fname in s["queued"]:
+                lines.append(f"- `{fname}`")
+            lines.append("")
+
+        if s["completed"]:
+            lines += ["## Completed", ""]
+            for fname in s["completed"]:
+                lines.append(f"- `{fname}`")
+            lines.append("")
+
+        if s["failed"]:
+            lines += ["## Failed", ""]
+            for fname in s["failed"]:
+                lines.append(f"- `{fname}`")
+            lines.append("")
+
+        report = "\n".join(lines)
+        self.report_path.parent.mkdir(parents=True, exist_ok=True)
+        self.report_path.write_text(report)
+        return report
+
+    def print_status(self) -> None:
+        s = self.status()
+        print(f"\n[QUEUE] Status at {_ts()}")
+        print(f"  queued:    {len(s['queued'])}")
+        print(f"  running:   {len(s['running'])}")
+        print(f"  completed: {len(s['completed'])}")
+        print(f"  failed:    {len(s['failed'])}")
+
+        r = self.running()
+        if r:
+            started = r.started_at or "unknown"
+            print(f"\n[QUEUE] Currently running: {r.filename}  (started {started})")
+            print("[QUEUE] This task may have been interrupted — resume or mark done/failed.")
+
+        nxt = self.next_task()
+        if nxt and nxt.state == TaskState.QUEUED:
+            print(f"\n[QUEUE] Next up: {nxt.filename}")
+
+
+# ---------------------------------------------------------------------------
+# CLI entry point for QueueManager
+# ---------------------------------------------------------------------------
+
+def _queue_cli(argv: list[str] | None = None) -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="python -m ai_agent.manager",
+        description="AI task queue manager",
+    )
+    sub = parser.add_subparsers(dest="cmd")
+
+    sub.add_parser("status", help="Show queue status")
+    sub.add_parser("next", help="Show the next task to work on")
+    sub.add_parser("report", help="Generate morning_report.md")
+
+    p_start = sub.add_parser("start", help="Mark a task as running")
+    p_start.add_argument("filename", help="e.g. 044-ai-engineering-manager.md")
+
+    p_done = sub.add_parser("done", help="Mark a task as completed")
+    p_done.add_argument("filename")
+
+    p_fail = sub.add_parser("fail", help="Mark a task as failed")
+    p_fail.add_argument("filename")
+    p_fail.add_argument("note", nargs="?", default="", help="Optional failure note")
+
+    args = parser.parse_args(argv)
+    mgr = QueueManager()
+
+    if args.cmd == "status" or args.cmd is None:
+        mgr.print_status()
+
+    elif args.cmd == "next":
+        task = mgr.next_task()
+        if task:
+            print(f"[QUEUE] Next: {task.filename}  ({task.state})")
+        else:
+            print("[QUEUE] No tasks pending.")
+
+    elif args.cmd == "report":
+        report = mgr.generate_morning_report()
+        print(report)
+        print(f"[QUEUE] Report written to {mgr.report_path}")
+
+    elif args.cmd == "start":
+        mgr.mark_running(args.filename)
+        print(f"[QUEUE] Marked running: {args.filename}")
+
+    elif args.cmd == "done":
+        mgr.mark_done(args.filename)
+        print(f"[QUEUE] Marked done: {args.filename}")
+
+    elif args.cmd == "fail":
+        mgr.mark_failed(args.filename, args.note)
+        print(f"[QUEUE] Marked failed: {args.filename}")
+
+
+if __name__ == "__main__":
+    _queue_cli()

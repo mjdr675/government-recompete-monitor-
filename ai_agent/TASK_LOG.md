@@ -1,5 +1,20 @@
 # Task Log
 
+## 2026-06-19 — Task 044: AI Engineering Manager
+
+**Task:** Build queue-based task manager at `ai_agent/manager.py`.
+
+**Changes:**
+- `ai_agent/manager.py`: Added `QueueManager` class, `TaskInfo` dataclass, `TaskState` enum, and `_queue_cli()` CLI entry point. Existing LLM orchestration code unchanged. New imports: `json`, `dataclasses.dataclass`, `enum.Enum`.
+- `tests/test_queue_manager.py`: 33 unit tests covering all_tasks, queued/running/completed/failed detection, next_task, mark_running, mark_done, mark_failed, status, generate_morning_report, resume-after-interruption, corrupted-state recovery, and on-demand directory creation.
+- `ai_agent/logs/.gitkeep`: Created logs directory.
+
+**CLI:** `python -m ai_agent.manager [status|next|report|start <f>|done <f>|fail <f> [note]]`
+
+**Result:** 199 passed (was 166). Not pushed.
+
+---
+
 ## 2026-06-19 — Task 043: Opportunity Recommendations
 
 **Task:** Add recommendation logic that surfaces best opportunities with explanations.

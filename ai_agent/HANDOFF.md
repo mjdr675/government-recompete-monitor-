@@ -1,5 +1,19 @@
 # Current Status
 
+## Last completed task
+
+Task 044 — AI Engineering Manager. Added `QueueManager` to `ai_agent/manager.py`.
+
+- `ai_agent/manager.py`: `QueueManager` class manages `ai_agent/queue/` pipeline. Tracks queued/running/completed/failed states, persists to `.queue_state.json`, writes per-task logs to `ai_agent/logs/`, generates `ai_agent/morning_report.md`. Resumes interrupted runs by re-detecting a running task in state on restart. CLI: `python -m ai_agent.manager [status|next|report|start|done|fail]`.
+- `tests/test_queue_manager.py`: 33 unit tests, all pass.
+- Existing LLM orchestration in `manager.py` unchanged.
+
+Test count: 166 → 199 (+33 tests). All pass.
+
+---
+
+# Previous Status
+
 Repository is running on a Hetzner VPS.
 
 Claude Code is authenticated.
