@@ -103,3 +103,22 @@ def test_compare_same_contract(client):
     assert rv.status_code == 200
     body = rv.data.decode()
     assert "Acme Corp" in body
+
+
+# ---------------------------------------------------------------------------
+# /contracts days-filter tests
+# ---------------------------------------------------------------------------
+
+def test_contracts_negative_days_returns_400(client):
+    rv = client.get("/contracts?days=-1")
+    assert rv.status_code == 400
+
+
+def test_contracts_zero_days_returns_200(client):
+    rv = client.get("/contracts?days=0")
+    assert rv.status_code == 200
+
+
+def test_contracts_positive_days_returns_200(client):
+    rv = client.get("/contracts?days=90")
+    assert rv.status_code == 200

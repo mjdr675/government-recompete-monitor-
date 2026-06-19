@@ -51,11 +51,15 @@ def contracts():
     direction = request.args.get("dir", "desc")
     page = int(request.args.get("page", 1))
 
+    days_int = int(days) if days else None
+    if days_int is not None and days_int < 0:
+        return "days parameter must be a non-negative integer", 400
+
     result = get_contracts(
         q=q,
         agency=agency,
         priority=priority,
-        days=int(days) if days else None,
+        days=days_int,
         sort=sort,
         direction=direction,
         page=page,
