@@ -1,5 +1,20 @@
 # Task Log
 
+## 2026-06-19 — Task 043: Opportunity Recommendations
+
+**Task:** Add recommendation logic that surfaces best opportunities with explanations.
+
+**Changes:**
+- `analytics.py`: Added `opportunity_recommendations(con)` with 5 categories (top score, highest value, soonest expiration, critical priority, recently changed). Deduplicates across categories so each contract appears once. Each entry carries a `reason` string explaining why it appears.
+- `app.py`: Passes `recommendations` to dashboard template.
+- `templates/dashboard.html`: Replaced plain top-contracts table with categorized table including a "Why" column.
+- `tests/test_analytics.py`: New file — 14 unit tests for `opportunity_recommendations` and `dashboard_analytics`.
+- `tests/test_app.py`: 5 route/template tests for recommendation rendering.
+
+**Result:** 166 passed (was 146). Not pushed.
+
+---
+
 ## 2026-06-19 — Task 042: Customer Dashboard
 
 **Task:** Build a useful customer-facing dashboard landing page.

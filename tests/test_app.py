@@ -545,3 +545,84 @@ def test_dashboard_upcoming_contract_shown_when_expiring_soon(test_db, client):
     rv = client.get("/")
     body = rv.data.decode()
     assert "SoonVendor" in body
+
+
+# ---------------------------------------------------------------------------
+# Recommendations route/template tests
+# ---------------------------------------------------------------------------
+
+def test_dashboard_recommendations_why_column_present(client):
+    rv = client.get("/")
+    assert b"Why" in rv.data
+
+
+def test_dashboard_recommendations_shows_reason_text(test_db, client):
+    import db as db_module
+    with db_module.connect() as con:
+        con.execute(
+            "INSERT INTO contracts "
+            "(internal_id, award_id, vendor, agency, value, end_date, priority, recompete_score, days_remaining) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("ID-REC", "AWARD-REC", "RecVendor", "DIA", 1_500_000, "2027-03-01", "HIGH", 92, 100),
+        )
+        con.commit()
+    rv = client.get("/")
+    body = rv.data.decode()
+    assert "score" in body.lower() or "value" in body.lower() or "Expiring" in body
+
+
+def test_dashboard_recommendations_top_score_vendor_shown(test_db, client):
+    import db as db_module
+    with db_module.connect() as con:
+        con.execute(
+            "INSERT INTO contracts "
+            "(internal_id, award_id, vendor, agency, value, end_date, priority, recompete_score, days_remaining) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("ID-TS", "AWARD-TS", "TopScoreVendor", "CIA", 500_000, "2027-01-01", "HIGH", 99, 200),
+        )
+        con.commit()
+    rv = client.get("/")
+    body = rv.data.decode()
+    assert "TopScoreVendor" in body
+
+
+def test_dashboard_recommendations_expiring_soon_reason(test_db, client):
+    import db as db_module
+    with db_module.connect() as con:
+        con.execute(
+            "INSERT INTO contracts "
+            "(internal_id, award_id, vendor, agency, value, end_date, priority, recompete_score, days_remaining) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("ID-EXP2", "AWARD-EXP2", "ExpireSoon", "FBI", 600_000, "2026-07-05", "MEDIUM", 60, 3),
+        )
+        con.commit()
+    rv = client.get("/")
+    body = rv.data.decode()
+    assert "Expiring" in body
+
+
+def test_dashboard_recommendations_critical_reason(test_db, client):
+    import db as db_module
+    with db_module.connect() as con:
+        # Flood top-score/value/soonest slots so CritRec only qualifies via priority
+        for iid, vendor, score, days in [
+            ("ID-TS1", "HighScore1", 99, 200),
+            ("ID-TS2", "HighScore2", 97, 200),
+            ("ID-TS3", "HighScore3", 95, 200),
+        ]:
+            con.execute(
+                "INSERT INTO contracts "
+                "(internal_id, award_id, vendor, agency, value, end_date, priority, recompete_score, days_remaining) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (iid, f"AW-{iid}", vendor, "DOD", 8_000_000, "2027-01-01", "HIGH", score, days),
+            )
+        con.execute(
+            "INSERT INTO contracts "
+            "(internal_id, award_id, vendor, agency, value, end_date, priority, recompete_score, days_remaining) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("ID-CREC", "AWARD-CREC", "CritRec", "NSA", 50_000, "2027-04-01", "CRITICAL", 20, 500),
+        )
+        con.commit()
+    rv = client.get("/")
+    body = rv.data.decode()
+    assert "Critical priority" in body

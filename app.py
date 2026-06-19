@@ -13,7 +13,7 @@ from change_detector import detect_changes
 from db import connect, get_contracts, init_db, upsert_contract, save_snapshot
 from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
-from analytics import dashboard_analytics
+from analytics import dashboard_analytics, opportunity_recommendations
 from report_builder import build_report
 from views import SAVED_VIEWS, build_view_query
 
@@ -61,11 +61,13 @@ def health():
 def dashboard():
     con = connect()
     analytics = dashboard_analytics(con)
+    recommendations = opportunity_recommendations(con)
     con.close()
     return render_template(
         "dashboard.html",
         report=build_report(date.today().isoformat()),
         analytics=analytics,
+        recommendations=recommendations,
     )
 
 

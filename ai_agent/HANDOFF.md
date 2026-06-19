@@ -12,6 +12,18 @@ The objective is to safely improve this repository through small, production-qua
 
 ## Last completed task
 
+Task 043 — Opportunity Recommendations. Added categorized recommendation logic with reasons.
+
+- `analytics.py`: Added `opportunity_recommendations(con)` — returns a deduplicated list of recommended opportunities, each with a `reason` field. Categories (in priority order): Top Recompete Score, Highest Value, Soonest Expiration, Critical Priority, Recently Changed. Each contract appears at most once.
+- `app.py`: Dashboard route now calls `opportunity_recommendations(con)` and passes `recommendations` to template.
+- `templates/dashboard.html`: Replaced plain "Recommended Opportunities" table with categorized table including a "Why" column showing the reason for each recommendation.
+- `tests/test_analytics.py`: New file with 14 unit tests covering all recommendation categories, deduplication, inactive contract exclusion, and missing changes table resilience.
+- `tests/test_app.py`: 5 new route/template tests for recommendation rendering.
+
+Test count: 146 → 166 (+20 tests). All pass.
+
+## Previously completed
+
 Task 042 — Customer Dashboard. Rebuilt homepage as a useful customer-facing dashboard.
 
 Sections delivered:

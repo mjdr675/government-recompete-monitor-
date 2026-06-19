@@ -58,6 +58,84 @@ def dashboard_analytics(con):
     }
 
 
+def opportunity_recommendations(con):
+    """Return a deduplicated list of recommended opportunities with reasons.
+
+    Categories (evaluated in order, each contract appears at most once):
+    1. Top recompete score — highest signal of upcoming re-bid
+    2. Highest value — largest contracts on the board
+    3. Soonest expiration — most time-sensitive active contracts
+    4. Critical priority — CRITICAL-flagged active contracts
+    5. Recently changed — new awards or upgrades from the changes log
+    """
+    con.row_factory = lambda cur, row: {col[0]: row[i] for i, col in enumerate(cur.description)}
+
+    recs = []
+    seen_ids = set()
+
+    def _add(row, reason):
+        if row and row["internal_id"] not in seen_ids:
+            seen_ids.add(row["internal_id"])
+            entry = dict(row)
+            entry["reason"] = reason
+            recs.append(entry)
+
+    for r in con.execute("""
+        SELECT internal_id, award_id, vendor, agency, value, end_date,
+               days_remaining, priority, recompete_score
+        FROM contracts
+        WHERE COALESCE(days_remaining, 0) > 0 AND recompete_score IS NOT NULL
+        ORDER BY recompete_score DESC LIMIT 3
+    """).fetchall():
+        _add(r, f"Highest recompete score ({r['recompete_score']})")
+
+    for r in con.execute("""
+        SELECT internal_id, award_id, vendor, agency, value, end_date,
+               days_remaining, priority, recompete_score
+        FROM contracts
+        WHERE COALESCE(days_remaining, 0) > 0 AND value IS NOT NULL
+        ORDER BY value DESC LIMIT 3
+    """).fetchall():
+        v = r["value"] or 0
+        _add(r, f"Highest value (${v:,.0f})")
+
+    for r in con.execute("""
+        SELECT internal_id, award_id, vendor, agency, value, end_date,
+               days_remaining, priority, recompete_score
+        FROM contracts
+        WHERE COALESCE(days_remaining, 0) > 0
+        ORDER BY days_remaining ASC LIMIT 3
+    """).fetchall():
+        days = r["days_remaining"]
+        _add(r, f"Expiring in {days} day{'s' if days != 1 else ''}")
+
+    for r in con.execute("""
+        SELECT internal_id, award_id, vendor, agency, value, end_date,
+               days_remaining, priority, recompete_score
+        FROM contracts
+        WHERE priority = 'CRITICAL' AND COALESCE(days_remaining, 0) > 0
+        ORDER BY recompete_score DESC LIMIT 3
+    """).fetchall():
+        _add(r, "Critical priority contract")
+
+    try:
+        for r in con.execute("""
+            SELECT c.internal_id, c.award_id, c.vendor, c.agency, c.value, c.end_date,
+                   c.days_remaining, c.priority, c.recompete_score,
+                   ch.change_type, ch.run_date
+            FROM changes ch
+            JOIN contracts c ON ch.internal_id = c.internal_id
+            WHERE ch.change_type IN ('NEW', 'UPGRADE', 'NEW_TIER_A')
+            ORDER BY ch.run_date DESC LIMIT 3
+        """).fetchall():
+            label = "New award" if r["change_type"] in ("NEW", "NEW_TIER_A") else "Recently upgraded"
+            _add(r, f"{label} ({r['run_date']})")
+    except Exception:
+        pass
+
+    return recs
+
+
 def agency_summary(run_date, limit=10):
     with connect() as con:
         return con.execute("""
