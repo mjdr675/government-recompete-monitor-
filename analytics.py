@@ -72,7 +72,10 @@ def vendor_profile_analytics(con, vendor):
             COUNT(*) AS contracts,
             COALESCE(SUM(value),0) AS pipeline_value,
             COALESCE(AVG(recompete_score),0) AS avg_score,
-            SUM(CASE WHEN priority='CRITICAL' THEN 1 ELSE 0 END) AS critical_contracts
+            MAX(recompete_score) AS max_score,
+            SUM(CASE WHEN priority='CRITICAL' THEN 1 ELSE 0 END) AS critical_contracts,
+            SUM(CASE WHEN COALESCE(days_remaining,0) > 0 THEN 1 ELSE 0 END) AS active_contracts,
+            SUM(CASE WHEN COALESCE(days_remaining,0) <= 0 THEN 1 ELSE 0 END) AS expired_contracts
         FROM contracts
         WHERE vendor = ?
     """, (vendor,)).fetchone()

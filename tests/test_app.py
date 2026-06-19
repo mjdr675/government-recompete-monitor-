@@ -182,3 +182,25 @@ def test_vendor_profile_unknown_vendor_returns_200(client):
 def test_vendor_profile_has_responsive_table_wrapper(client):
     rv = client.get("/vendor/Acme%20Corp")
     assert b"overflow-x:auto" in rv.data
+
+
+def test_vendor_summary_cards_show_active_expired(client):
+    rv = client.get("/vendor/Acme%20Corp")
+    body = rv.data.decode()
+    assert "Active" in body
+    assert "Expired" in body
+    assert "Top Score" in body
+
+
+def test_vendor_summary_active_count_with_days_remaining(test_db, client):
+    import db as db_module
+    with db_module.connect() as con:
+        con.execute(
+            "INSERT INTO contracts "
+            "(internal_id, award_id, vendor, agency, value, end_date, priority, recompete_score, days_remaining) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("ID003", "AWARD-003", "Acme Corp", "DOD", 500_000, "2027-01-01", "HIGH", 70, 90),
+        )
+        con.commit()
+    rv = client.get("/vendor/Acme%20Corp")
+    assert b"1" in rv.data  # active_contracts = 1

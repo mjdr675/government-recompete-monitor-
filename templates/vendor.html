@@ -15,12 +15,24 @@
     <div class="num">{{ profile.summary.contracts }}</div>
   </div>
   <div class="card">
+    <div class="muted">Active</div>
+    <div class="num">{{ profile.summary.active_contracts or 0 }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Expired</div>
+    <div class="num">{{ profile.summary.expired_contracts or 0 }}</div>
+  </div>
+  <div class="card">
     <div class="muted">Critical</div>
     <div class="num">{{ profile.summary.critical_contracts }}</div>
   </div>
   <div class="card">
     <div class="muted">Avg Score</div>
     <div class="num">{{ "{:.1f}".format(profile.summary.avg_score or 0) }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Top Score</div>
+    <div class="num">{{ profile.summary.max_score or 0 }}</div>
   </div>
 </div>
 
