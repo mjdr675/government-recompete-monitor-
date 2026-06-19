@@ -187,7 +187,7 @@ def success():
 def cancel():
     return "<h1>Checkout canceled</h1><p>You were not charged.</p>"
 
-@app.route("/ingest", methods=["GET", "POST"])
+
 def ingest():
     message = None
     error = None
