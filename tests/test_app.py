@@ -192,6 +192,25 @@ def test_vendor_summary_cards_show_active_expired(client):
     assert "Top Score" in body
 
 
+def test_vendor_upcoming_shows_competition_column(client):
+    rv = client.get("/vendor/Acme%20Corp")
+    assert b"Competition" in rv.data
+
+
+def test_vendor_upcoming_urgency_styling_for_expired(test_db, client):
+    import db as db_module
+    with db_module.connect() as con:
+        con.execute(
+            "INSERT INTO contracts "
+            "(internal_id, award_id, vendor, agency, value, end_date, priority, recompete_score, days_remaining) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("ID-EXP", "AWARD-EXP", "Acme Corp", "DOD", 100_000, "2024-01-01", "LOW", 10, -5),
+        )
+        con.commit()
+    rv = client.get("/vendor/Acme%20Corp")
+    assert b"#b00020" in rv.data
+
+
 def test_vendor_agency_breakdown_shows_value_and_share(client):
     rv = client.get("/vendor/Acme%20Corp")
     body = rv.data.decode()

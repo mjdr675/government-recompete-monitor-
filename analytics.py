@@ -98,15 +98,18 @@ def vendor_profile_analytics(con, vendor):
             internal_id,
             award_id,
             agency,
+            sub_agency,
             value,
+            start_date,
             end_date,
             days_remaining,
             priority,
-            recompete_score
+            recompete_score,
+            competition_type
         FROM contracts
         WHERE vendor = ?
         ORDER BY days_remaining ASC
-        LIMIT 10
+        LIMIT 25
     """, (vendor,)).fetchall()
 
     return {

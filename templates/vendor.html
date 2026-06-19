@@ -63,21 +63,34 @@
 <th>Value</th>
 <th>End Date</th>
 <th>Days Remaining</th>
+<th>Competition</th>
 <th>Score</th>
 </tr>
 {% for r in profile.upcoming %}
+{% set days = r.days_remaining %}
 <tr>
 <td>
 <span class="priority-badge priority-{{ (r.priority or 'unknown').lower().replace(' ','-').replace('_','-') }}">
-{{ r.priority }}
+{{ r.priority or '—' }}
 </span>
 </td>
 <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
 <td><a href="/agency/{{ r.agency|urlencode }}">{{ r.agency }}</a></td>
 <td>${{ "{:,.0f}".format(r.value or 0) }}</td>
-<td>{{ r.end_date }}</td>
-<td>{{ r.days_remaining }}</td>
-<td>{{ r.recompete_score }}</td>
+<td>{{ r.end_date or '—' }}</td>
+{% if days is none %}
+  <td>—</td>
+{% elif days <= 0 %}
+  <td style="color:#b00020;font-weight:bold">{{ days }}</td>
+{% elif days <= 30 %}
+  <td style="color:#d97706;font-weight:bold">{{ days }}</td>
+{% elif days <= 90 %}
+  <td style="color:#2563eb">{{ days }}</td>
+{% else %}
+  <td>{{ days }}</td>
+{% endif %}
+<td>{{ r.competition_type or '—' }}</td>
+<td>{{ r.recompete_score or '—' }}</td>
 </tr>
 {% endfor %}
 </table>
