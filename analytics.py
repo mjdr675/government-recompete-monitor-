@@ -81,11 +81,16 @@ def vendor_profile_analytics(con, vendor):
     """, (vendor,)).fetchone()
 
     agencies = con.execute("""
-        SELECT agency, COUNT(*) AS contracts
+        SELECT
+            agency,
+            COUNT(*) AS contracts,
+            COALESCE(SUM(value), 0) AS total_value,
+            SUM(CASE WHEN COALESCE(days_remaining,0) > 0 THEN 1 ELSE 0 END) AS active_contracts,
+            MAX(recompete_score) AS top_score
         FROM contracts
         WHERE vendor = ?
         GROUP BY agency
-        ORDER BY contracts DESC, agency
+        ORDER BY total_value DESC, contracts DESC, agency
     """, (vendor,)).fetchall()
 
     upcoming = con.execute("""

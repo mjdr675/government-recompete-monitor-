@@ -192,6 +192,14 @@ def test_vendor_summary_cards_show_active_expired(client):
     assert "Top Score" in body
 
 
+def test_vendor_agency_breakdown_shows_value_and_share(client):
+    rv = client.get("/vendor/Acme%20Corp")
+    body = rv.data.decode()
+    assert "Pipeline Value" in body or "1,000,000" in body
+    assert "Share" in body
+    assert "Top Score" in body
+
+
 def test_vendor_summary_active_count_with_days_remaining(test_db, client):
     import db as db_module
     with db_module.connect() as con:
