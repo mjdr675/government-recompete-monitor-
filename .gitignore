@@ -20,3 +20,7 @@ ingest.log
 
 # Patcher failure reports (generated at runtime)
 patches/failures/
+
+# Runtime logs
+logs/
+*.log
