@@ -11,3 +11,17 @@ Requirements:
 - Tests.
 - Commit locally.
 - Do not push.
+
+Additional requirements:
+- Detect Claude/session usage-limit failures from command output.
+- When usage limit is hit:
+  - stop current execution safely
+  - preserve task state
+  - write a clear log entry
+  - sleep until the next configured window
+  - resume from the queue afterward
+- Support config:
+  - max_tasks_per_window
+  - sleep_minutes_after_usage_limit
+  - max_runtime_minutes
+- Default to conservative behavior to avoid runaway usage.
