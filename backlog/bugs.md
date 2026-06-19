@@ -12,7 +12,7 @@ then commit. Without this, full-text search returns stale results after
 a CSV ingest.
 Role: backend
 
-### [OPEN] Days-remaining filter accepts negative values
+### [DONE] Days-remaining filter accepts negative values
 `/contracts?days=-1` passes `-1` to `get_contracts()`, which returns all
 contracts with `days_remaining <= -1` — i.e. expired contracts silently.
 Add a `max(0, days)` guard or return 400 for negative values.
