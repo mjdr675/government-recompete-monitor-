@@ -1,6 +1,28 @@
 # Current Status
 
-## Last completed task
+## Last completed
+
+Autonomous Execution Loop — `ai_agent/loop.py`
+
+`AutonomousLoop` orchestrates the full end-to-end pipeline:
+
+1. `QueueManager.next_task()` selects next task (or resumes an interrupted one)
+2. `assign_specialist()` routes to the correct LLM engineer
+3. `specialist.plan()` generates a patch — with exponential-backoff retry on transient API errors; on patch failure, re-prompts with failure details injected into the task body
+4. `reviewer.review()` blocks dangerous patterns
+5. `patcher.execute()` applies the patch, runs tests, commits on pass, rolls back on fail
+6. Independent `pytest -q` + commit-SHA check validate outcome beyond what patcher reports
+7. `QueueManager.mark_done()` / `mark_failed()` advance state; `_write_log()` writes per-task logs to `ai_agent/logs/`
+8. After `max_consecutive_failures`, writes `ai_agent/ESCALATE.md` and stops — delete the file to resume
+9. `run_loop()` repeats until queue empty; `--daemon` mode loops with 5-minute idle sleeps
+
+CLI: `python -m ai_agent.loop [--apply] [--all] [--daemon] [--max-failures N] [--attempts N]`
+
+34 new unit tests in `tests/test_loop.py`. Test count: 199 → 233.
+
+---
+
+## Previously completed
 
 Task 044 — AI Engineering Manager. Added `QueueManager` to `ai_agent/manager.py`.
 

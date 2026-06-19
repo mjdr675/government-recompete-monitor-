@@ -1,5 +1,17 @@
 # Task Log
 
+## 2026-06-19 — Autonomous Execution Loop
+
+**Task:** Build complete autonomous execution loop (`ai_agent/loop.py`).
+
+**Changes:**
+- `ai_agent/loop.py` (new): `AutonomousLoop` class that selects the next queued task, assigns a specialist, calls the LLM with retry + feedback on failure, reviews the patch, applies via patcher (tests + commit), independently validates pytest passes and a new commit exists, then advances the queue. Escalates to `ai_agent/ESCALATE.md` after N consecutive failures. CLI: `python -m ai_agent.loop [--apply] [--all] [--daemon]`.
+- `tests/test_loop.py` (new): 34 unit tests covering all state transitions, retry logic, feedback injection, reviewer blocking, post-apply validation, escalation, logging, and run_loop().
+
+**Result:** 233 passed (was 199). Not pushed.
+
+---
+
 ## 2026-06-19 — Task 044: AI Engineering Manager
 
 **Task:** Build queue-based task manager at `ai_agent/manager.py`.
