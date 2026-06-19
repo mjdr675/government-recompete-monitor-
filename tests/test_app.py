@@ -177,3 +177,8 @@ def test_vendor_profile_shows_pipeline_value(client):
 def test_vendor_profile_unknown_vendor_returns_200(client):
     rv = client.get("/vendor/Unknown%20Vendor")
     assert rv.status_code == 200
+
+
+def test_vendor_profile_has_responsive_table_wrapper(client):
+    rv = client.get("/vendor/Acme%20Corp")
+    assert b"overflow-x:auto" in rv.data
