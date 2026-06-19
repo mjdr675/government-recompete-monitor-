@@ -1,8 +1,12 @@
 import json
+import os
 import sqlite3
 from datetime import datetime, timezone
 
-DB_PATH = "contracts.db"
+# Allow DB_PATH to be overridden via environment variable so Railway can point
+# it at a persistent volume (e.g. DB_PATH=/data/contracts.db). Falls back to
+# the local working-directory path for development.
+DB_PATH = os.environ.get("DB_PATH", "contracts.db")
 
 def connect():
     return sqlite3.connect(DB_PATH)
