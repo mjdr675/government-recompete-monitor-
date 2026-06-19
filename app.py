@@ -6,7 +6,9 @@ import subprocess
 import sys
 from datetime import date
 
-from flask import Flask, flash, g, redirect, render_template, request, session, url_for
+import stripe
+from dotenv import load_dotenv
+from flask import Flask, render_template, request, redirect, session, url_for
 
 from auth import bp as auth_bp
 from change_detector import detect_changes
@@ -18,6 +20,10 @@ from report_builder import build_report
 from views import SAVED_VIEWS, build_view_query
 
 app = Flask(__name__)
+load_dotenv()
+
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
 app.register_blueprint(auth_bp)
 
@@ -40,7 +46,14 @@ def _warn_if_ephemeral_db() -> None:
 
 _warn_if_ephemeral_db()
 
-_PUBLIC_PATHS = frozenset({"/health", "/login", "/register"})
+_PUBLIC_PATHS = frozenset({
+    "/health",
+    "/login",
+    "/register",
+    "/create-checkout-session",
+    "/success",
+    "/cancel",
+})
 
 
 @app.before_request
@@ -143,6 +156,33 @@ def views_detail(view_id):
         return redirect("/contracts")
     return redirect(f"/contracts?{qs}")
 
+@app.route("/create-checkout-session", methods=["POST"])
+def create_checkout_session():
+    try:
+        session = stripe.checkout.Session.create(
+            mode="subscription",
+            line_items=[
+                {
+                    "price": STRIPE_PRICE_ID,
+                    "quantity": 1,
+                }
+            ],
+            success_url=request.host_url.rstrip("/") + "/success",
+            cancel_url=request.host_url.rstrip("/") + "/cancel",
+        )
+        return redirect(session.url, code=303)
+    except Exception as e:
+        return str(e), 500
+
+
+@app.route("/success")
+def success():
+    return "<h1>Payment successful</h1><p>Welcome to Recompete Beta.</p>"
+
+
+@app.route("/cancel")
+def cancel():
+    return "<h1>Checkout canceled</h1><p>You were not charged.</p>"
 
 @app.route("/ingest", methods=["GET", "POST"])
 def ingest():
