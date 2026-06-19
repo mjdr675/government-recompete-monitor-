@@ -160,6 +160,7 @@ def views_detail(view_id):
 def create_checkout_session():
     try:
         session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
             mode="subscription",
             line_items=[
                 {
