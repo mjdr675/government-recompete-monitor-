@@ -239,7 +239,10 @@ def agency_profile(con, agency):
             COUNT(*) AS contracts,
             COALESCE(SUM(value),0) AS pipeline_value,
             COALESCE(AVG(recompete_score),0) AS avg_score,
-            SUM(CASE WHEN priority='CRITICAL' THEN 1 ELSE 0 END) AS critical_contracts
+            MAX(recompete_score) AS max_score,
+            SUM(CASE WHEN priority='CRITICAL' THEN 1 ELSE 0 END) AS critical_contracts,
+            SUM(CASE WHEN COALESCE(days_remaining,0) > 0 THEN 1 ELSE 0 END) AS active_contracts,
+            SUM(CASE WHEN COALESCE(days_remaining,0) <= 0 THEN 1 ELSE 0 END) AS expired_contracts
         FROM contracts
         WHERE agency = ?
     """, (agency,)).fetchone()
@@ -248,7 +251,9 @@ def agency_profile(con, agency):
         SELECT
             vendor,
             COUNT(*) AS contracts,
-            SUM(value) AS pipeline_value
+            COALESCE(SUM(value), 0) AS pipeline_value,
+            SUM(CASE WHEN COALESCE(days_remaining,0) > 0 THEN 1 ELSE 0 END) AS active_contracts,
+            MAX(recompete_score) AS top_score
         FROM contracts
         WHERE agency = ?
         GROUP BY vendor
@@ -261,19 +266,131 @@ def agency_profile(con, agency):
             internal_id,
             award_id,
             vendor,
+            sub_agency,
             value,
+            start_date,
             end_date,
             days_remaining,
             priority,
-            recompete_score
+            recompete_score,
+            competition_type
         FROM contracts
         WHERE agency = ?
         ORDER BY days_remaining ASC
-        LIMIT 10
+        LIMIT 25
+    """, (agency,)).fetchall()
+
+    active = con.execute("""
+        SELECT
+            internal_id,
+            award_id,
+            vendor,
+            sub_agency,
+            value,
+            start_date,
+            end_date,
+            days_remaining,
+            priority,
+            recompete_score,
+            competition_type
+        FROM contracts
+        WHERE agency = ?
+          AND COALESCE(days_remaining, 0) > 0
+        ORDER BY days_remaining ASC
+        LIMIT 50
+    """, (agency,)).fetchall()
+
+    timeline = con.execute("""
+        SELECT
+            substr(end_date, 1, 4) AS year,
+            CASE
+                WHEN CAST(substr(end_date, 6, 2) AS INTEGER) BETWEEN 1 AND 3 THEN 'Q1'
+                WHEN CAST(substr(end_date, 6, 2) AS INTEGER) BETWEEN 4 AND 6 THEN 'Q2'
+                WHEN CAST(substr(end_date, 6, 2) AS INTEGER) BETWEEN 7 AND 9 THEN 'Q3'
+                ELSE 'Q4'
+            END AS quarter,
+            COUNT(*) AS contracts,
+            COALESCE(SUM(value), 0) AS total_value
+        FROM contracts
+        WHERE agency = ? AND end_date IS NOT NULL
+        GROUP BY year, quarter
+        ORDER BY year, quarter
+    """, (agency,)).fetchall()
+
+    win_loss_summary = con.execute("""
+        SELECT
+            CASE
+                WHEN COALESCE(days_remaining, -1) > 0 THEN 'Active'
+                WHEN days_remaining = 0              THEN 'Expiring Today'
+                WHEN days_remaining IS NULL          THEN 'Unknown'
+                ELSE 'Expired'
+            END AS status,
+            COUNT(*) AS contracts,
+            COALESCE(SUM(value), 0) AS total_value
+        FROM contracts
+        WHERE agency = ?
+        GROUP BY status
+        ORDER BY status
+    """, (agency,)).fetchall()
+
+    try:
+        change_events = con.execute("""
+            SELECT ch.change_type, ch.run_date, c.award_id, c.vendor, c.value, c.priority
+            FROM changes ch
+            JOIN contracts c ON ch.internal_id = c.internal_id
+            WHERE c.agency = ?
+              AND ch.change_type IN ('NEW', 'REMOVED')
+            ORDER BY ch.run_date DESC
+            LIMIT 20
+        """, (agency,)).fetchall()
+    except Exception:
+        change_events = []
+
+    score_distribution = con.execute("""
+        SELECT
+            CASE
+                WHEN recompete_score >= 80 THEN 'High (80-100)'
+                WHEN recompete_score >= 60 THEN 'Medium (60-79)'
+                WHEN recompete_score >= 40 THEN 'Low (40-59)'
+                ELSE 'Minimal (0-39)'
+            END AS bucket,
+            COUNT(*) AS contracts
+        FROM contracts
+        WHERE agency = ?
+        GROUP BY bucket
+        ORDER BY MIN(recompete_score) DESC
+    """, (agency,)).fetchall()
+
+    platform_avg_row = con.execute(
+        "SELECT COALESCE(AVG(recompete_score), 0) AS platform_avg FROM contracts"
+    ).fetchone()
+    summary["platform_avg_score"] = platform_avg_row["platform_avg"] if platform_avg_row else 0
+
+    pipeline_by_priority = con.execute("""
+        SELECT
+            priority,
+            COUNT(*) AS contracts,
+            COALESCE(SUM(value), 0) AS total_value,
+            COALESCE(AVG(value), 0) AS avg_value
+        FROM contracts
+        WHERE agency = ?
+        GROUP BY priority
+        ORDER BY CASE priority
+            WHEN 'CRITICAL' THEN 1
+            WHEN 'HIGH'     THEN 2
+            WHEN 'MEDIUM'   THEN 3
+            WHEN 'LOW'      THEN 4
+            ELSE 5 END
     """, (agency,)).fetchall()
 
     return {
         "summary": summary,
         "vendors": vendors,
         "upcoming": upcoming,
+        "active": active,
+        "pipeline_by_priority": pipeline_by_priority,
+        "score_distribution": score_distribution,
+        "win_loss_summary": win_loss_summary,
+        "change_events": change_events,
+        "timeline": timeline,
     }

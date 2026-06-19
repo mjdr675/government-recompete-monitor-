@@ -1,5 +1,19 @@
 # Task Log
 
+## 2026-06-19 — Task 041: Agency Intelligence
+
+**Task:** Bring agency profile page to full Vendor Intelligence quality parity.
+
+**Changes:**
+- `analytics.py`: Expanded `agency_profile()` to return `active`, `timeline`, `win_loss_summary`, `change_events`, `score_distribution`, `pipeline_by_priority` alongside enriched `summary` (active_contracts, expired_contracts, max_score, platform_avg_score) and `vendors` (active_contracts, top_score).
+- `templates/agency.html`: Full rewrite matching `vendor.html` — 7 summary cards, active contracts table, timeline bar chart, win/loss indicators, score analysis, priority doughnut + table, vendor leaderboard with share %, enhanced upcoming expirations with urgency coloring, overflow-x:auto wrappers.
+
+**Tests added:** 18 tests in `tests/test_app.py` covering all new sections.
+
+**Result:** 133 passed (was 115). Not pushed.
+
+---
+
 ## 2026-06-19 — Fix FTS rebuild not called after save_snapshot()
 
 **Bug:** `save_snapshot()` uses `INSERT ... ON CONFLICT DO UPDATE` which fires `AFTER INSERT` triggers (not `AFTER UPDATE`), so `contracts_au` never runs during ingest. Stale FTS entries accumulate, causing full-text search to return wrong or missing results.

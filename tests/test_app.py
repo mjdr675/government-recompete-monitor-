@@ -308,3 +308,137 @@ def test_vendor_summary_active_count_with_days_remaining(test_db, client):
         con.commit()
     rv = client.get("/vendor/Acme%20Corp")
     assert b"1" in rv.data  # active_contracts = 1
+
+
+# ---------------------------------------------------------------------------
+# /agency/<name> intelligence tests
+# ---------------------------------------------------------------------------
+
+def test_agency_profile_returns_200(client):
+    rv = client.get("/agency/DOD")
+    assert rv.status_code == 200
+
+
+def test_agency_profile_shows_agency_name(client):
+    rv = client.get("/agency/DOD")
+    assert b"DOD" in rv.data
+
+
+def test_agency_profile_shows_pipeline_value(client):
+    rv = client.get("/agency/DOD")
+    assert b"1,000,000" in rv.data
+
+
+def test_agency_profile_unknown_agency_returns_200(client):
+    rv = client.get("/agency/Unknown%20Agency")
+    assert rv.status_code == 200
+
+
+def test_agency_summary_cards_show_active_expired_top_score(client):
+    rv = client.get("/agency/DOD")
+    body = rv.data.decode()
+    assert "Active" in body
+    assert "Expired" in body
+    assert "Top Score" in body
+
+
+def test_agency_timeline_canvas_present(client):
+    rv = client.get("/agency/DOD")
+    assert b"timeline-chart" in rv.data
+
+
+def test_agency_timeline_chart_js_loaded(client):
+    rv = client.get("/agency/DOD")
+    assert b"chart.js" in rv.data
+
+
+def test_agency_priority_doughnut_canvas_present(client):
+    rv = client.get("/agency/DOD")
+    assert b"priority-chart" in rv.data
+
+
+def test_agency_win_loss_section_present(client):
+    rv = client.get("/agency/DOD")
+    body = rv.data.decode()
+    assert "Win / Loss" in body
+    assert "Unknown" in body  # DOD contract has no days_remaining set
+
+
+def test_agency_win_loss_shows_active_bucket(test_db, client):
+    import db as db_module
+    with db_module.connect() as con:
+        con.execute(
+            "INSERT INTO contracts "
+            "(internal_id, award_id, vendor, agency, value, end_date, priority, recompete_score, days_remaining) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("ID-AWL", "AWARD-AWL", "Acme Corp", "DOD", 300_000, "2027-03-01", "MEDIUM", 60, 30),
+        )
+        con.commit()
+    rv = client.get("/agency/DOD")
+    assert b"Active" in rv.data
+
+
+def test_agency_score_analysis_section_present(client):
+    rv = client.get("/agency/DOD")
+    body = rv.data.decode()
+    assert "Recompete Score Analysis" in body
+    assert "Platform avg" in body
+    assert "High (80-100)" in body  # DOD contract score=85
+
+
+def test_agency_pipeline_by_priority_shows_high(client):
+    rv = client.get("/agency/DOD")
+    body = rv.data.decode()
+    assert "Pipeline by Priority" in body
+    assert "HIGH" in body
+
+
+def test_agency_active_contracts_section_present(client):
+    rv = client.get("/agency/DOD")
+    assert b"Active Contracts" in rv.data
+
+
+def test_agency_active_contracts_shows_active_contract(test_db, client):
+    import db as db_module
+    with db_module.connect() as con:
+        con.execute(
+            "INSERT INTO contracts "
+            "(internal_id, award_id, vendor, agency, value, end_date, priority, recompete_score, days_remaining) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("ID-AACT", "AWARD-AACT", "Acme Corp", "DOD", 750_000, "2027-06-01", "HIGH", 80, 180),
+        )
+        con.commit()
+    rv = client.get("/agency/DOD")
+    assert b"AWARD-AACT" in rv.data
+
+
+def test_agency_vendor_leaderboard_shows_value_share_top_score(client):
+    rv = client.get("/agency/DOD")
+    body = rv.data.decode()
+    assert "Vendor Leaderboard" in body
+    assert "Share" in body
+    assert "Top Score" in body
+
+
+def test_agency_upcoming_shows_competition_column(client):
+    rv = client.get("/agency/DOD")
+    assert b"Competition" in rv.data
+
+
+def test_agency_upcoming_urgency_styling_for_expired(test_db, client):
+    import db as db_module
+    with db_module.connect() as con:
+        con.execute(
+            "INSERT INTO contracts "
+            "(internal_id, award_id, vendor, agency, value, end_date, priority, recompete_score, days_remaining) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("ID-AEXP", "AWARD-AEXP", "Acme Corp", "DOD", 100_000, "2024-01-01", "LOW", 10, -5),
+        )
+        con.commit()
+    rv = client.get("/agency/DOD")
+    assert b"#b00020" in rv.data
+
+
+def test_agency_has_responsive_table_wrapper(client):
+    rv = client.get("/agency/DOD")
+    assert b"overflow-x:auto" in rv.data
