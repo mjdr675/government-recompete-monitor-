@@ -112,6 +112,26 @@ def vendor_profile_analytics(con, vendor):
         LIMIT 25
     """, (vendor,)).fetchall()
 
+    score_distribution = con.execute("""
+        SELECT
+            CASE
+                WHEN recompete_score >= 80 THEN 'High (80-100)'
+                WHEN recompete_score >= 60 THEN 'Medium (60-79)'
+                WHEN recompete_score >= 40 THEN 'Low (40-59)'
+                ELSE 'Minimal (0-39)'
+            END AS bucket,
+            COUNT(*) AS contracts
+        FROM contracts
+        WHERE vendor = ?
+        GROUP BY bucket
+        ORDER BY MIN(recompete_score) DESC
+    """, (vendor,)).fetchall()
+
+    platform_avg_row = con.execute(
+        "SELECT COALESCE(AVG(recompete_score), 0) AS platform_avg FROM contracts"
+    ).fetchone()
+    summary["platform_avg_score"] = platform_avg_row["platform_avg"] if platform_avg_row else 0
+
     pipeline_by_priority = con.execute("""
         SELECT
             priority,
@@ -155,6 +175,7 @@ def vendor_profile_analytics(con, vendor):
         "upcoming": upcoming,
         "active": active,
         "pipeline_by_priority": pipeline_by_priority,
+        "score_distribution": score_distribution,
     }
 
 def agency_profile(con, agency):

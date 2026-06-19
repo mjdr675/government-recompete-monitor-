@@ -192,6 +192,14 @@ def test_vendor_summary_cards_show_active_expired(client):
     assert "Top Score" in body
 
 
+def test_vendor_score_analysis_section_present(client):
+    rv = client.get("/vendor/Acme%20Corp")
+    body = rv.data.decode()
+    assert "Recompete Score Analysis" in body
+    assert "Platform avg" in body
+    assert "High (80-100)" in body  # Acme Corp score=85
+
+
 def test_vendor_pipeline_by_priority_shows_high(client):
     rv = client.get("/vendor/Acme%20Corp")
     body = rv.data.decode()

@@ -68,6 +68,17 @@
 <p class="muted">No active contracts found for this vendor.</p>
 {% endif %}
 
+<h2>Recompete Score Analysis</h2>
+<p class="muted">Vendor avg: <strong>{{ "{:.1f}".format(profile.summary.avg_score or 0) }}</strong> &nbsp;|&nbsp; Platform avg: <strong>{{ "{:.1f}".format(profile.summary.platform_avg_score or 0) }}</strong></p>
+<div style="overflow-x:auto">
+<table>
+<tr><th>Score Bucket</th><th>Contracts</th></tr>
+{% for r in profile.score_distribution %}
+<tr><td>{{ r.bucket }}</td><td>{{ r.contracts }}</td></tr>
+{% endfor %}
+</table>
+</div>
+
 <h2>Pipeline by Priority</h2>
 <div style="overflow-x:auto">
 <table>
