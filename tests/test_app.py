@@ -192,6 +192,13 @@ def test_vendor_summary_cards_show_active_expired(client):
     assert "Top Score" in body
 
 
+def test_vendor_pipeline_by_priority_shows_high(client):
+    rv = client.get("/vendor/Acme%20Corp")
+    body = rv.data.decode()
+    assert "Pipeline by Priority" in body
+    assert "HIGH" in body
+
+
 def test_vendor_active_contracts_section_present(client):
     rv = client.get("/vendor/Acme%20Corp")
     assert b"Active Contracts" in rv.data

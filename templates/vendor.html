@@ -68,6 +68,21 @@
 <p class="muted">No active contracts found for this vendor.</p>
 {% endif %}
 
+<h2>Pipeline by Priority</h2>
+<div style="overflow-x:auto">
+<table>
+<tr><th>Priority</th><th>Contracts</th><th>Total Value</th><th>Avg Value</th></tr>
+{% for r in profile.pipeline_by_priority %}
+<tr>
+  <td><span class="priority-badge priority-{{ (r.priority or 'unknown').lower().replace(' ','-').replace('_','-') }}">{{ r.priority or 'Unknown' }}</span></td>
+  <td>{{ r.contracts }}</td>
+  <td>${{ "{:,.0f}".format(r.total_value or 0) }}</td>
+  <td>${{ "{:,.0f}".format(r.avg_value or 0) }}</td>
+</tr>
+{% endfor %}
+</table>
+</div>
+
 <h2>Agencies Served</h2>
 <div style="overflow-x:auto">
 <table>

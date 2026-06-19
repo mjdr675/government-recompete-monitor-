@@ -112,6 +112,23 @@ def vendor_profile_analytics(con, vendor):
         LIMIT 25
     """, (vendor,)).fetchall()
 
+    pipeline_by_priority = con.execute("""
+        SELECT
+            priority,
+            COUNT(*) AS contracts,
+            COALESCE(SUM(value), 0) AS total_value,
+            COALESCE(AVG(value), 0) AS avg_value
+        FROM contracts
+        WHERE vendor = ?
+        GROUP BY priority
+        ORDER BY CASE priority
+            WHEN 'CRITICAL' THEN 1
+            WHEN 'HIGH'     THEN 2
+            WHEN 'MEDIUM'   THEN 3
+            WHEN 'LOW'      THEN 4
+            ELSE 5 END
+    """, (vendor,)).fetchall()
+
     active = con.execute("""
         SELECT
             internal_id,
@@ -137,6 +154,7 @@ def vendor_profile_analytics(con, vendor):
         "agencies": agencies,
         "upcoming": upcoming,
         "active": active,
+        "pipeline_by_priority": pipeline_by_priority,
     }
 
 def agency_profile(con, agency):
