@@ -153,3 +153,27 @@ def test_railway_warning_suppressed_outside_railway(monkeypatch, caplog):
     with caplog.at_level(logging.WARNING):
         flask_app._warn_if_ephemeral_db()
     assert "DATA LOSS RISK" not in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# /vendor/<name> baseline tests
+# ---------------------------------------------------------------------------
+
+def test_vendor_profile_returns_200(client):
+    rv = client.get("/vendor/Acme%20Corp")
+    assert rv.status_code == 200
+
+
+def test_vendor_profile_shows_vendor_name(client):
+    rv = client.get("/vendor/Acme%20Corp")
+    assert b"Acme Corp" in rv.data
+
+
+def test_vendor_profile_shows_pipeline_value(client):
+    rv = client.get("/vendor/Acme%20Corp")
+    assert b"1,000,000" in rv.data
+
+
+def test_vendor_profile_unknown_vendor_returns_200(client):
+    rv = client.get("/vendor/Unknown%20Vendor")
+    assert rv.status_code == 200
