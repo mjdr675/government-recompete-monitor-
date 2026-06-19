@@ -36,6 +36,38 @@
   </div>
 </div>
 
+<h2 id="active-contracts">Active Contracts</h2>
+{% if profile.active %}
+<div style="overflow-x:auto">
+<table>
+<tr>
+<th>Priority</th>
+<th>Contract</th>
+<th>Agency</th>
+<th>Value</th>
+<th>Start Date</th>
+<th>End Date</th>
+<th>Days Remaining</th>
+<th>Score</th>
+</tr>
+{% for r in profile.active %}
+<tr>
+<td><span class="priority-badge priority-{{ (r.priority or 'unknown').lower().replace(' ','-').replace('_','-') }}">{{ r.priority or '—' }}</span></td>
+<td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
+<td><a href="/agency/{{ r.agency|urlencode }}">{{ r.agency }}</a></td>
+<td>${{ "{:,.0f}".format(r.value or 0) }}</td>
+<td>{{ r.start_date or '—' }}</td>
+<td>{{ r.end_date or '—' }}</td>
+<td>{{ r.days_remaining }}</td>
+<td>{{ r.recompete_score or '—' }}</td>
+</tr>
+{% endfor %}
+</table>
+</div>
+{% else %}
+<p class="muted">No active contracts found for this vendor.</p>
+{% endif %}
+
 <h2>Agencies Served</h2>
 <div style="overflow-x:auto">
 <table>

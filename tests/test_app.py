@@ -192,6 +192,25 @@ def test_vendor_summary_cards_show_active_expired(client):
     assert "Top Score" in body
 
 
+def test_vendor_active_contracts_section_present(client):
+    rv = client.get("/vendor/Acme%20Corp")
+    assert b"Active Contracts" in rv.data
+
+
+def test_vendor_active_contracts_shows_active_contract(test_db, client):
+    import db as db_module
+    with db_module.connect() as con:
+        con.execute(
+            "INSERT INTO contracts "
+            "(internal_id, award_id, vendor, agency, value, end_date, priority, recompete_score, days_remaining) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("ID-ACT", "AWARD-ACT", "Acme Corp", "DOD", 750_000, "2027-06-01", "HIGH", 80, 180),
+        )
+        con.commit()
+    rv = client.get("/vendor/Acme%20Corp")
+    assert b"AWARD-ACT" in rv.data
+
+
 def test_vendor_upcoming_shows_competition_column(client):
     rv = client.get("/vendor/Acme%20Corp")
     assert b"Competition" in rv.data

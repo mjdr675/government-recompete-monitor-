@@ -112,10 +112,31 @@ def vendor_profile_analytics(con, vendor):
         LIMIT 25
     """, (vendor,)).fetchall()
 
+    active = con.execute("""
+        SELECT
+            internal_id,
+            award_id,
+            agency,
+            sub_agency,
+            value,
+            start_date,
+            end_date,
+            days_remaining,
+            priority,
+            recompete_score,
+            competition_type
+        FROM contracts
+        WHERE vendor = ?
+          AND COALESCE(days_remaining, 0) > 0
+        ORDER BY days_remaining ASC
+        LIMIT 50
+    """, (vendor,)).fetchall()
+
     return {
         "summary": summary,
         "agencies": agencies,
         "upcoming": upcoming,
+        "active": active,
     }
 
 def agency_profile(con, agency):
