@@ -1,5 +1,20 @@
 # Task Log
 
+## 2026-06-19 — Engineering Memory
+
+**Task:** Build engineering memory — 5 auto-maintained documents in `ai_agent/`.
+
+**Changes:**
+- `ai_agent/eng_memory.py` (new): `EngineeringMemory` class wrapping 5 markdown docs (`ARCHITECTURE`, `CURRENT_STATE`, `DECISIONS`, `ROADMAP`, `KNOWN_BUGS`). `initialize_if_missing()` seeds docs with substantive starter content. `build_context()` builds a context block for LLM injection (empty string when all docs are blank). `apply_updates()` writes only changed docs. `append_task_completion()` structured fallback append to CURRENT_STATE. `update_from_llm()` calls an injectable `llm_fn` with a structured prompt, parses fenced-block responses, writes changed docs.
+- `ai_agent/loop.py`: Import `EngineeringMemory`; add `eng_memory` param to `AutonomousLoop.__init__` (injectable for tests, otherwise created from `_AGENT_DIR`). `_call_plan()` now prepends `build_context()` to the task body before the LLM call. `_update_eng_memory()` called after both DRY_RUN and DONE — uses LLM to update docs, falls back to `append_task_completion()` on LLM error. Memory errors are caught and logged; they never fail the task.
+- `tests/test_eng_memory.py` (new): 51 unit tests covering read/write, context building, initialization, apply_updates, append_task_completion, update_from_llm, prompt construction, and response parsing.
+- `tests/test_loop.py`: Added `autouse=True` fixture `_eng_memory_mock` that prevents real filesystem writes in all existing tests. 7 new integration tests covering context injection, update after dry-run, update after apply, exception isolation, LLM-error fallback, and no-update-on-failure.
+- `ai_agent/ARCHITECTURE.md`, `CURRENT_STATE.md`, `DECISIONS.md`, `ROADMAP.md`, `KNOWN_BUGS.md`: Created with substantive starter content.
+
+**Result:** 336 passed (was 285). Not pushed.
+
+---
+
 ## 2026-06-19 — Automatic Recovery
 
 **Task:** Build automatic recovery into the autonomous loop.

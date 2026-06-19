@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import Optional
 
 from ai_agent import patcher as patcher_module
+from ai_agent.eng_memory import EngineeringMemory
 from ai_agent.manager import (
     QueueManager,
     TaskInfo,
@@ -180,6 +181,7 @@ class AutonomousLoop:
         sleep_between_tasks: float = 0.0,
         repo_root: Path = REPO_ROOT,
         escalate_file: Path = _DEFAULT_ESCALATE_FILE,
+        eng_memory: Optional[EngineeringMemory] = None,
     ) -> None:
         self.mgr = mgr
         self.dry_run = dry_run
@@ -192,6 +194,11 @@ class AutonomousLoop:
         self._consecutive_failures: int = 0
         self._results: list[TaskOutcome] = []
         self._stop_reason: LoopResult = LoopResult.QUEUE_EMPTY
+        if eng_memory is not None:
+            self._eng_memory: EngineeringMemory = eng_memory
+        else:
+            self._eng_memory = EngineeringMemory(_AGENT_DIR)
+            self._eng_memory.initialize_if_missing()
 
     # -- Public API --
 
@@ -284,6 +291,10 @@ class AutonomousLoop:
                     elapsed_seconds=elapsed,
                 )
                 self._consecutive_failures = 0
+                self._update_eng_memory(
+                    task_info, task,
+                    outcome_summary=f"Plan generated (dry run — not applied). Patch: {patch_path.name}.",
+                )
                 break
 
             # 4b. Apply — patcher: apply changes → run tests → commit or rollback
@@ -351,6 +362,10 @@ class AutonomousLoop:
                 elapsed_seconds=elapsed,
             )
             self._consecutive_failures = 0
+            self._update_eng_memory(
+                task_info, task,
+                outcome_summary=f"Implemented and committed ({commit_sha}).",
+            )
             break
 
         # Fallback — loop ended without break (should not normally happen)
@@ -392,16 +407,43 @@ class AutonomousLoop:
     # -- Private helpers --
 
     def _call_plan(self, task: dict, specialist, memory, feedback: str) -> str:
-        """Invoke specialist.plan() with cumulative failure feedback in the task body."""
+        """
+        Invoke specialist.plan() with engineering memory context prepended and
+        cumulative failure feedback appended to the task body.
+        """
+        body = task["body"]
+        ctx = self._eng_memory.build_context()
+        if ctx:
+            body = ctx + "\n\n---\n\n" + body
         if feedback:
-            task = {
-                **task,
-                "body": task["body"] + f"\n\n{feedback}\n",
-            }
+            body = body + f"\n\n{feedback}\n"
+        augmented = {**task, "body": body}
         return call_with_retry(
-            lambda: specialist.plan(task, memory=memory),
+            lambda: specialist.plan(augmented, memory=memory),
             max_retries=self.max_llm_retries,
         )
+
+    def _update_eng_memory(
+        self,
+        task_info: TaskInfo,
+        task: dict,
+        outcome_summary: str,
+    ) -> None:
+        """Update engineering knowledge docs after a task completes."""
+        try:
+            result = self._eng_memory.update_from_llm(
+                task_filename=task_info.filename,
+                task_content=task.get("body", ""),
+                outcome_summary=outcome_summary,
+            )
+            if result.error:
+                self._eng_memory.append_task_completion(task_info.filename, outcome_summary)
+                self._log(task_info.filename, f"MEMORY fallback (LLM unavailable: {result.error[:60]})")
+            else:
+                changed = ", ".join(result.docs_updated) or "none"
+                self._log(task_info.filename, f"MEMORY updated={changed}")
+        except Exception as exc:
+            self._log(task_info.filename, f"MEMORY update error: {exc}")
 
     def _init_memory(self):
         try:

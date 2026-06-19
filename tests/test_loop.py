@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
+from ai_agent.eng_memory import EngineeringMemory
 from ai_agent.loop import (
     AutonomousLoop,
     LoopResult,
@@ -27,6 +28,24 @@ from ai_agent.manager import QueueManager, TaskInfo, TaskState
 # ---------------------------------------------------------------------------
 # Fixtures and helpers
 # ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def _eng_memory_mock(monkeypatch):
+    """
+    Prevent EngineeringMemory from writing to the real ai_agent/ directory
+    during loop tests.  Exposed as a fixture so specific tests can assert on
+    it by declaring '_eng_memory_mock' as a parameter.
+    """
+    mock_instance = MagicMock(spec=EngineeringMemory)
+    mock_instance.build_context.return_value = ""
+    success_result = MagicMock()
+    success_result.error = None
+    success_result.docs_updated = []
+    success_result.docs_unchanged = []
+    mock_instance.update_from_llm.return_value = success_result
+    monkeypatch.setattr("ai_agent.loop.EngineeringMemory", lambda *a, **kw: mock_instance)
+    yield mock_instance
+
 
 @pytest.fixture()
 def dirs(tmp_path: Path) -> dict[str, Path]:
@@ -881,3 +900,146 @@ def test_never_exceeds_max_plan_attempts(mock_assign, mock_sha, mock_mem, dirs):
 
     assert result == LoopResult.FAILED
     assert spec.plan.call_count == 3  # exactly 3, no more
+
+
+# ---------------------------------------------------------------------------
+# Engineering memory integration
+# ---------------------------------------------------------------------------
+
+@patch("ai_agent.loop.get_memory", return_value=None)
+@patch("ai_agent.loop.save_patch")
+@patch("ai_agent.loop.assign_specialist")
+def test_eng_memory_context_prepended_to_plan_body(
+    mock_assign, mock_save, mock_mem, _eng_memory_mock, dirs, tmp_path
+):
+    """Engineering memory context must appear in the task body passed to plan()."""
+    add_task(dirs, "001.md", "# Task\n\noriginal body text\n")
+    _eng_memory_mock.build_context.return_value = (
+        "# Engineering Memory\n\n## CURRENT_STATE.md\n\nhas content\n"
+    )
+    spec = _mock_specialist()
+    mock_assign.return_value = spec
+    mock_save.return_value = tmp_path / "patch.md"
+
+    make_loop(dirs, dry_run=True).run_one()
+
+    called_task = spec.plan.call_args.args[0]
+    assert "Engineering Memory" in called_task["body"]
+    assert "original body text" in called_task["body"]
+
+
+@patch("ai_agent.loop.get_memory", return_value=None)
+@patch("ai_agent.loop.save_patch")
+@patch("ai_agent.loop.assign_specialist")
+def test_eng_memory_no_context_when_empty(
+    mock_assign, mock_save, mock_mem, _eng_memory_mock, dirs, tmp_path
+):
+    """When build_context() returns '', no context header is injected."""
+    add_task(dirs, "001.md", "# Task\n\nbody text\n")
+    _eng_memory_mock.build_context.return_value = ""
+    spec = _mock_specialist()
+    mock_assign.return_value = spec
+    mock_save.return_value = tmp_path / "patch.md"
+
+    make_loop(dirs, dry_run=True).run_one()
+
+    called_task = spec.plan.call_args.args[0]
+    assert "Engineering Memory" not in called_task["body"]
+
+
+@patch("ai_agent.loop.get_memory", return_value=None)
+@patch("ai_agent.loop.save_patch")
+@patch("ai_agent.loop.assign_specialist")
+def test_eng_memory_update_called_after_dry_run(
+    mock_assign, mock_save, mock_mem, _eng_memory_mock, dirs, tmp_path
+):
+    """update_from_llm() must be called once after a successful dry run."""
+    add_task(dirs, "001.md")
+    mock_assign.return_value = _mock_specialist()
+    mock_save.return_value = tmp_path / "patch.md"
+
+    make_loop(dirs, dry_run=True).run_one()
+
+    _eng_memory_mock.update_from_llm.assert_called_once()
+    kwargs = _eng_memory_mock.update_from_llm.call_args.kwargs
+    assert kwargs["task_filename"] == "001.md"
+    assert "dry run" in kwargs["outcome_summary"].lower()
+
+
+@patch("ai_agent.loop.get_memory", return_value=None)
+@patch("ai_agent.loop._current_sha", side_effect=["sha-before", "sha-after"])
+@patch("ai_agent.loop._run_tests", return_value=(True, "5 passed"))
+@patch("ai_agent.loop.save_patch")
+@patch("ai_agent.loop.patcher_module.execute")
+@patch("ai_agent.loop.assign_specialist")
+def test_eng_memory_update_called_after_apply_success(
+    mock_assign, mock_patcher, mock_save, mock_tests, mock_sha, mock_mem,
+    _eng_memory_mock, dirs, tmp_path,
+):
+    """update_from_llm() must include the commit SHA after a real apply."""
+    add_task(dirs, "001.md")
+    mock_assign.return_value = _mock_specialist()
+    mock_save.return_value = tmp_path / "patch.md"
+    mock_patcher.return_value = _apply_success("abc1234")
+
+    make_loop(dirs, dry_run=False).run_one()
+
+    _eng_memory_mock.update_from_llm.assert_called_once()
+    kwargs = _eng_memory_mock.update_from_llm.call_args.kwargs
+    assert "abc1234" in kwargs["outcome_summary"]
+
+
+@patch("ai_agent.loop.get_memory", return_value=None)
+@patch("ai_agent.loop.save_patch")
+@patch("ai_agent.loop.assign_specialist")
+def test_eng_memory_update_failure_does_not_fail_task(
+    mock_assign, mock_save, mock_mem, _eng_memory_mock, dirs, tmp_path
+):
+    """An exception in update_from_llm() must not propagate or fail the task."""
+    add_task(dirs, "001.md")
+    mock_assign.return_value = _mock_specialist()
+    mock_save.return_value = tmp_path / "patch.md"
+    _eng_memory_mock.update_from_llm.side_effect = RuntimeError("memory system exploded")
+
+    result = make_loop(dirs, dry_run=True).run_one()
+
+    assert result == LoopResult.DRY_RUN
+
+
+@patch("ai_agent.loop.get_memory", return_value=None)
+@patch("ai_agent.loop.save_patch")
+@patch("ai_agent.loop.assign_specialist")
+def test_eng_memory_llm_error_triggers_fallback_append(
+    mock_assign, mock_save, mock_mem, _eng_memory_mock, dirs, tmp_path
+):
+    """When update_from_llm returns an error, append_task_completion is called."""
+    add_task(dirs, "001.md")
+    mock_assign.return_value = _mock_specialist()
+    mock_save.return_value = tmp_path / "patch.md"
+    error_result = MagicMock()
+    error_result.error = "ANTHROPIC_API_KEY not set"
+    _eng_memory_mock.update_from_llm.return_value = error_result
+
+    result = make_loop(dirs, dry_run=True).run_one()
+
+    assert result == LoopResult.DRY_RUN
+    _eng_memory_mock.append_task_completion.assert_called_once()
+
+
+@patch("ai_agent.loop.get_memory", return_value=None)
+@patch("ai_agent.loop._current_sha", return_value="sha-x")
+@patch("ai_agent.loop.assign_specialist")
+def test_eng_memory_not_updated_on_task_failure(
+    mock_assign, mock_sha, mock_mem, _eng_memory_mock, dirs
+):
+    """Failed tasks must not trigger a memory update."""
+    add_task(dirs, "001.md")
+    spec = MagicMock()
+    spec.ROLE = "backend"
+    spec.plan.side_effect = RuntimeError("ANTHROPIC_API_KEY not set")
+    mock_assign.return_value = spec
+
+    make_loop(dirs, dry_run=False, max_plan_attempts=1).run_one()
+
+    _eng_memory_mock.update_from_llm.assert_not_called()
+    _eng_memory_mock.append_task_completion.assert_not_called()
