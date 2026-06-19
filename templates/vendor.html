@@ -68,6 +68,11 @@
 <p class="muted">No active contracts found for this vendor.</p>
 {% endif %}
 
+<h2>Contract Timeline</h2>
+<div style="max-width:700px;margin-bottom:28px">
+  <canvas id="timeline-chart"></canvas>
+</div>
+
 <h2>Win / Loss Indicators</h2>
 <div class="cards" style="margin-bottom:16px">
 {% for r in profile.win_loss_summary %}
@@ -188,4 +193,33 @@
 {% endfor %}
 </table>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+  var timelineData = {{ profile.timeline | tojson }};
+  if (timelineData.length > 0) {
+    new Chart(document.getElementById('timeline-chart'), {
+      type: 'bar',
+      data: {
+        labels: timelineData.map(function(r) { return r.year + ' ' + r.quarter; }),
+        datasets: [{
+          label: 'Contract Value',
+          data: timelineData.map(function(r) { return r.total_value; }),
+          backgroundColor: '#1f4f8f'
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { ticks: { callback: function(v) { return '$' + (v/1e6).toFixed(1) + 'M'; } } }
+        }
+      }
+    });
+  }
+})();
+</script>
 {% endblock %}

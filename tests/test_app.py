@@ -192,6 +192,16 @@ def test_vendor_summary_cards_show_active_expired(client):
     assert "Top Score" in body
 
 
+def test_vendor_timeline_canvas_present(client):
+    rv = client.get("/vendor/Acme%20Corp")
+    assert b"timeline-chart" in rv.data
+
+
+def test_vendor_timeline_chart_js_loaded(client):
+    rv = client.get("/vendor/Acme%20Corp")
+    assert b"chart.js" in rv.data
+
+
 def test_vendor_win_loss_section_present(client):
     rv = client.get("/vendor/Acme%20Corp")
     body = rv.data.decode()

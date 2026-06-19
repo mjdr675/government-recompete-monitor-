@@ -112,6 +112,23 @@ def vendor_profile_analytics(con, vendor):
         LIMIT 25
     """, (vendor,)).fetchall()
 
+    timeline = con.execute("""
+        SELECT
+            substr(end_date, 1, 4) AS year,
+            CASE
+                WHEN CAST(substr(end_date, 6, 2) AS INTEGER) BETWEEN 1 AND 3 THEN 'Q1'
+                WHEN CAST(substr(end_date, 6, 2) AS INTEGER) BETWEEN 4 AND 6 THEN 'Q2'
+                WHEN CAST(substr(end_date, 6, 2) AS INTEGER) BETWEEN 7 AND 9 THEN 'Q3'
+                ELSE 'Q4'
+            END AS quarter,
+            COUNT(*) AS contracts,
+            COALESCE(SUM(value), 0) AS total_value
+        FROM contracts
+        WHERE vendor = ? AND end_date IS NOT NULL
+        GROUP BY year, quarter
+        ORDER BY year, quarter
+    """, (vendor,)).fetchall()
+
     win_loss_summary = con.execute("""
         SELECT
             CASE
@@ -211,6 +228,7 @@ def vendor_profile_analytics(con, vendor):
         "score_distribution": score_distribution,
         "win_loss_summary": win_loss_summary,
         "change_events": change_events,
+        "timeline": timeline,
     }
 
 def agency_profile(con, agency):
