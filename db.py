@@ -234,6 +234,10 @@ def save_snapshot(run_date, rows):
                 json.dumps(row, default=str),
             ))
 
+        # Rebuild FTS index after batch upserts. ON CONFLICT DO UPDATE fires
+        # AFTER INSERT (not AFTER UPDATE), so contracts_au never runs and stale
+        # FTS entries accumulate. A manual rebuild syncs the index from scratch.
+        con.execute("INSERT INTO contracts_fts(contracts_fts) VALUES ('rebuild')")
         con.commit()
 
 def init_changes_table():
