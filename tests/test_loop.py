@@ -389,10 +389,10 @@ def test_patcher_failure_triggers_retry_with_feedback(
     result = loop.run_one()
 
     assert result == LoopResult.DONE
-    # Specialist was called twice — second call has feedback in task body
+    # Specialist was called twice — second call has failure history in task body
     assert spec.plan.call_count == 2
     second_task = spec.plan.call_args_list[1][0][0]  # first positional arg
-    assert "Previous Attempt Feedback" in second_task["body"]
+    assert "Previous Attempt Failures" in second_task["body"]
 
 
 @patch("ai_agent.loop.get_memory", return_value=None)
@@ -701,3 +701,183 @@ def test_failed_task_log_contains_error(mock_assign, mock_sha, mock_mem, dirs):
 
     log_path = dirs["logs"] / "001-alpha.log"
     assert "FAILED" in log_path.read_text()
+
+
+# ---------------------------------------------------------------------------
+# Recovery integration: 3-attempt limit, failure reports, early cut-short
+# ---------------------------------------------------------------------------
+
+@patch("ai_agent.loop.get_memory", return_value=None)
+@patch("ai_agent.loop._current_sha", return_value="sha-x")
+@patch("ai_agent.loop.assign_specialist")
+def test_exactly_3_attempts_made_before_fail(mock_assign, mock_sha, mock_mem, dirs):
+    """Loop must make exactly max_plan_attempts LLM calls, no more, no less.
+    Uses reviewer-blocking (distinct patches each time) so cut-short does not
+    trigger early — all 3 outer attempts must run."""
+    add_task(dirs, "001-task.md")
+    spec = MagicMock()
+    spec.ROLE = "backend"
+    # Three distinct dangerous patches: reviewer blocks each, cut-short never fires
+    spec.plan.side_effect = [
+        "git push origin main",
+        "rm -rf /tmp/test",
+        "DROP TABLE contracts",
+    ]
+    mock_assign.return_value = spec
+
+    loop = make_loop(dirs, dry_run=False, max_plan_attempts=3)
+    result = loop.run_one()
+
+    assert result == LoopResult.FAILED
+    assert spec.plan.call_count == 3
+
+
+@patch("ai_agent.loop.get_memory", return_value=None)
+@patch("ai_agent.loop._current_sha", return_value="sha-x")
+@patch("ai_agent.loop.assign_specialist")
+def test_failure_report_written_after_all_attempts(mock_assign, mock_sha, mock_mem, dirs):
+    """A failure report file must exist in logs/ after all attempts are exhausted."""
+    add_task(dirs, "001-task.md")
+    spec = MagicMock()
+    spec.ROLE = "backend"
+    spec.plan.side_effect = [
+        "git push origin main",
+        "rm -rf /tmp/test",
+        "DROP TABLE contracts",
+    ]
+    mock_assign.return_value = spec
+
+    loop = make_loop(dirs, dry_run=False, max_plan_attempts=3)
+    loop.run_one()
+
+    report = dirs["logs"] / "001-task-failure-report.md"
+    assert report.exists(), "failure report must be written after all retries exhausted"
+
+
+@patch("ai_agent.loop.get_memory", return_value=None)
+@patch("ai_agent.loop._current_sha", return_value="sha-x")
+@patch("ai_agent.loop.assign_specialist")
+def test_failure_report_contains_all_attempts(mock_assign, mock_sha, mock_mem, dirs):
+    """Failure report must document every attempt, not just the last one."""
+    add_task(dirs, "001-task.md")
+    spec = MagicMock()
+    spec.ROLE = "backend"
+    spec.plan.side_effect = [
+        "git push origin main",
+        "rm -rf /tmp/test",
+        "DROP TABLE contracts",
+    ]
+    mock_assign.return_value = spec
+
+    loop = make_loop(dirs, dry_run=False, max_plan_attempts=3)
+    loop.run_one()
+
+    report_text = (dirs["logs"] / "001-task-failure-report.md").read_text()
+    assert "Attempt 1" in report_text
+    assert "Attempt 2" in report_text
+    assert "Attempt 3" in report_text
+
+
+@patch("ai_agent.loop.get_memory", return_value=None)
+@patch("ai_agent.loop._current_sha", return_value="sha-x")
+@patch("ai_agent.loop.assign_specialist")
+def test_early_cutshort_on_identical_patch(mock_assign, mock_sha, mock_mem, dirs, tmp_path):
+    """When the same patch is generated twice the loop cuts short after attempt 2."""
+    add_task(dirs, "001-task.md")
+    spec = MagicMock()
+    spec.ROLE = "backend"
+    # Same patch content both times — identical hash → should_cut_short triggers
+    spec.plan.return_value = "git push origin main"  # blocked by reviewer
+    mock_assign.return_value = spec
+
+    loop = make_loop(dirs, dry_run=False, max_plan_attempts=3)
+    result = loop.run_one()
+
+    assert result == LoopResult.FAILED
+    # Should stop at attempt 2, not burn attempt 3
+    assert spec.plan.call_count == 2
+
+
+@patch("ai_agent.loop.get_memory", return_value=None)
+@patch("ai_agent.loop._current_sha", return_value="sha-x")
+@patch("ai_agent.loop.assign_specialist")
+def test_early_cutshort_still_writes_failure_report(mock_assign, mock_sha, mock_mem, dirs):
+    """Cut-short path must still produce a failure report."""
+    add_task(dirs, "001-task.md")
+    spec = MagicMock()
+    spec.ROLE = "backend"
+    spec.plan.return_value = "git push origin main"
+    mock_assign.return_value = spec
+
+    loop = make_loop(dirs, dry_run=False, max_plan_attempts=3)
+    loop.run_one()
+
+    report = dirs["logs"] / "001-task-failure-report.md"
+    assert report.exists()
+
+
+@patch("ai_agent.loop.get_memory", return_value=None)
+@patch("ai_agent.loop._current_sha", return_value="sha-x")
+@patch("ai_agent.loop.assign_specialist")
+def test_each_retry_recorded_in_failure_report(mock_assign, mock_sha, mock_mem, dirs, tmp_path):
+    """Failure report must record each attempt separately with its error."""
+    add_task(dirs, "001-task.md")
+    spec = MagicMock()
+    spec.ROLE = "backend"
+    # Three distinct patches blocked by reviewer: all 3 outer attempts run
+    spec.plan.side_effect = [
+        "git push origin main",
+        "rm -rf /tmp/test",
+        "DROP TABLE contracts",
+    ]
+    mock_assign.return_value = spec
+
+    loop = make_loop(dirs, dry_run=False, max_plan_attempts=3)
+    loop.run_one()
+
+    report_text = (dirs["logs"] / "001-task-failure-report.md").read_text()
+    # Report should list 3 attempts (not collapsed into one)
+    assert report_text.count("Attempt") >= 3
+
+
+@patch("ai_agent.loop.get_memory", return_value=None)
+@patch("ai_agent.loop._current_sha", return_value="sha-x")
+@patch("ai_agent.loop.assign_specialist")
+def test_failure_report_path_in_task_outcome(mock_assign, mock_sha, mock_mem, dirs):
+    """TaskOutcome.failure_report must point to the written report file."""
+    add_task(dirs, "001-task.md")
+    spec = MagicMock()
+    spec.ROLE = "backend"
+    spec.plan.side_effect = RuntimeError("ANTHROPIC_API_KEY not set")
+    mock_assign.return_value = spec
+
+    loop = make_loop(dirs, dry_run=False, max_plan_attempts=1)
+    loop.run_one()
+
+    assert len(loop._results) == 1
+    outcome = loop._results[0]
+    assert outcome.failure_report is not None
+    assert outcome.failure_report.exists()
+
+
+@patch("ai_agent.loop.get_memory", return_value=None)
+@patch("ai_agent.loop._current_sha", return_value="sha-x")
+@patch("ai_agent.loop.assign_specialist")
+def test_never_exceeds_max_plan_attempts(mock_assign, mock_sha, mock_mem, dirs):
+    """Loop must stop at max_plan_attempts even if no cut-short triggers."""
+    add_task(dirs, "001-task.md")
+    spec = MagicMock()
+    spec.ROLE = "backend"
+    # Generate unique patches each attempt so cut-short does NOT trigger
+    spec.plan.side_effect = [
+        "git push origin main",   # reviewer blocks — attempt 1
+        "rm -rf /tmp/test",       # reviewer blocks — attempt 2
+        "os.remove('/etc/passwd')", # reviewer blocks — attempt 3
+    ]
+    mock_assign.return_value = spec
+
+    loop = make_loop(dirs, dry_run=False, max_plan_attempts=3)
+    result = loop.run_one()
+
+    assert result == LoopResult.FAILED
+    assert spec.plan.call_count == 3  # exactly 3, no more

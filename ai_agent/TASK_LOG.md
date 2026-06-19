@@ -1,5 +1,19 @@
 # Task Log
 
+## 2026-06-19 — Automatic Recovery
+
+**Task:** Build automatic recovery into the autonomous loop.
+
+**Changes:**
+- `ai_agent/recovery.py` (new): `FailureCategory` enum (llm_error, reviewer_blocked, validation_failed, test_failed, commit_missing, unknown), `AttemptRecord` dataclass, `RecoveryTracker` class. `record()` captures attempt #, timestamp, classified category, error text, and MD5 hash of patch content. `has_repeated_category()` / `has_identical_patch()` detect stuck patterns. `should_cut_short()` triggers early exit when identical patches are generated. `build_feedback()` produces cumulative failure history for the LLM retry prompt. `write_failure_report()` writes structured markdown to `ai_agent/logs/<task>-failure-report.md`.
+- `ai_agent/loop.py`: Integrated `RecoveryTracker` into `run_one()`. Default `max_plan_attempts=3`. Config errors (missing key, package not installed) break the retry loop immediately. All other failures are recorded by the tracker and retried with cumulative feedback. `_record_failure()` now accepts optional tracker and writes the failure report. `_escalate()` lists failure report paths. `TaskOutcome` gains `failure_report` field.
+- `tests/test_recovery.py` (new): 34 unit tests for `recovery.py` — classification, pattern detection, feedback generation, cut-short logic, failure report output.
+- `tests/test_loop.py`: 9 new recovery integration tests — exactly 3 attempts, failure reports written, early cut-short on identical patch, report paths in TaskOutcome, never-exceed-max-attempts.
+
+**Result:** 285 passed (was 233). Not pushed.
+
+---
+
 ## 2026-06-19 — Autonomous Execution Loop
 
 **Task:** Build complete autonomous execution loop (`ai_agent/loop.py`).

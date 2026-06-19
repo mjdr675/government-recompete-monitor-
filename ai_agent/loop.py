@@ -6,13 +6,17 @@ patch, validates pytest passes and a commit was created, then advances to the
 next task. Stops when the queue is empty or consecutive failures trigger
 escalation.
 
-Flow per task:
+Flow per task (up to max_plan_attempts=3):
   next_task() → mark_running()
-    → assign_specialist() → LLM plan() [with retry + feedback]
+    → assign_specialist() → LLM plan() [API retry on transient errors]
     → review() → save_patch()
     → patcher.execute() [apply → test → commit or rollback]
     → validate pytest + commit
-    → mark_done()  or  mark_failed() → [escalate after N failures]
+    → mark_done()
+    or on any failure:
+    → RecoveryTracker.record() → build_feedback() → retry with history
+    → [if identical patch detected] cut short, write failure report
+    → mark_failed() → [escalate after N consecutive task failures]
 
 CLI:
   python -m ai_agent.loop                  # dry-run, one task
@@ -28,7 +32,7 @@ import argparse
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
@@ -48,14 +52,15 @@ from ai_agent.manager import (
     MORNING_REPORT_PATH,
 )
 from ai_agent.memory import get_memory
+from ai_agent.recovery import RecoveryTracker
 from ai_agent.reviewer import review
 
 _AGENT_DIR = Path(__file__).parent
 _DEFAULT_ESCALATE_FILE = _AGENT_DIR / "ESCALATE.md"
 
-# Seconds to wait between daemon idle checks (queue empty)
-_DAEMON_IDLE_INTERVAL = 300
-_DAEMON_MAX_IDLE = 10
+_DAEMON_IDLE_INTERVAL = 300   # seconds between idle checks in daemon mode
+_DAEMON_MAX_IDLE = 10         # stop daemon after this many consecutive empty checks
+MAX_PLAN_ATTEMPTS = 3         # hard limit: never retry a task more than 3 times
 
 
 # ---------------------------------------------------------------------------
@@ -65,7 +70,7 @@ _DAEMON_MAX_IDLE = 10
 class LoopResult(str, Enum):
     DONE = "done"             # patch applied and committed
     DRY_RUN = "dry_run"      # patch saved, not applied
-    FAILED = "failed"         # all retries exhausted
+    FAILED = "failed"         # all retries exhausted or cut short
     QUEUE_EMPTY = "empty"
     ESCALATED = "escalated"
 
@@ -79,10 +84,11 @@ class TaskOutcome:
     commit_sha: Optional[str] = None
     error: Optional[str] = None
     elapsed_seconds: float = 0.0
+    failure_report: Optional[Path] = None  # path to per-task failure report, if any
 
 
 # ---------------------------------------------------------------------------
-# Helpers (module-level so they can be patched in tests)
+# Module-level helpers (patchable in tests)
 # ---------------------------------------------------------------------------
 
 def load_task(task_info: TaskInfo, queue_dir: Path) -> dict:
@@ -112,7 +118,7 @@ def call_with_retry(fn, max_retries: int = 3, base_delay: float = 2.0):
             return fn()
         except Exception as exc:
             if any(s in str(exc) for s in ("not set", "not installed", "API key")):
-                raise  # configuration error — fail fast
+                raise  # configuration error — fail fast, no retry
             last_exc = exc
             if attempt < max_retries:
                 time.sleep(base_delay * (2 ** attempt))
@@ -151,18 +157,24 @@ class AutonomousLoop:
     """
     End-to-end autonomous task execution from ai_agent/queue/.
 
-    Each call to run_one() processes exactly one task. run_loop() processes
-    all tasks until the queue is empty or escalation is triggered.
-
-    Escalation: after max_consecutive_failures tasks fail in a row, the loop
-    writes ai_agent/ESCALATE.md and stops. Delete that file to resume.
+    Recovery behaviour per task:
+    - Up to MAX_PLAN_ATTEMPTS (3) attempts, each with failure feedback injected
+      into the LLM prompt via RecoveryTracker.build_feedback()
+    - After each failure, RecoveryTracker.record() captures the error category
+      and a hash of the patch content
+    - If the same patch is generated twice (has_identical_patch), the task is
+      cut short immediately — further retries would produce the same result
+    - When all attempts are exhausted or the task is cut short, a structured
+      failure report is written to ai_agent/logs/<task>-failure-report.md
+    - After max_consecutive_failures task-level failures in a row, the loop
+      writes ai_agent/ESCALATE.md and stops; delete that file to resume
     """
 
     def __init__(
         self,
         mgr: QueueManager,
         dry_run: bool = True,
-        max_plan_attempts: int = 2,
+        max_plan_attempts: int = MAX_PLAN_ATTEMPTS,
         max_llm_retries: int = 3,
         max_consecutive_failures: int = 3,
         sleep_between_tasks: float = 0.0,
@@ -185,14 +197,15 @@ class AutonomousLoop:
 
     def run_one(self) -> LoopResult:
         """
-        Select and process the next task in the queue.
+        Select and fully process the next task in the queue.
 
-        Returns the outcome for that task, or QUEUE_EMPTY / ESCALATED if the
-        loop cannot proceed.
+        Returns the outcome (DONE, DRY_RUN, FAILED, QUEUE_EMPTY, ESCALATED).
+        On FAILED the task file is moved to ai_agent/failed/ and a failure
+        report is written to ai_agent/logs/.
         """
         if self.escalate_file.exists():
             print(f"[LOOP] Blocked — escalation file exists: {self.escalate_file}")
-            print("[LOOP] Resolve the issues and delete it to resume.")
+            print("[LOOP] Resolve issues and delete it to resume.")
             return LoopResult.ESCALATED
 
         task_info = self.mgr.next_task()
@@ -203,38 +216,54 @@ class AutonomousLoop:
         pre_sha = _current_sha(self.repo_root)
 
         self.mgr.mark_running(task_info.filename)
-        self._log(task_info.filename, f"START  dry_run={self.dry_run}")
+        self._log(task_info.filename, f"START  dry_run={self.dry_run} max_attempts={self.max_plan_attempts}")
 
         task = load_task(task_info, self.mgr.queue_dir)
         memory = self._init_memory()
         specialist = assign_specialist(task)
         self._log(task_info.filename, f"ROLE   {specialist.ROLE}")
 
-        feedback = ""
+        tracker = RecoveryTracker(task_info.filename, max_attempts=self.max_plan_attempts)
         outcome: Optional[TaskOutcome] = None
 
         for attempt in range(1, self.max_plan_attempts + 1):
+            # Build cumulative feedback from all previous failures
+            feedback = tracker.build_feedback() if attempt > 1 else ""
             if attempt > 1:
                 self._log(
                     task_info.filename,
-                    f"RETRY  attempt={attempt} feedback={feedback[:100]}",
+                    f"RETRY  attempt={attempt}/{self.max_plan_attempts} "
+                    f"category={tracker.attempts[-1].category if tracker.attempts else '?'}",
                 )
 
-            # 1. Plan — LLM call with retry and optional failure feedback
+            # 1. Plan — LLM call with API-level retry on transient errors
+            patch_content: Optional[str] = None
             try:
                 patch_content = self._call_plan(task, specialist, memory, feedback)
             except Exception as exc:
-                outcome = self._record_failure(task_info, f"LLM error: {exc}", attempt, start)
-                break
+                error = f"LLM error: {exc}"
+                tracker.record(attempt, error)
+                self._log(task_info.filename, f"PLAN   FAILED {error[:120]}")
+                # Config errors (missing key, missing package) will never succeed
+                # on retry — break immediately instead of burning all 3 attempts.
+                is_config_error = any(
+                    s in str(exc) for s in ("not set", "not installed", "API key")
+                )
+                if is_config_error or attempt == self.max_plan_attempts or tracker.should_cut_short():
+                    outcome = self._record_failure(task_info, error, attempt, start, tracker)
+                    break
+                continue
 
-            # 2. Review — regex safety check
+            # 2. Review — regex blocklist for dangerous patterns
             safe, violations = review(patch_content)
             if not safe:
-                feedback = f"reviewer blocked: {', '.join(violations)}"
-                self._log(task_info.filename, f"REVIEW {feedback}")
-                if attempt == self.max_plan_attempts:
-                    outcome = self._record_failure(task_info, feedback, attempt, start)
-                continue  # retry with feedback
+                error = f"reviewer blocked: {', '.join(violations)}"
+                tracker.record(attempt, error, patch_content=patch_content)
+                self._log(task_info.filename, f"REVIEW {error}")
+                if attempt == self.max_plan_attempts or tracker.should_cut_short():
+                    outcome = self._record_failure(task_info, error, attempt, start, tracker)
+                    break
+                continue
 
             self._log(task_info.filename, "REVIEW passed")
 
@@ -242,7 +271,7 @@ class AutonomousLoop:
             patch_path = save_patch(task, specialist.ROLE, patch_content)
             self._log(task_info.filename, f"PATCH  {patch_path.name}")
 
-            # 4a. Dry-run: save and mark done without touching the codebase
+            # 4a. Dry-run — save patch and mark done; never touch the codebase
             if self.dry_run:
                 self.mgr.mark_done(task_info.filename)
                 elapsed = time.monotonic() - start
@@ -257,7 +286,7 @@ class AutonomousLoop:
                 self._consecutive_failures = 0
                 break
 
-            # 4b. Apply — patcher runs tests, commits on pass, rolls back on fail
+            # 4b. Apply — patcher: apply changes → run tests → commit or rollback
             self._log(task_info.filename, "APPLY  running patcher...")
             apply_result = patcher_module.execute(
                 patch_path=patch_path,
@@ -269,36 +298,44 @@ class AutonomousLoop:
                 if apply_result.rolled_back:
                     tr = apply_result.test_result
                     tail = (tr.stdout[-400:] if tr else "")
-                    feedback = f"tests failed after apply (rolled back): {tail}"
+                    error = f"tests failed after apply (rolled back): {tail}"
                 elif apply_result.validation and not apply_result.validation.valid:
-                    feedback = (
+                    error = (
                         "patch validation failed: "
                         + "; ".join(apply_result.validation.errors)
                     )
                 else:
-                    feedback = apply_result.error or "apply failed"
-                self._log(task_info.filename, f"APPLY  FAILED {feedback[:120]}")
-                if attempt == self.max_plan_attempts:
-                    outcome = self._record_failure(task_info, feedback, attempt, start)
-                continue  # retry with feedback
-
-            # 5. Independent validation: pytest must pass
-            tests_ok, test_output = _run_tests(self.repo_root)
-            if not tests_ok:
-                feedback = f"post-apply pytest failed: {test_output[-300:]}"
-                self._log(task_info.filename, f"VALIDATE {feedback[:120]}")
-                if attempt == self.max_plan_attempts:
-                    outcome = self._record_failure(task_info, feedback, attempt, start)
+                    error = apply_result.error or "apply failed"
+                tracker.record(attempt, error, patch_content=patch_content)
+                self._log(task_info.filename, f"APPLY  FAILED {error[:120]}")
+                if attempt == self.max_plan_attempts or tracker.should_cut_short():
+                    outcome = self._record_failure(task_info, error, attempt, start, tracker)
+                    break
                 continue
 
-            # 6. Independent validation: a new commit must exist
+            # 5. Independent validation — run pytest after patcher commits
+            tests_ok, test_output = _run_tests(self.repo_root)
+            if not tests_ok:
+                error = f"post-apply pytest failed: {test_output[-300:]}"
+                tracker.record(attempt, error, patch_content=patch_content)
+                self._log(task_info.filename, f"VALIDATE {error[:120]}")
+                if attempt == self.max_plan_attempts or tracker.should_cut_short():
+                    outcome = self._record_failure(task_info, error, attempt, start, tracker)
+                    break
+                continue
+
+            # 6. Independent validation — a new commit must exist
             post_sha = _current_sha(self.repo_root)
-            commit_sha = apply_result.commit_sha or (post_sha if post_sha != pre_sha else None)
+            commit_sha = apply_result.commit_sha or (
+                post_sha if post_sha != pre_sha else None
+            )
             if not commit_sha:
-                feedback = "no new commit detected after apply"
-                self._log(task_info.filename, f"VALIDATE {feedback}")
-                if attempt == self.max_plan_attempts:
-                    outcome = self._record_failure(task_info, feedback, attempt, start)
+                error = "no new commit detected after apply"
+                tracker.record(attempt, error, patch_content=patch_content)
+                self._log(task_info.filename, f"VALIDATE {error}")
+                if attempt == self.max_plan_attempts or tracker.should_cut_short():
+                    outcome = self._record_failure(task_info, error, attempt, start, tracker)
+                    break
                 continue
 
             # 7. All checks passed — mark done
@@ -316,9 +353,12 @@ class AutonomousLoop:
             self._consecutive_failures = 0
             break
 
+        # Fallback — loop ended without break (should not normally happen)
         if outcome is None:
+            error = "exhausted all attempts without resolution"
+            tracker.record(self.max_plan_attempts, error)
             outcome = self._record_failure(
-                task_info, "exhausted all attempts", self.max_plan_attempts, start
+                task_info, error, self.max_plan_attempts, start, tracker
             )
 
         self._results.append(outcome)
@@ -336,7 +376,8 @@ class AutonomousLoop:
         """
         Process all queued tasks until the queue is empty or escalation fires.
 
-        Generates morning_report.md on completion. Returns all task outcomes.
+        Writes morning_report.md on completion. Returns all task outcomes.
+        Never loops forever: bounded by queue size and max_consecutive_failures.
         """
         while True:
             result = self.run_one()
@@ -350,18 +391,12 @@ class AutonomousLoop:
 
     # -- Private helpers --
 
-    def _call_plan(
-        self, task: dict, specialist, memory, feedback: str
-    ) -> str:
-        """Invoke specialist.plan() with failure feedback injected into the task body."""
+    def _call_plan(self, task: dict, specialist, memory, feedback: str) -> str:
+        """Invoke specialist.plan() with cumulative failure feedback in the task body."""
         if feedback:
             task = {
                 **task,
-                "body": (
-                    task["body"]
-                    + f"\n\n## Previous Attempt Feedback\n\n{feedback}\n\n"
-                    "Please address the above issue in your revised patch.\n"
-                ),
+                "body": task["body"] + f"\n\n{feedback}\n",
             }
         return call_with_retry(
             lambda: specialist.plan(task, memory=memory),
@@ -377,17 +412,34 @@ class AutonomousLoop:
             return None
 
     def _record_failure(
-        self, task_info: TaskInfo, error: str, attempt: int, start: float
+        self,
+        task_info: TaskInfo,
+        error: str,
+        attempt: int,
+        start: float,
+        tracker: Optional[RecoveryTracker] = None,
     ) -> TaskOutcome:
-        self.mgr.mark_failed(task_info.filename, error[:200])
+        """
+        Mark the task as failed, write a failure report if tracker is provided,
+        and return a TaskOutcome.
+        """
         elapsed = time.monotonic() - start
+        report: Optional[Path] = None
+
+        if tracker is not None:
+            report = tracker.write_failure_report(self.mgr.logs_dir)
+            self._log(task_info.filename, f"REPORT {report.name}")
+
+        self.mgr.mark_failed(task_info.filename, error[:200])
         self._log(task_info.filename, f"FAILED {error[:200]} elapsed={elapsed:.1f}s")
+
         return TaskOutcome(
             filename=task_info.filename,
             result=LoopResult.FAILED,
             attempt=attempt,
             error=error,
             elapsed_seconds=elapsed,
+            failure_report=report,
         )
 
     def _log(self, filename: str, message: str) -> None:
@@ -397,24 +449,26 @@ class AutonomousLoop:
 
     def _escalate(self) -> None:
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-        recent = [r for r in self._results if r.result == LoopResult.FAILED]
+        recent_failures = [r for r in self._results if r.result == LoopResult.FAILED]
         lines = [
             f"# Escalation Notice — {ts}",
             "",
-            f"**{self._consecutive_failures} consecutive failures.**"
+            f"**{self._consecutive_failures} consecutive task failures.**"
             " Human review required before the loop can continue.",
             "",
-            "## Recent Failures",
+            "## Failed Tasks",
             "",
         ]
-        for r in recent[-self.max_consecutive_failures:]:
+        for r in recent_failures[-self.max_consecutive_failures:]:
             lines.append(f"- `{r.filename}`: {r.error or '(no detail)'}")
+            if r.failure_report:
+                lines.append(f"  - Report: `{r.failure_report}`")
         lines += [
             "",
             "## Resolution",
             "",
-            "1. Review per-task logs in `ai_agent/logs/`",
-            "2. Fix the task specification or underlying issue",
+            "1. Review failure reports listed above and logs in `ai_agent/logs/`",
+            "2. Fix the task specification or the underlying codebase issue",
             "3. Delete this file to allow the loop to resume",
             "",
         ]
@@ -434,18 +488,19 @@ def _print_summary(outcomes: list[TaskOutcome]) -> None:
         marker = "✓" if o.result in (LoopResult.DONE, LoopResult.DRY_RUN) else "✗"
         sha = f" [{o.commit_sha}]" if o.commit_sha else ""
         err = f" — {o.error[:60]}" if o.error else ""
-        attempts = f" (attempt {o.attempt})" if o.attempt > 1 else ""
-        print(f"  {marker} {o.filename}{sha}{err}{attempts}")
+        rpt = f" (report: {o.failure_report.name})" if o.failure_report else ""
+        att = f" (attempt {o.attempt}/{MAX_PLAN_ATTEMPTS})" if o.attempt > 1 else ""
+        print(f"  {marker} {o.filename}{sha}{err}{rpt}{att}")
 
 
 def _main(argv=None) -> None:
     parser = argparse.ArgumentParser(
         prog="python -m ai_agent.loop",
-        description="Autonomous engineering loop — processes tasks from ai_agent/queue/",
+        description="Autonomous engineering loop — processes ai_agent/queue/ tasks",
     )
     parser.add_argument(
         "--apply", action="store_true",
-        help="Apply patches and commit (default: dry-run, patches saved only)",
+        help="Apply patches and commit (default: dry-run)",
     )
     parser.add_argument(
         "--all", action="store_true", dest="run_all",
@@ -457,23 +512,28 @@ def _main(argv=None) -> None:
     )
     parser.add_argument(
         "--max-failures", type=int, default=3, metavar="N",
-        help="Consecutive failures before escalating (default: 3)",
+        help="Consecutive task failures before escalating (default: 3)",
     )
     parser.add_argument(
         "--sleep", type=float, default=0.0, metavar="SECS",
         help="Seconds to sleep between tasks (default: 0)",
     )
     parser.add_argument(
-        "--attempts", type=int, default=2, metavar="N",
-        help="Max LLM plan attempts per task, with feedback (default: 2)",
+        "--attempts", type=int, default=MAX_PLAN_ATTEMPTS, metavar="N",
+        help=f"Max plan attempts per task with feedback (default: {MAX_PLAN_ATTEMPTS})",
     )
     args = parser.parse_args(argv)
 
     dry_run = not args.apply
     run_all = args.run_all or args.daemon
 
-    mode = "DRY-RUN (patches saved, not applied)" if dry_run else "APPLY (patches applied and committed)"
+    mode = (
+        "DRY-RUN (patches saved, not applied)"
+        if dry_run
+        else "APPLY (patches applied and committed)"
+    )
     print(f"[LOOP] Mode: {mode}")
+    print(f"[LOOP] Max attempts per task: {args.attempts}")
     print(f"[LOOP] Queue: {QUEUE_DIR}")
 
     mgr = QueueManager()
