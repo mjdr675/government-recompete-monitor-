@@ -8,7 +8,7 @@ from datetime import date
 
 import stripe
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, redirect, session, url_for
+from flask import Flask, flash, g, redirect, render_template, request, session, url_for
 
 from auth import bp as auth_bp
 from change_detector import detect_changes
