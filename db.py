@@ -322,6 +322,72 @@ def get_changes(run_date, change_type):
             ORDER BY c.recompete_score DESC, c.value DESC
         """, (run_date, change_type)).fetchall()
 
+def init_demo_table():
+    with connect() as con:
+        con.execute("""
+        CREATE TABLE IF NOT EXISTS demo_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL,
+            name TEXT,
+            company TEXT,
+            phone TEXT,
+            notes TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            hubspot_contact_id TEXT,
+            hubspot_deal_id TEXT
+        )
+        """)
+        con.commit()
+
+
+def save_demo_request(
+    email: str,
+    name: str = "",
+    company: str = "",
+    phone: str = "",
+    notes: str = "",
+    hubspot_contact_id: str | None = None,
+    hubspot_deal_id: str | None = None,
+) -> None:
+    init_demo_table()
+    with connect() as con:
+        con.execute(
+            """
+            INSERT INTO demo_requests (email, name, company, phone, notes, hubspot_contact_id, hubspot_deal_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (email, name, company, phone, notes, hubspot_contact_id, hubspot_deal_id),
+        )
+        con.commit()
+
+
+def init_early_access_table():
+    with connect() as con:
+        con.execute("""
+        CREATE TABLE IF NOT EXISTS early_access (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            hubspot_contact_id TEXT
+        )
+        """)
+        con.commit()
+
+
+def save_early_access(email: str, hubspot_contact_id: str | None = None) -> None:
+    init_early_access_table()
+    with connect() as con:
+        con.execute(
+            """
+            INSERT INTO early_access (email, hubspot_contact_id)
+            VALUES (?, ?)
+            ON CONFLICT(email) DO UPDATE SET hubspot_contact_id = excluded.hubspot_contact_id
+            """,
+            (email, hubspot_contact_id),
+        )
+        con.commit()
+
+
 _SORTABLE = {"recompete_score", "value", "days_remaining", "end_date", "priority", "vendor", "agency"}
 
 def get_contracts(q="", agency="", priority="", days=None, sort="recompete_score", direction="desc", page=1, limit=25):

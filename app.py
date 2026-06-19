@@ -12,12 +12,21 @@ from flask import Flask, flash, g, redirect, render_template, request, session, 
 
 from auth import bp as auth_bp
 from change_detector import detect_changes
-from db import connect, get_contracts, init_db, upsert_contract, save_snapshot
+from db import (
+    connect,
+    get_contracts,
+    init_db,
+    save_demo_request,
+    save_early_access,
+    save_snapshot,
+    upsert_contract,
+)
 from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
 from analytics import dashboard_analytics, opportunity_recommendations
 from report_builder import build_report
 from views import SAVED_VIEWS, build_view_query
+import hubspot_service
 
 app = Flask(__name__)
 load_dotenv()
@@ -48,6 +57,8 @@ def _warn_if_ephemeral_db() -> None:
 
 _warn_if_ephemeral_db()
 
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+
 _PUBLIC_PATHS = frozenset({
     "/health",
     "/login",
@@ -55,6 +66,9 @@ _PUBLIC_PATHS = frozenset({
     "/create-checkout-session",
     "/success",
     "/cancel",
+    "/demo",
+    "/early-access",
+    "/stripe/webhook",
 })
 
 
@@ -161,31 +175,112 @@ def views_detail(view_id):
 @app.route("/create-checkout-session", methods=["POST"])
 def create_checkout_session():
     try:
-        session = stripe.checkout.Session.create(
+        checkout = stripe.checkout.Session.create(
             payment_method_types=["card"],
             mode="subscription",
-            line_items=[
-                {
-                    "price": STRIPE_PRICE_ID,
-                    "quantity": 1,
-                }
-            ],
-            success_url=request.host_url.rstrip("/") + "/success",
+            line_items=[{"price": STRIPE_PRICE_ID, "quantity": 1}],
+            success_url=request.host_url.rstrip("/") + "/success?session_id={CHECKOUT_SESSION_ID}",
             cancel_url=request.host_url.rstrip("/") + "/cancel",
         )
-        return redirect(session.url, code=303)
+        return redirect(checkout.url, code=303)
     except Exception as e:
         return str(e), 500
 
 
 @app.route("/success")
 def success():
+    session_id = request.args.get("session_id", "")
+    if session_id:
+        try:
+            checkout = stripe.checkout.Session.retrieve(session_id)
+            details = checkout.get("customer_details") or {}
+            email = details.get("email") or ""
+            name = details.get("name") or ""
+            if email:
+                hubspot_service.handle_stripe_checkout(
+                    email=email, name=name, stripe_session_id=session_id
+                )
+        except Exception:
+            logging.exception("Could not retrieve Stripe session %s", session_id)
     return "<h1>Payment successful</h1><p>Welcome to Recompete Beta.</p>"
 
 
 @app.route("/cancel")
 def cancel():
     return "<h1>Checkout canceled</h1><p>You were not charged.</p>"
+
+
+@app.route("/stripe/webhook", methods=["POST"])
+def stripe_webhook():
+    payload = request.get_data()
+    sig = request.headers.get("Stripe-Signature", "")
+    try:
+        if STRIPE_WEBHOOK_SECRET:
+            event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
+        else:
+            event = stripe.Event.construct_from(request.get_json(force=True), stripe.api_key)
+    except (stripe.error.SignatureVerificationError, ValueError) as e:
+        logging.warning("Stripe webhook signature error: %s", e)
+        return "Bad request", 400
+
+    if event["type"] == "checkout.session.completed":
+        checkout = event["data"]["object"]
+        details = checkout.get("customer_details") or {}
+        email = details.get("email") or ""
+        name = details.get("name") or ""
+        session_id = checkout.get("id") or ""
+        if email:
+            hubspot_service.handle_stripe_checkout(
+                email=email, name=name, stripe_session_id=session_id
+            )
+    return "", 200
+
+
+@app.route("/demo", methods=["GET", "POST"])
+def demo():
+    message = None
+    error = None
+    if request.method == "POST":
+        email = request.form.get("email", "").strip()
+        name = request.form.get("name", "").strip()
+        company = request.form.get("company", "").strip()
+        phone = request.form.get("phone", "").strip()
+        notes = request.form.get("notes", "").strip()
+
+        if not email or "@" not in email:
+            error = "A valid email address is required."
+        else:
+            contact_id, deal_id = hubspot_service.handle_demo_request(
+                email=email, name=name, company=company, phone=phone, notes=notes
+            )
+            save_demo_request(
+                email=email,
+                name=name,
+                company=company,
+                phone=phone,
+                notes=notes,
+                hubspot_contact_id=contact_id,
+                hubspot_deal_id=deal_id,
+            )
+            message = "Thanks! We'll be in touch shortly to schedule your demo."
+
+    return render_template("demo.html", message=message, error=error)
+
+
+@app.route("/early-access", methods=["GET", "POST"])
+def early_access():
+    message = None
+    error = None
+    if request.method == "POST":
+        email = request.form.get("email", "").strip()
+        if not email or "@" not in email:
+            error = "A valid email address is required."
+        else:
+            contact_id = hubspot_service.handle_early_access_signup(email)
+            save_early_access(email=email, hubspot_contact_id=contact_id)
+            message = "You're on the list! We'll reach out when early access opens."
+
+    return render_template("early_access.html", message=message, error=error)
 
 
 def ingest():
