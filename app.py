@@ -1,5 +1,6 @@
 import csv
 import io
+import logging
 import os
 import subprocess
 import sys
@@ -18,6 +19,25 @@ from views import SAVED_VIEWS, build_view_query
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
 app.register_blueprint(auth_bp)
+
+
+def _warn_if_ephemeral_db() -> None:
+    """Log a warning when deployed on Railway without a persistent volume.
+
+    Railway's filesystem is ephemeral — contracts.db is wiped on every
+    redeploy unless a volume is attached and DB_PATH points to it.
+    RAILWAY_ENVIRONMENT is set on all Railway deployments; RAILWAY_VOLUME_NAME
+    is only set when a volume is attached to the service.
+    """
+    if os.environ.get("RAILWAY_ENVIRONMENT") and not os.environ.get("RAILWAY_VOLUME_NAME"):
+        logging.warning(
+            "DATA LOSS RISK: Running on Railway with no persistent volume. "
+            "contracts.db is on the ephemeral filesystem and will be wiped on "
+            "every redeploy. Attach a Railway volume and point DB_PATH to it."
+        )
+
+
+_warn_if_ephemeral_db()
 
 _PUBLIC_PATHS = frozenset({"/health", "/login", "/register"})
 

@@ -3,6 +3,7 @@ Tests for the Flask app routes — uses a temporary SQLite database so the real
 contracts.db is never touched.
 """
 
+import logging
 import sqlite3
 import pytest
 import db as db_module
@@ -122,3 +123,33 @@ def test_contracts_zero_days_returns_200(client):
 def test_contracts_positive_days_returns_200(client):
     rv = client.get("/contracts?days=90")
     assert rv.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Railway ephemeral DB warning tests
+# ---------------------------------------------------------------------------
+
+def test_railway_warning_emitted_without_volume(monkeypatch, caplog):
+    import app as flask_app
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT", "production")
+    monkeypatch.delenv("RAILWAY_VOLUME_NAME", raising=False)
+    with caplog.at_level(logging.WARNING):
+        flask_app._warn_if_ephemeral_db()
+    assert "DATA LOSS RISK" in caplog.text
+
+
+def test_railway_warning_suppressed_with_volume(monkeypatch, caplog):
+    import app as flask_app
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT", "production")
+    monkeypatch.setenv("RAILWAY_VOLUME_NAME", "contracts-volume")
+    with caplog.at_level(logging.WARNING):
+        flask_app._warn_if_ephemeral_db()
+    assert "DATA LOSS RISK" not in caplog.text
+
+
+def test_railway_warning_suppressed_outside_railway(monkeypatch, caplog):
+    import app as flask_app
+    monkeypatch.delenv("RAILWAY_ENVIRONMENT", raising=False)
+    with caplog.at_level(logging.WARNING):
+        flask_app._warn_if_ephemeral_db()
+    assert "DATA LOSS RISK" not in caplog.text
