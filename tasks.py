@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import time
 from datetime import datetime, timedelta, timezone
 
 from celery import Celery
@@ -89,6 +90,7 @@ def run_ingest(self):
     is_pg = engine.dialect.name == "postgresql"
     task_id = self.request.id or "unknown"
     started_at = datetime.now(timezone.utc).isoformat()
+    start_time = time.monotonic()
 
     with engine.begin() as conn:
         if is_pg:
@@ -117,7 +119,10 @@ def run_ingest(self):
     try:
         from janitorial_recompete_report import main
         main()
+        duration = time.monotonic() - start_time
         finished_at = datetime.now(timezone.utc).isoformat()
+        with engine.connect() as conn:
+            record_count = conn.execute(text("SELECT COUNT(*) FROM contracts")).scalar() or 0
         with engine.begin() as conn:
             conn.execute(text("""
                 UPDATE celery_task_log
@@ -129,9 +134,22 @@ def run_ingest(self):
                 "result_json": json.dumps({"task_id": task_id, "result": "ok"}),
                 "id": log_id,
             })
+            conn.execute(text("""
+                INSERT INTO ingest_log
+                    (run_date, source, record_count, duration_seconds, status, error_message, created_at)
+                VALUES (:run_date, :source, :record_count, :duration_seconds, :status, NULL, :created_at)
+            """), {
+                "run_date": finished_at[:10],
+                "source": "usaspending",
+                "record_count": record_count,
+                "duration_seconds": duration,
+                "status": "success",
+                "created_at": finished_at,
+            })
         return {"status": "SUCCESS", "task_id": task_id}
     except Exception as exc:
         logger.exception("run_ingest failed (task_id=%s)", task_id)
+        duration = time.monotonic() - start_time
         finished_at = datetime.now(timezone.utc).isoformat()
         with engine.begin() as conn:
             conn.execute(text("""
@@ -143,5 +161,17 @@ def run_ingest(self):
                 "finished_at": finished_at,
                 "result_json": json.dumps({"task_id": task_id, "error": str(exc)}),
                 "id": log_id,
+            })
+            conn.execute(text("""
+                INSERT INTO ingest_log
+                    (run_date, source, record_count, duration_seconds, status, error_message, created_at)
+                VALUES (:run_date, :source, 0, :duration_seconds, :status, :error_message, :created_at)
+            """), {
+                "run_date": finished_at[:10],
+                "source": "usaspending",
+                "duration_seconds": duration,
+                "status": "failure",
+                "error_message": str(exc),
+                "created_at": finished_at,
             })
         raise

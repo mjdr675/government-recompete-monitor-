@@ -23,6 +23,8 @@ def test_db(tmp_path, monkeypatch):
 def client(test_db):
     import app as flask_app
     flask_app.app.config["TESTING"] = True
+    flask_app.app.config["WTF_CSRF_ENABLED"] = False
+    flask_app.app.config["RATELIMIT_ENABLED"] = False
     flask_app.app.secret_key = "test-secret"
     with flask_app.app.test_client() as c:
         c.post("/register", data={
@@ -261,3 +263,55 @@ class TestGetIngestStatusLegacy:
     def test_no_task_id_returns_200(self, client):
         rv = client.get("/ingest/status")
         assert rv.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# ingest_log table (Task 083)
+# ---------------------------------------------------------------------------
+
+class TestIngestLog:
+    def test_success_writes_ingest_log_row(self, test_db, monkeypatch):
+        import tasks as tasks_module
+        from sqlalchemy import text
+
+        monkeypatch.setattr("janitorial_recompete_report.main", MagicMock(), raising=False)
+        tasks_module.run_ingest.apply()
+
+        engine = db_module.get_engine()
+        with engine.connect() as conn:
+            row = conn.execute(text(
+                "SELECT status, source, duration_seconds FROM ingest_log WHERE status='success'"
+            )).fetchone()
+
+        assert row is not None
+        assert row[0] == "success"
+        assert row[1] == "usaspending"
+        assert row[2] >= 0
+
+    def test_failure_writes_ingest_log_row_with_error(self, test_db, monkeypatch):
+        import tasks as tasks_module
+        from sqlalchemy import text
+
+        def boom():
+            raise RuntimeError("network timeout")
+
+        monkeypatch.setattr("janitorial_recompete_report.main", boom, raising=False)
+        result = tasks_module.run_ingest.apply()
+        assert result.failed()
+
+        engine = db_module.get_engine()
+        with engine.connect() as conn:
+            row = conn.execute(text(
+                "SELECT status, error_message FROM ingest_log WHERE status='failure'"
+            )).fetchone()
+
+        assert row is not None
+        assert row[0] == "failure"
+        assert "network timeout" in row[1]
+
+    def test_ingest_log_table_exists_after_init_db(self, test_db):
+        import sqlite3
+        con = sqlite3.connect(test_db)
+        tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        con.close()
+        assert "ingest_log" in tables

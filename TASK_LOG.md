@@ -38,3 +38,4 @@ Append-only log. Each row = one agent run.
 | 2026-06-20 00:00 UTC | backend | Task 080: Add bookmark toggle to contract detail page | 080-watchlist-toggle-contract-detail.md | completed:77-tests-passing |
 | 2026-06-20 00:00 UTC | backend | Task 081: Add GET /watchlist page + nav link | 081-watchlist-page.md | completed:10-tests-passing |
 | 2026-06-20 00:00 UTC | backend | Task 082: Add watchlist count badge to nav | 082-watchlist-nav-badge.md | completed:906-tests-passing |
+| 2026-06-20 00:00 UTC | backend | Task 083: Add ingest_log table and write metadata after run_ingest | 083-ingest-log-table.md | completed:909-tests-passing |

@@ -148,6 +148,18 @@ def init_db():
             UNIQUE(user_id, internal_id)
         )
         """))
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS ingest_log (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_date         TEXT NOT NULL,
+            source           TEXT NOT NULL,
+            record_count     INTEGER NOT NULL DEFAULT 0,
+            duration_seconds REAL,
+            status           TEXT NOT NULL,
+            error_message    TEXT,
+            created_at       TEXT NOT NULL
+        )
+        """))
 
 
 def upsert_contract(row):

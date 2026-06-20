@@ -122,3 +122,15 @@ CREATE TABLE IF NOT EXISTS celery_task_log (
     finished_at  TEXT,
     result_json  TEXT
 );
+
+-- Ingest run metadata log
+CREATE TABLE IF NOT EXISTS ingest_log (
+    id               SERIAL PRIMARY KEY,
+    run_date         TEXT NOT NULL,
+    source           TEXT NOT NULL,
+    record_count     INTEGER NOT NULL DEFAULT 0,
+    duration_seconds REAL,
+    status           TEXT NOT NULL,
+    error_message    TEXT,
+    created_at       TEXT NOT NULL
+);
