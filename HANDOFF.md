@@ -112,3 +112,12 @@ Integrated into `loop.py` between the regex review pass and the patch save step.
 rejects a patch, the findings are recorded in `RecoveryTracker` and injected as feedback
 into the next plan attempt — this is the "fix automatically and re-review" behaviour the
 task required, reusing the existing retry loop.
+
+## 2026-06-20 — [BACKEND] Task 050: GitHub Issues Sync
+**Status:** completed
+**Files changed:** ai_agent/github_issues.py (new), tests/test_github_issues.py (new), ai_agent/done/050-github-issues-sync.md
+**Tests:** 449 → 496 (+47)
+**Notes:** Implemented `sync_issues()` that imports open GitHub issues into ai_agent/queue/.
+Uses gh CLI first, falls back to GITHUB_TOKEN + requests. Deduplicates by scanning queue/,
+done/, and failed/ for existing issue-{number}-*.md files. Preserves ordering by sorting on
+issue number. dry_run=True reports what would be imported without writing files.
