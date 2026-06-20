@@ -96,3 +96,28 @@ def test_watchlist_allows_different_contracts(db):
     count = con.execute("SELECT COUNT(*) FROM user_watchlist WHERE user_id=?", (uid,)).fetchone()[0]
     assert count == 2
     con.close()
+
+
+# ---------------------------------------------------------------------------
+# user_saved_searches table (Task 084)
+# ---------------------------------------------------------------------------
+
+def test_user_saved_searches_table_exists(db):
+    import sqlite3
+    con = sqlite3.connect(db)
+    tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    con.close()
+    assert "user_saved_searches" in tables
+
+
+def test_user_saved_searches_allows_multiple_per_user(db):
+    import sqlite3
+    con = sqlite3.connect(db)
+    con.execute("INSERT INTO users (email, password_hash, created_at) VALUES ('ss@x.com', 'h', '2026-01-01')")
+    uid = con.execute("SELECT id FROM users WHERE email='ss@x.com'").fetchone()[0]
+    con.execute("INSERT INTO user_saved_searches (user_id, name, query_params_json, created_at) VALUES (?, 'Search A', '{}', '2026-01-01')", (uid,))
+    con.execute("INSERT INTO user_saved_searches (user_id, name, query_params_json, created_at) VALUES (?, 'Search B', '{}', '2026-01-01')", (uid,))
+    con.commit()
+    count = con.execute("SELECT COUNT(*) FROM user_saved_searches WHERE user_id=?", (uid,)).fetchone()[0]
+    con.close()
+    assert count == 2

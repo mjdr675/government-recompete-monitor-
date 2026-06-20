@@ -134,3 +134,12 @@ CREATE TABLE IF NOT EXISTS ingest_log (
     error_message    TEXT,
     created_at       TEXT NOT NULL
 );
+
+-- User saved contract searches
+CREATE TABLE IF NOT EXISTS user_saved_searches (
+    id                SERIAL PRIMARY KEY,
+    user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name              TEXT NOT NULL,
+    query_params_json TEXT NOT NULL,
+    created_at        TEXT NOT NULL
+);

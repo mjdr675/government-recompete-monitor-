@@ -160,6 +160,15 @@ def init_db():
             created_at       TEXT NOT NULL
         )
         """))
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS user_saved_searches (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name             TEXT NOT NULL,
+            query_params_json TEXT NOT NULL,
+            created_at       TEXT NOT NULL
+        )
+        """))
 
 
 def upsert_contract(row):
