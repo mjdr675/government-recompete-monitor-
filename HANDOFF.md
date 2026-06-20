@@ -113,6 +113,16 @@ rejects a patch, the findings are recorded in `RecoveryTracker` and injected as 
 into the next plan attempt — this is the "fix automatically and re-review" behaviour the
 task required, reusing the existing retry loop.
 
+## 2026-06-20 — [BACKEND] Task 051: Engineering Metrics
+**Status:** completed
+**Files changed:** ai_agent/metrics.py (new), tests/test_metrics.py (new), ai_agent/metrics.md (new), ai_agent/done/051-observability-dashboard.md
+**Tests:** 496 → 540 (+44)
+**Notes:** Implemented `collect_metrics()` that reads done/failed task counts, parses
+log files for elapsed time/retries/roles/commit SHAs, fetches git commit history, and
+optionally counts tests via pytest --collect-only. `generate_metrics_report()` writes
+a Markdown table to ai_agent/metrics.md. Fixed sys.executable → shutil.which("pytest")
+so test counting works outside the venv.
+
 ## 2026-06-20 — [BACKEND] Task 050: GitHub Issues Sync
 **Status:** completed
 **Files changed:** ai_agent/github_issues.py (new), tests/test_github_issues.py (new), ai_agent/done/050-github-issues-sync.md
