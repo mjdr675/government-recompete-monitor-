@@ -651,3 +651,35 @@ def test_webhook_rejects_bad_signature(monkeypatch, client):
         headers={"Stripe-Signature": "bad-sig"},
     )
     assert rv.status_code == 400
+
+
+def test_csv_export_returns_csv(client):
+    rv = client.get("/contracts/export.csv")
+    assert rv.status_code == 200
+    assert "text/csv" in rv.content_type
+
+
+def test_csv_export_has_correct_headers(client):
+    rv = client.get("/contracts/export.csv")
+    first_line = rv.data.decode().splitlines()[0]
+    assert "internal_id" in first_line
+    assert "vendor" in first_line
+    assert "priority" in first_line
+
+
+def test_csv_export_has_content_disposition(client):
+    rv = client.get("/contracts/export.csv")
+    assert "attachment" in rv.headers.get("Content-Disposition", "")
+    assert "contracts.csv" in rv.headers.get("Content-Disposition", "")
+
+
+def test_csv_export_redirects_when_not_logged_in(test_db):
+    import app as flask_app
+    flask_app.app.config["TESTING"] = True
+    flask_app.app.config["WTF_CSRF_ENABLED"] = False
+    flask_app.app.config["RATELIMIT_ENABLED"] = False
+    flask_app.app.secret_key = "test-secret"
+    with flask_app.app.test_client() as c:
+        rv = c.get("/contracts/export.csv")
+    assert rv.status_code == 302
+    assert "/login" in rv.headers["Location"]

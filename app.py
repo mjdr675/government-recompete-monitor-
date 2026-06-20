@@ -241,6 +241,40 @@ def contracts():
     )
 
 
+@app.route("/contracts/export.csv")
+def contracts_export():
+    q = request.args.get("q", "")
+    agency = request.args.get("agency", "")
+    priority = request.args.get("priority", "")
+    days = request.args.get("days", None)
+    min_value = request.args.get("min_value", type=float)
+    sort = request.args.get("sort", "recompete_score")
+    direction = request.args.get("dir", "desc")
+
+    days_int = int(days) if days else None
+    result = get_contracts(
+        q=q, agency=agency, priority=priority,
+        days=days_int, min_value=min_value,
+        sort=sort, direction=direction,
+        page=1, limit=10000,
+    )
+
+    fields = ["internal_id", "award_id", "vendor", "agency", "value",
+              "end_date", "days_remaining", "priority", "recompete_score"]
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=fields, extrasaction="ignore")
+    writer.writeheader()
+    for row in result["contracts"]:
+        writer.writerow({f: row[f] for f in fields})
+
+    from flask import Response
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=\"contracts.csv\""},
+    )
+
+
 @app.route("/vendor/<name>")
 def vendor_profile(name):
     profile = vendor_profile_query(name)

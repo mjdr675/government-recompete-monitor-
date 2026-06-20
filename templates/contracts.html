@@ -22,6 +22,7 @@
   {% if g.user %}
   <button type="button" onclick="saveSearch()" style="margin-left:8px;">Save this search</button>
   <span id="save-confirm" class="muted" style="margin-left:6px;display:none;">Search saved</span>
+  <a href="/contracts/export.csv?{{ request.query_string.decode() }}" style="margin-left:8px;">Export CSV</a>
   {% endif %}
 </form>
 
