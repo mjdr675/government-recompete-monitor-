@@ -2,8 +2,13 @@
 {% block title %}Contract {{ row["award_id"] or row["internal_id"] }}{% endblock %}
 
 {% block content %}
+<meta name="csrf-token" content="{{ csrf_token() }}">
 <h1>{{ row["award_id"] or row["internal_id"] }}</h1>
 <div class="muted">{{ row["internal_id"] }}</div>
+<button class="bm-btn" data-id="{{ row['internal_id'] }}" onclick="bookmarkToggle(this)"
+        style="background:none;border:none;cursor:pointer;font-size:16px;margin-top:4px;" title="Bookmark">
+  {{ "★ Remove from watchlist" if is_bookmarked else "☆ Add to watchlist" }}
+</button>
 
 <div class="cards" style="margin-top:18px;">
   <div class="card">
@@ -37,4 +42,20 @@
   <tr><th>End Date</th><td>{{ row["end_date"] }}</td></tr>
   <tr><th>Updated</th><td>{{ row["updated_at"] }}</td></tr>
 </table>
+
+<script>
+function bookmarkToggle(btn) {
+  var id = btn.dataset.id;
+  var isBookmarked = btn.textContent.trim().startsWith('★');
+  var url = isBookmarked ? '/watchlist/remove' : '/watchlist/add';
+  var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({internal_id: id, csrf_token: token})
+  }).then(function(r) { return r.json(); }).then(function() {
+    btn.textContent = isBookmarked ? '☆ Add to watchlist' : '★ Remove from watchlist';
+  });
+}
+</script>
 {% endblock %}

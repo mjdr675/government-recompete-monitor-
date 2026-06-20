@@ -447,7 +447,17 @@ def contract_detail(internal_id):
     if not row:
         return redirect("/contracts")
 
-    return render_template("contract_detail.html", row=row)
+    is_bookmarked = False
+    if g.user:
+        engine = get_engine()
+        with engine.connect() as conn:
+            hit = conn.execute(
+                text("SELECT 1 FROM user_watchlist WHERE user_id = :uid AND internal_id = :iid"),
+                {"uid": g.user["id"], "iid": internal_id},
+            ).fetchone()
+        is_bookmarked = hit is not None
+
+    return render_template("contract_detail.html", row=row, is_bookmarked=is_bookmarked)
 
 
 @app.route("/watchlist/add", methods=["POST"])
