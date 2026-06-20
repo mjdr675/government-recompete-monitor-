@@ -214,9 +214,7 @@ def vendor_profile(name):
 
 @app.route("/agency/<name>")
 def agency_profile(name):
-    con = connect()
-    profile = agency_profile_query(con, name)
-    con.close()
+    profile = agency_profile_query(name)
     return render_template("agency.html", agency=name, profile=profile)
 
 

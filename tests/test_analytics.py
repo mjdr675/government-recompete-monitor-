@@ -3,7 +3,7 @@
 import sqlite3
 import pytest
 import db as db_module
-from analytics import opportunity_recommendations, dashboard_analytics, vendor_profile_analytics
+from analytics import opportunity_recommendations, dashboard_analytics, vendor_profile_analytics, agency_profile
 
 
 @pytest.fixture()
@@ -189,5 +189,33 @@ def test_vendor_profile_summary_counts(con):
 def test_vendor_profile_unknown_vendor_returns_empty(con):
     result = vendor_profile_analytics("NoSuchVendor")
     assert result["agencies"] == []
+    assert result["upcoming"] == []
+    assert result["active"] == []
+
+
+# ---------------------------------------------------------------------------
+# agency_profile
+# ---------------------------------------------------------------------------
+
+def test_agency_profile_returns_expected_keys(con):
+    _insert(con, "A1", "AcmeCorp", "DOD", 1_000_000, "HIGH", 80, 60)
+    result = agency_profile("DOD")
+    for key in ("summary", "vendors", "upcoming", "active", "pipeline_by_priority",
+                "score_distribution", "win_loss_summary", "change_events", "timeline"):
+        assert key in result
+
+
+def test_agency_profile_summary_counts(con):
+    _insert(con, "A1", "Alpha", "DOD", 1_000_000, "CRITICAL", 85, 45)
+    _insert(con, "A2", "Beta", "DOD", 500_000, "HIGH", 70, -10)
+    result = agency_profile("DOD")
+    assert result["summary"]["contracts"] == 2
+    assert result["summary"]["active_contracts"] == 1
+    assert result["summary"]["critical_contracts"] == 1
+
+
+def test_agency_profile_unknown_agency_returns_empty(con):
+    result = agency_profile("NoSuchAgency")
+    assert result["vendors"] == []
     assert result["upcoming"] == []
     assert result["active"] == []
