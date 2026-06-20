@@ -46,3 +46,4 @@ Append-only log. Each row = one agent run.
 | 2026-06-20 00:00 UTC | backend | Task 088: Add contract_notes table | 088-contract-notes-schema.md | completed:10-db-tests-passing |
 | 2026-06-20 00:00 UTC | backend | Task 089: Add contract notes route and display on detail page | 089-contract-notes-route-and-ui.md | completed:928-tests-passing |
 | 2026-06-20 00:00 UTC | backend | Task 090: Add CSV export from /contracts | 090-csv-export.md | completed:932-tests-passing |
+| 2026-06-20 00:00 UTC | backend | Task 091: Add GET /api/data-freshness route | 091-data-freshness-api.md | completed:937-tests-passing |

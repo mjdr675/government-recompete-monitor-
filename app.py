@@ -141,6 +141,7 @@ _PUBLIC_PATHS = frozenset({
     "/watchlist/add",
     "/watchlist/remove",
     "/searches/save",
+    "/api/data-freshness",
 })
 
 
@@ -613,6 +614,35 @@ def searches_delete(search_id):
             {"id": search_id, "uid": g.user["id"]},
         )
     return jsonify({"ok": True})
+
+
+@app.route("/api/data-freshness")
+def data_freshness():
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = conn.execute(
+            text(
+                "SELECT created_at, source, record_count FROM ingest_log"
+                " WHERE status = 'success' ORDER BY created_at DESC LIMIT 1"
+            )
+        ).fetchone()
+        total = conn.execute(text("SELECT COUNT(*) FROM contracts")).scalar() or 0
+    if row is None:
+        return jsonify({"last_ingest": None, "record_count": 0, "source": None, "hours_ago": None})
+    last_ingest = row[0]
+    try:
+        ts = datetime.fromisoformat(last_ingest)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        hours_ago = round((datetime.now(timezone.utc) - ts).total_seconds() / 3600, 1)
+    except (ValueError, TypeError):
+        hours_ago = None
+    return jsonify({
+        "last_ingest": last_ingest,
+        "record_count": total,
+        "source": row[1],
+        "hours_ago": hours_ago,
+    })
 
 
 @app.route("/contract/<internal_id>/note", methods=["POST"])
