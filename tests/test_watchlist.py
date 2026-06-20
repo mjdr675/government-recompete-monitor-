@@ -99,3 +99,19 @@ def test_add_then_remove_clears_bookmark(client, auth_db):
     count = con.execute("SELECT COUNT(*) FROM user_watchlist WHERE internal_id='C001'").fetchone()[0]
     con.close()
     assert count == 0
+
+
+# ---------------------------------------------------------------------------
+# GET /watchlist page
+# ---------------------------------------------------------------------------
+
+def test_watchlist_page_returns_200(client):
+    rv = client.get("/watchlist")
+    assert rv.status_code == 200
+    assert b"Watchlist" in rv.data
+
+
+def test_watchlist_page_redirects_when_not_logged_in(anon_client):
+    rv = anon_client.get("/watchlist")
+    assert rv.status_code == 302
+    assert "/login" in rv.headers["Location"]

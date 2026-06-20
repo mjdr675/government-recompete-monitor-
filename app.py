@@ -498,6 +498,23 @@ def watchlist_remove():
     return jsonify({"ok": True})
 
 
+@app.route("/watchlist")
+def watchlist():
+    engine = get_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                "SELECT c.* FROM contracts c"
+                " JOIN user_watchlist w ON w.internal_id = c.internal_id"
+                " WHERE w.user_id = :uid"
+                " ORDER BY c.days_remaining ASC"
+            ),
+            {"uid": g.user["id"]},
+        ).mappings().fetchall()
+    contracts = [dict(r) for r in rows]
+    return render_template("watchlist.html", contracts=contracts, count=len(contracts))
+
+
 @app.route("/compare")
 def compare():
     def _fetch(internal_id):
