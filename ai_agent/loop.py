@@ -581,6 +581,18 @@ def _main(argv=None) -> None:
         "--attempts", type=int, default=MAX_PLAN_ATTEMPTS, metavar="N",
         help=f"Max plan attempts per task with feedback (default: {MAX_PLAN_ATTEMPTS})",
     )
+    parser.add_argument(
+        "--max-tasks", type=int, default=10, metavar="N",
+        help="Max tasks per daemon window before stopping (default: 10)",
+    )
+    parser.add_argument(
+        "--sleep-after-limit", type=float, default=60.0, metavar="MINS",
+        help="Minutes to sleep after a usage-limit error in daemon mode (default: 60)",
+    )
+    parser.add_argument(
+        "--max-runtime", type=float, default=240.0, metavar="MINS",
+        help="Max daemon runtime in minutes before stopping (default: 240)",
+    )
     args = parser.parse_args(argv)
 
     dry_run = not args.apply
@@ -605,22 +617,18 @@ def _main(argv=None) -> None:
     )
 
     if args.daemon:
-        idle = 0
-        while idle < _DAEMON_MAX_IDLE:
-            outcomes = loop.run_loop()
-            if loop._stop_reason == LoopResult.ESCALATED:
-                break
-            if not outcomes:
-                idle += 1
-                print(
-                    f"[LOOP] Queue empty — sleeping {_DAEMON_IDLE_INTERVAL}s "
-                    f"(idle {idle}/{_DAEMON_MAX_IDLE})"
-                )
-                time.sleep(_DAEMON_IDLE_INTERVAL)
-            else:
-                idle = 0
-                _print_summary(outcomes)
-        print("[LOOP] Daemon exiting.")
+        from ai_agent.daemon import DaemonConfig, DaemonRunner  # local import avoids circular dep
+        daemon_cfg = DaemonConfig(
+            max_tasks_per_window=args.max_tasks,
+            sleep_minutes_after_usage_limit=args.sleep_after_limit,
+            max_runtime_minutes=args.max_runtime,
+            idle_sleep_seconds=_DAEMON_IDLE_INTERVAL,
+            max_idle_checks=_DAEMON_MAX_IDLE,
+        )
+        runner = DaemonRunner(loop=loop, config=daemon_cfg)
+        stop_reason = runner.run()
+        _print_summary(loop._results)
+        print(f"[LOOP] Daemon exited. reason={stop_reason}")
     elif run_all:
         outcomes = loop.run_loop()
         _print_summary(outcomes)
