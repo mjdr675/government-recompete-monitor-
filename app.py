@@ -42,6 +42,24 @@ app.jinja_env.globals["format_filter_summary"] = format_filter_summary
 init_db()
 
 # ---------------------------------------------------------------------------
+# Redis availability check (degraded mode on failure — never blocks startup)
+# ---------------------------------------------------------------------------
+
+def _check_redis() -> None:
+    import redis as _redis
+    url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+    try:
+        r = _redis.from_url(url, socket_connect_timeout=2)
+        r.ping()
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "Redis unavailable at %s — running without background tasks", url
+        )
+
+
+_check_redis()
+
+# ---------------------------------------------------------------------------
 # Ingest logging
 # ---------------------------------------------------------------------------
 

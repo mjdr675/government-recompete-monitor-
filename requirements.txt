@@ -21,7 +21,9 @@ MarkupSafe==3.0.3
 packaging==26.2
 pydantic==2.13.4
 pydantic_core==2.46.4
+celery
 psycopg2-binary==2.9.10
+redis
 sqlalchemy>=2.0
 python-dotenv==1.2.2
 requests==2.34.2
