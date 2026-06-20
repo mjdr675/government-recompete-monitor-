@@ -32,18 +32,18 @@ def _insert(c, internal_id, vendor, agency, value, priority, recompete_score, da
 # ---------------------------------------------------------------------------
 
 def test_recommendations_returns_list(con):
-    result = opportunity_recommendations(con)
+    result = opportunity_recommendations()
     assert isinstance(result, list)
 
 
 def test_recommendations_empty_db_returns_empty(con):
-    result = opportunity_recommendations(con)
+    result = opportunity_recommendations()
     assert result == []
 
 
 def test_recommendations_each_entry_has_reason(con):
     _insert(con, "R1", "Alpha", "DOD", 1_000_000, "HIGH", 85, 60)
-    result = opportunity_recommendations(con)
+    result = opportunity_recommendations()
     assert len(result) > 0
     for r in result:
         assert "reason" in r
@@ -53,7 +53,7 @@ def test_recommendations_each_entry_has_reason(con):
 def test_recommendations_top_score_reason(con):
     _insert(con, "R1", "TopScore", "DOD", 500_000, "HIGH", 95, 60)
     _insert(con, "R2", "LowScore", "DHS", 500_000, "HIGH", 10, 60)
-    result = opportunity_recommendations(con)
+    result = opportunity_recommendations()
     reasons = [r["reason"] for r in result]
     assert any("score" in reason.lower() for reason in reasons)
     top = result[0]
@@ -63,7 +63,7 @@ def test_recommendations_top_score_reason(con):
 def test_recommendations_highest_value_reason(con):
     _insert(con, "R1", "Cheap", "DOD", 100_000, "LOW", 50, 60)
     _insert(con, "R2", "Expensive", "DOD", 9_000_000, "HIGH", 50, 60)
-    result = opportunity_recommendations(con)
+    result = opportunity_recommendations()
     reasons = [r["reason"] for r in result]
     assert any("value" in reason.lower() or "Highest" in reason for reason in reasons)
 
@@ -74,7 +74,7 @@ def test_recommendations_soonest_expiration_reason(con):
     _insert(con, "S2", "HighScore2", "DOD", 8_000_000, "HIGH", 90, 200)
     _insert(con, "S3", "HighScore3", "DOD", 7_000_000, "HIGH", 85, 200)
     _insert(con, "R1", "SoonExpire", "DOD", 100_000, "LOW", 10, 5)
-    result = opportunity_recommendations(con)
+    result = opportunity_recommendations()
     reasons = [r["reason"] for r in result]
     assert any("Expiring" in reason for reason in reasons)
     assert any(r["vendor"] == "SoonExpire" and "Expiring" in r["reason"] for r in result)
@@ -86,7 +86,7 @@ def test_recommendations_critical_priority_reason(con):
     _insert(con, "S2", "HighScore2", "DOD", 8_000_000, "HIGH", 90, 300)
     _insert(con, "S3", "HighScore3", "DOD", 7_000_000, "HIGH", 85, 300)
     _insert(con, "R1", "CritVendor", "NSA", 200_000, "CRITICAL", 40, 500)
-    result = opportunity_recommendations(con)
+    result = opportunity_recommendations()
     reasons = [r["reason"] for r in result]
     assert any("Critical" in reason for reason in reasons)
     assert any(r["vendor"] == "CritVendor" and "Critical" in r["reason"] for r in result)
@@ -94,7 +94,7 @@ def test_recommendations_critical_priority_reason(con):
 
 def test_recommendations_no_duplicates(con):
     _insert(con, "R1", "TopAll", "DOD", 9_999_999, "CRITICAL", 99, 1)
-    result = opportunity_recommendations(con)
+    result = opportunity_recommendations()
     ids = [r["internal_id"] for r in result]
     assert len(ids) == len(set(ids))
 
@@ -102,7 +102,7 @@ def test_recommendations_no_duplicates(con):
 def test_recommendations_excludes_inactive_contracts(con):
     _insert(con, "R1", "Dead", "DOD", 9_999_999, "CRITICAL", 99, -10)
     _insert(con, "R2", "NoDay", "DHS", 9_000_000, "CRITICAL", 95, None)
-    result = opportunity_recommendations(con)
+    result = opportunity_recommendations()
     vendors = [r["vendor"] for r in result]
     assert "Dead" not in vendors
 
@@ -112,7 +112,7 @@ def test_recommendations_no_crash_without_changes_table(con):
     con.execute("DROP TABLE IF EXISTS changes")
     con.commit()
     _insert(con, "R1", "Alpha", "DOD", 500_000, "HIGH", 80, 30)
-    result = opportunity_recommendations(con)
+    result = opportunity_recommendations()
     assert isinstance(result, list)
 
 

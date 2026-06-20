@@ -139,10 +139,8 @@ def health():
 
 @app.route("/")
 def dashboard():
-    con = connect()
     analytics = dashboard_analytics()
-    recommendations = opportunity_recommendations(con)
-    con.close()
+    recommendations = opportunity_recommendations()
     return render_template(
         "dashboard.html",
         report=build_report(date.today().isoformat()),

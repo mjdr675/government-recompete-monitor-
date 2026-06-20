@@ -26,3 +26,4 @@ Append-only log. Each row = one agent run.
 | 2026-06-20 00:00 UTC | backend | Task 067: Fix dashboard_analytics() PostgreSQL compatibility | 067-fix-analytics-dashboard.md | completed:15-tests-passing |
 | 2026-06-20 00:00 UTC | backend | Task 068: Fix vendor_profile_analytics() PostgreSQL compatibility | 068-fix-analytics-vendor-profile.md | completed:18-tests-passing |
 | 2026-06-20 00:00 UTC | backend | Task 069: Fix agency_profile() PostgreSQL compatibility | 069-fix-analytics-agency-profile.md | completed:21-tests-passing |
+| 2026-06-20 00:00 UTC | backend | Task 070: Fix opportunity_recommendations() PostgreSQL compatibility | 070-fix-analytics-recommendations.md | completed:21-tests-passing |
