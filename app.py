@@ -106,6 +106,7 @@ def contracts():
     agency = request.args.get("agency", "")
     priority = request.args.get("priority", "")
     days = request.args.get("days", None)
+    min_value = request.args.get("min_value", type=float)
     sort = request.args.get("sort", "recompete_score")
     direction = request.args.get("dir", "desc")
     page = int(request.args.get("page", 1))
@@ -114,11 +115,15 @@ def contracts():
     if days_int is not None and days_int < 0:
         return "days parameter must be a non-negative integer", 400
 
+    if min_value is not None and min_value < 0:
+        return "min_value must be a non-negative number", 400
+
     result = get_contracts(
         q=q,
         agency=agency,
         priority=priority,
         days=days_int,
+        min_value=min_value,
         sort=sort,
         direction=direction,
         page=page,
