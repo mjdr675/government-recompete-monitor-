@@ -28,3 +28,4 @@ Append-only log. Each row = one agent run.
 | 2026-06-20 00:00 UTC | backend | Task 069: Fix agency_profile() PostgreSQL compatibility | 069-fix-analytics-agency-profile.md | completed:21-tests-passing |
 | 2026-06-20 00:00 UTC | backend | Task 070: Fix opportunity_recommendations() PostgreSQL compatibility | 070-fix-analytics-recommendations.md | completed:21-tests-passing |
 | 2026-06-20 00:00 UTC | backend | Task 071: Add Flask-WTF CSRF protection and auth form tokens | 071-csrf-infrastructure.md | completed:24-tests-passing |
+| 2026-06-20 00:00 UTC | backend | Task 072: Add CSRF tokens to ingest, demo, early-access forms | 072-csrf-remaining-forms.md | completed:45-tests-passing |

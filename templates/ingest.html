@@ -18,6 +18,7 @@
     <h2 style="margin-top:0;">CSV Upload</h2>
     <p class="muted">Upload a recompete report CSV. Rows are upserted into the database and a snapshot is saved for today.</p>
     <form method="post" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="csv">
       <input type="file" name="file" accept=".csv" required style="display:block;margin-bottom:12px;">
       <button type="submit">Upload &amp; Import</button>
@@ -27,6 +28,7 @@
   <div class="card" style="flex:1;min-width:280px;">
     <h2 style="margin-top:0;">API Pull</h2>
     <p class="muted">Fetch fresh contract data from USASpending.gov and enrich with SAM.gov. Runs in the background — check the dashboard in a few minutes.</p>
+    <input type="hidden" id="csrf-token" value="{{ csrf_token() }}">
     <button id="start-pull-btn" onclick="startPull()">Start Pull</button>
     <div id="pull-status" style="margin-top:12px;display:none;">
       <span id="pull-status-text" class="muted">Enqueuing…</span>
@@ -52,6 +54,7 @@ function startPull() {
 
   var formData = new FormData();
   formData.append('action', 'api');
+  formData.append('csrf_token', document.getElementById('csrf-token').value);
 
   fetch('/ingest', {method: 'POST', body: formData})
     .then(function(r) { return r.json(); })

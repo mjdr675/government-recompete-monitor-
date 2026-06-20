@@ -17,6 +17,7 @@
 
 {% if not message %}
 <form method="post" style="max-width:480px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div style="margin-bottom:14px;">
     <label style="display:block;margin-bottom:4px;font-weight:bold;">Full Name</label>
     <input type="text" name="name" placeholder="Jane Smith"
