@@ -2,6 +2,7 @@ import csv
 import io
 import json
 import logging
+import urllib.parse
 import os
 import subprocess
 import sys
@@ -566,6 +567,31 @@ def searches_delete(search_id):
             {"id": search_id, "uid": g.user["id"]},
         )
     return jsonify({"ok": True})
+
+
+@app.route("/searches")
+def searches():
+    engine = get_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                "SELECT id, name, query_params_json, created_at"
+                " FROM user_saved_searches WHERE user_id = :uid"
+                " ORDER BY created_at DESC"
+            ),
+            {"uid": g.user["id"]},
+        ).mappings().fetchall()
+    searches_list = []
+    for r in rows:
+        params = json.loads(r["query_params_json"] or "{}")
+        searches_list.append({
+            "id": r["id"],
+            "name": r["name"],
+            "created_at": r["created_at"],
+            "params": params,
+            "url": "/contracts?" + urllib.parse.urlencode(params) if params else "/contracts",
+        })
+    return render_template("searches.html", searches=searches_list, count=len(searches_list))
 
 
 @app.route("/compare")

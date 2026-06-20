@@ -99,6 +99,22 @@ def test_delete_unauthenticated_returns_401(anon_client):
     assert rv.status_code == 401
 
 
+# ---------------------------------------------------------------------------
+# GET /searches page
+# ---------------------------------------------------------------------------
+
+def test_searches_page_returns_200(client):
+    rv = client.get("/searches")
+    assert rv.status_code == 200
+    assert b"Saved Searches" in rv.data
+
+
+def test_searches_page_redirects_when_not_logged_in(anon_client):
+    rv = anon_client.get("/searches")
+    assert rv.status_code == 302
+    assert "/login" in rv.headers["Location"]
+
+
 def test_delete_removes_row_from_db(client, auth_db):
     import sqlite3
     rv = client.post("/searches/save", json={"name": "Gone", "params": {}})

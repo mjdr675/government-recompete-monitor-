@@ -42,3 +42,4 @@ Append-only log. Each row = one agent run.
 | 2026-06-20 00:00 UTC | backend | Task 084: Add user_saved_searches table | 084-saved-searches-schema.md | completed:9-tests-passing |
 | 2026-06-20 00:00 UTC | backend | Task 085: Add POST /searches/save and DELETE /searches/:id routes | 085-saved-searches-routes.md | completed:920-tests-passing |
 | 2026-06-20 00:00 UTC | frontend | Task 086: Add "Save this search" button to contracts filter bar | 086-saved-searches-ui-button.md | completed:920-tests-passing |
+| 2026-06-20 00:00 UTC | frontend | Task 087: Add GET /searches page listing saved searches | 087-saved-searches-page.md | completed:922-tests-passing |

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Saved Searches{% endblock %}
+
+{% block content %}
+<h1>Saved Searches</h1>
+<div class="muted">{{ count }} saved search{{ "es" if count != 1 else "" }}</div>
+
+{% if searches %}
+<table>
+<tr>
+  <th>Name</th>
+  <th>Filters</th>
+  <th>Saved</th>
+  <th>Actions</th>
+</tr>
+{% for s in searches %}
+<tr id="search-row-{{ s.id }}">
+  <td><a href="{{ s.url }}">{{ s.name }}</a></td>
+  <td class="muted" style="font-size:13px;">
+    {% if s.params %}
+      {{ s.params | tojson }}
+    {% else %}
+      All contracts
+    {% endif %}
+  </td>
+  <td class="muted">{{ s.created_at[:10] }}</td>
+  <td>
+    <a href="{{ s.url }}">Run</a>
+    &nbsp;
+    <button onclick="deleteSearch({{ s.id }}, this)" style="background:none;border:none;cursor:pointer;color:#b00020;padding:0;">Delete</button>
+  </td>
+</tr>
+{% endfor %}
+</table>
+{% else %}
+<p class="muted">No saved searches yet. Use the <a href="/contracts">contracts</a> filter and click "Save this search".</p>
+{% endif %}
+
+<script>
+function deleteSearch(id, btn) {
+  fetch('/searches/' + id, {method: 'DELETE'})
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        var row = document.getElementById('search-row-' + id);
+        if (row) row.remove();
+        var countEl = document.querySelector('.muted');
+        if (countEl) {
+          var match = countEl.textContent.match(/^(\d+)/);
+          if (match) {
+            var n = parseInt(match[1]) - 1;
+            countEl.textContent = n + ' saved search' + (n !== 1 ? 'es' : '');
+          }
+        }
+      }
+    });
+}
+</script>
+{% endblock %}
