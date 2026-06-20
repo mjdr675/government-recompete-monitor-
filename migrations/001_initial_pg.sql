@@ -103,3 +103,13 @@ CREATE TABLE IF NOT EXISTS early_access (
     created_at          TEXT DEFAULT CURRENT_TIMESTAMP,
     hubspot_contact_id  TEXT
 );
+
+-- Celery task execution log
+CREATE TABLE IF NOT EXISTS celery_task_log (
+    id           SERIAL PRIMARY KEY,
+    task_name    TEXT,
+    status       TEXT,
+    started_at   TEXT,
+    finished_at  TEXT,
+    result_json  TEXT
+);

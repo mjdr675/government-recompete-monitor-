@@ -129,6 +129,16 @@ def init_db():
         conn.execute(text(
             "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)"
         ))
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS celery_task_log (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_name   TEXT,
+            status      TEXT,
+            started_at  TEXT,
+            finished_at TEXT,
+            result_json TEXT
+        )
+        """))
 
 
 def upsert_contract(row):
