@@ -124,10 +124,25 @@ a Markdown table to ai_agent/metrics.md. Fixed sys.executable → shutil.which("
 so test counting works outside the venv.
 
 ## 2026-06-20 — [BACKEND] Task 050: GitHub Issues Sync
-**Status:** completed
+**Status:** completed — commit 9a23b0b
 **Files changed:** ai_agent/github_issues.py (new), tests/test_github_issues.py (new), ai_agent/done/050-github-issues-sync.md
 **Tests:** 449 → 496 (+47)
 **Notes:** Implemented `sync_issues()` that imports open GitHub issues into ai_agent/queue/.
 Uses gh CLI first, falls back to GITHUB_TOKEN + requests. Deduplicates by scanning queue/,
 done/, and failed/ for existing issue-{number}-*.md files. Preserves ordering by sorting on
 issue number. dry_run=True reports what would be imported without writing files.
+
+## 2026-06-20 — [BACKEND] Task 052: Daemon Mode
+**Status:** completed — commit 3b3e13c
+**Files changed:** ai_agent/daemon.py (new), ai_agent/loop.py, tests/test_daemon.py (new)
+**Tests:** 378 → 411 (+33)
+**Notes:** DaemonConfig/DaemonRunner with SIGTERM/SIGINT safe shutdown, 12 usage-limit
+error patterns, sleep-after-limit, max_tasks_per_window, max_runtime_minutes caps.
+loop.py gained --daemon, --max-tasks, --sleep-after-limit, --max-runtime CLI flags.
+
+## 2026-06-20 — Queue reconciliation (Tasks 049–052)
+**Status:** reconciled
+**Root cause:** Commit daeea92 removed stale queue entries 049/050/051; its revert
+(1a7f3c5) put them back. Task 052 implementation existed in 3b3e13c but queue file
+was never moved to done/. This commit removes the three stale queue entries and moves
+052 to done. No implementation code was changed.

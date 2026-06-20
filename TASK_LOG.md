@@ -16,4 +16,6 @@ Append-only log. Each row = one agent run.
 | 2026-06-20 00:00 UTC | backend | Task 048: AI Reviewer | 048-ai-reviewer.md | completed:312c417 |
 | 2026-06-20 00:00 UTC | backend | Task 049: GitHub PR Builder | 049-github-pr-builder.md | completed:4fa7468 |
 | 2026-06-20 00:00 UTC | backend | Task 050: GitHub Issues Sync | 050-github-issues-sync.md | completed:9a23b0b |
-| 2026-06-20 00:00 UTC | backend | Task 051: Engineering Metrics | 051-observability-dashboard.md | completed |
+| 2026-06-20 00:00 UTC | backend | Task 051: Engineering Metrics | 051-observability-dashboard.md | completed:74475dd |
+| 2026-06-20 00:00 UTC | backend | Task 052: Daemon Mode | 052-daemon-mode.md | completed:3b3e13c |
+| 2026-06-20 00:00 UTC | reconcile | Queue reconciliation 049–052 | — | stale queue entries removed; 052 moved to done |
