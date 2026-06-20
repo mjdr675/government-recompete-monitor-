@@ -15,28 +15,39 @@ For coding standards see `docs/STYLE.md`. For feature-level architecture see `do
                          │ HTTP
 ┌────────────────────────▼────────────────────────────────┐
 │                  Railway (cloud)                        │
-│  Procfile: python -c "init_db()" && gunicorn app:app    │
 │                                                         │
 │  ┌──────────────────────────────────────────────────┐   │
-│  │               Flask (app.py)                     │   │
-│  │  auth.py blueprint  ·  require_login hook        │   │
-│  │  Jinja2 templates   ·  session cookie (SECRET_KEY│   │
+│  │          Flask (app.py + auth.py blueprint)      │   │
+│  │  require_login · CSRFProtect · Flask-Limiter     │   │
+│  │  Jinja2 templates · session cookie (SECRET_KEY)  │   │
 │  └──────────────┬──────────────────┬────────────────┘   │
 │                 │                  │                     │
 │  ┌──────────────▼────┐  ┌──────────▼─────────────────┐  │
-│  │   db.py / users.py│  │   analytics.py             │  │
-│  │   SQLite          │  │   report_builder.py        │  │
-│  │   contracts.db    │  │   change_detector.py       │  │
+│  │  db.py / users.py │  │  analytics.py              │  │
+│  │  SQLAlchemy Core  │  │  report_builder.py         │  │
+│  │  PostgreSQL (prod)│  │  change_detector.py        │  │
+│  │  SQLite (dev/test)│  │  email_service.py (Sprint D│  │
 │  └───────────────────┘  └────────────────────────────┘  │
-└─────────────────────────────────────────────────────────┘
-
-Local machine:
-┌─────────────────────────────────────────────────────────┐
-│  ai_agent/  (runs locally, commits locally, never pushes│
-│  agent.py → manager.py → specialist → llm.py           │
-│                        → reviewer.py → patcher.py       │
-│                                      → pytest → git commit│
-│  memory.py  (.ai_agent_memory.db — repo knowledge index)│
+│                                                         │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │  Celery Worker + Beat (tasks.py)                 │   │
+│  │  Broker: Redis · Backend: Redis                  │   │
+│  │  Schedules: nightly ingest 02:00 UTC             │   │
+│  │             heartbeat every 5 min                │   │
+│  │             beat health check every 10 min       │   │
+│  └──────────────────────────────────────────────────┘   │
+│                                                         │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │  PostgreSQL (Railway plugin)                     │   │
+│  │  Schema: migrations/001_initial_pg.sql           │   │
+│  │  Applied via Procfile release step               │   │
+│  └──────────────────────────────────────────────────┘   │
+│                                                         │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │  Redis (Railway plugin)                          │   │
+│  │  Celery broker + result backend                  │   │
+│  │  beat:health key (TTL 15 min)                    │   │
+│  └──────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -45,19 +56,24 @@ Local machine:
 ## Flask Application
 
 **Entry point:** `app.py`  
-**Pattern:** route handler only — no business logic  
+**Pattern:** route handler only — no business logic in routes  
 **Auth:** `auth.py` Blueprint, session cookie, `require_login` before_request  
+**CSRF:** Flask-WTF `CSRFProtect` — all POST forms require `csrf_token`; JSON API routes are `@csrf.exempt`  
+**Rate limiting:** Flask-Limiter — `POST /login` limited to 5/min per IP  
 
 ### Request lifecycle
 
 ```
 Request arrives
-  → require_login (before_request)
-      → public path (/health /login /register)? → pass through
+  → require_login (app before_request)
+      → path in _PUBLIC_PATHS frozenset? → pass through
+      → method==DELETE and path starts /searches/? → pass through (JSON auth)
+      → method==POST and path ends /note? → pass through (JSON auth)
       → session has user_id? → pass through
       → else → redirect /login?next=<path>
   → load_logged_in_user (auth blueprint before_app_request)
-      → sets g.user from DB for use in templates
+      → sets g.user from DB
+      → sets g.watchlist_count (COUNT from user_watchlist, 0 if not logged in)
   → route handler
       → queries db.py / analytics.py
       → renders Jinja2 template
@@ -69,261 +85,222 @@ Request arrives
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | GET | `/health` | None | Railway uptime probe |
-| GET/POST | `/login` | None | Sign-in form — `POST` rate-limited to 5/min per IP |
+| GET/POST | `/login` | None | Sign-in — POST rate-limited 5/min/IP |
 | GET/POST | `/register` | None | Account creation |
 | GET | `/logout` | None | Clear session |
-| GET | `/` | Required | Dashboard summary |
-| GET | `/contracts` | Required | Searchable contract list |
-| GET | `/contract/<id>` | Required | Contract detail |
+| GET | `/` | Required | Dashboard with freshness indicator |
+| GET | `/contracts` | Required | Searchable/filterable contract list |
+| GET | `/contracts/export.csv` | Required | CSV export of current filter |
+| GET | `/contract/<id>` | Required | Contract detail + notes |
+| POST | `/contract/<id>/note` | JSON self-auth | Add private note |
 | GET | `/compare` | Required | Side-by-side comparison |
 | GET | `/vendor/<name>` | Required | Vendor intelligence |
 | GET | `/agency/<name>` | Required | Agency intelligence |
 | GET | `/views` | Required | Saved view list |
 | GET | `/views/<id>` | Required | Saved view (redirect) |
 | GET/POST | `/ingest` | Required | CSV upload / API pull |
+| GET | `/ingest/status` | Required | Ingest status (task_id or log tail) |
+| GET | `/watchlist` | Required | Bookmarked contracts page |
+| POST | `/watchlist/add` | JSON self-auth | Bookmark a contract |
+| POST | `/watchlist/remove` | JSON self-auth | Remove bookmark |
+| GET | `/searches` | Required | Saved searches page |
+| POST | `/searches/save` | JSON self-auth | Save current filter as named search |
+| DELETE | `/searches/<id>` | JSON self-auth | Delete saved search |
+| GET | `/api/data-freshness` | None | Last ingest timestamp + record count |
+| GET/POST | `/demo` | None | Demo request form |
+| GET/POST | `/early-access` | None | Early access sign-up |
+| POST | `/create-checkout-session` | None | Stripe checkout |
+| POST | `/stripe/webhook` | None (sig-verified) | Stripe event handler |
+| GET | `/success` | None | Post-checkout success |
+| GET | `/cancel` | None | Post-checkout cancel |
+
+### `_PUBLIC_PATHS` frozenset
+
+Routes in this set bypass `require_login`. JSON API routes with dynamic path segments
+(`/searches/<id>` DELETE, `/contract/<id>/note` POST) are not in the frozenset — they
+use method+prefix checks in `require_login` and handle their own auth (return 401 JSON).
 
 ---
 
 ## Database
 
-**Engine:** SQLite 3 via Python standard library `sqlite3`. No ORM.  
-**File:** `contracts.db` (ephemeral on Railway — Phase 2 migrates to PostgreSQL)  
-**Initialization:** `db.init_db()` — idempotent, called from Procfile at startup  
+**Engine:** SQLAlchemy Core ≥ 2.0 (`get_engine()` in `db.py`)  
+**Production:** PostgreSQL via `DATABASE_URL` env var  
+**Development/test:** SQLite (`contracts.db`, or `tmp_path` fixture override)  
+**Initialization:** `db.init_db()` — SQLite only; PostgreSQL uses `migrations/001_initial_pg.sql`  
+**Dialect branching:** `is_pg = engine.dialect.name == "postgresql"` — used for `RETURNING id` vs `lastrowid`  
+**Engine caching:** `_cached_engine(url)` is LRU-cached by URL string for connection reuse  
 
-### Schema
+### Schema tables
 
-**`contracts`** — core contract records  
-Primary key: `internal_id TEXT`  
-Key columns: `vendor`, `agency`, `value`, `end_date`, `days_remaining`, `recompete_score`, `priority`  
-FTS5 virtual table `contracts_fts` mirrors `vendor`, `agency`, `award_id` for full-text search.  
-SQLite triggers keep FTS in sync on INSERT/UPDATE/DELETE.
+| Table | Purpose |
+|---|---|
+| `contracts` | Core contract records. FTS via FTS5 (SQLite) or `tsvector` generated column (PostgreSQL) |
+| `contract_snapshots` | Point-in-time copies for change detection. Unique on `(run_date, internal_id)` |
+| `changes` | Detected contract changes between snapshot runs |
+| `users` | Registered accounts. `email UNIQUE`, scrypt password hash, `is_active` flag |
+| `celery_task_log` | Celery task execution records (`RUNNING` → `SUCCESS`/`FAILURE`) |
+| `user_watchlist` | Per-user bookmarked contracts. `UNIQUE(user_id, internal_id)` |
+| `user_saved_searches` | Per-user named filter presets. Stores `query_params_json` |
+| `contract_notes` | Per-user private notes on contracts |
+| `ingest_log` | Ingest run metadata: `run_date`, `source`, `record_count`, `duration_seconds`, `status`, `error_message` |
+| `demo_requests` | Demo form submissions with optional HubSpot IDs |
+| `early_access` | Early access sign-ups. `email UNIQUE` |
 
-**`users`** — registered accounts  
-Primary key: `id INTEGER AUTOINCREMENT`  
-Columns: `email UNIQUE`, `password_hash` (Werkzeug scrypt), `created_at`, `is_active`  
-Index on `email` for fast login lookup.
+### SQLAlchemy Core patterns
 
-**`contract_snapshots`** — point-in-time copies for change detection  
-Unique on `(run_date, internal_id)`.
+All queries use named parameters (`:param`), `text()`, and `.mappings().fetchone()/fetchall()`.
+No ORM models. Results are converted to `dict` before use in templates.
 
-**`changes`** — detected changes between snapshots  
-Drives the change detection system and future alerting.
+```python
+# Standard read pattern
+with get_engine().connect() as conn:
+    row = conn.execute(text("SELECT * FROM users WHERE id = :id"), {"id": uid}).mappings().fetchone()
 
-### Write safety
-
-SQLite is single-writer. Concurrent writes from multiple gunicorn workers are
-serialized by SQLite's WAL mode (enabled automatically). This works at low
-traffic. Phase 2 migrates to PostgreSQL when concurrent write contention appears.
+# Standard write pattern
+with get_engine().begin() as conn:  # auto-commit on exit
+    conn.execute(text("INSERT INTO ... VALUES (:a, :b)"), {"a": ..., "b": ...})
+```
 
 ---
 
 ## Authentication
 
 **Module:** `auth.py` (Flask Blueprint) + `users.py` (model)  
-**Session store:** Flask signed cookie (`itsdangerous`) — requires `SECRET_KEY` env var  
+**Session store:** Flask signed cookie — requires `SECRET_KEY` env var  
 **Password hashing:** Werkzeug `generate_password_hash` with scrypt  
 
-### Security properties
+### Security controls
 
-- Passwords are never stored, logged, or transmitted in plaintext
-- Sessions are signed with `SECRET_KEY` — tampering invalidates the cookie
-- All routes except `/health`, `/login`, `/register` require an active session
-- `g.user` is populated from DB on every request (not from session data directly)
-- Email addresses are normalized to lowercase on creation and lookup
-- CSRF protection via Flask-WTF `CSRFProtect` — all POST forms require a valid `csrf_token` field; `POST /stripe/webhook` is exempt via `@csrf.exempt`
-
-### Environment variables
-
-| Variable | Required | Default | Notes |
-|---|---|---|---|
-| `SECRET_KEY` | Production | `"dev-secret-change-in-production"` | Must be set in Railway |
-| `AUTH_USER` | No | (removed) | Legacy Basic Auth — no longer used |
-| `AUTH_PASS` | No | (removed) | Legacy Basic Auth — no longer used |
-
----
-
-## Repository Memory
-
-**Module:** `ai_agent/memory.py`  
-**Database:** `.ai_agent_memory.db` (SQLite, gitignored, auto-rebuilt)  
-**Purpose:** Gives the AI agent structured knowledge of the codebase so it can write
-targeted patches without reading every file on every run.
-
-### What is indexed
-
-For every `.py` file in the repo:
-- **Functions** — name, line number, docstring excerpt, source snippet
-- **Classes** — name, line number, method list
-- **Flask routes** — HTTP path, handler function name, methods
-- **Imports** — module name and alias
-- **Template references** — `render_template()` call sites
-
-### Update strategy
-
-Mtime-based incremental indexing. Only files modified since the last index run
-are re-parsed. Full rebuild: `RepoMemory.index(force=True)`.
-
-### Search API
-
-```python
-mem = get_memory(repo_root)
-mem.find_function("get_contracts")   # → list of {name, file, line, source}
-mem.find_route("/contracts")         # → list of {path, handler, file}
-mem.find_class("RepoMemory")         # → list of {name, file, methods}
-mem.get_function_source("compare")   # → str source of function
-```
-
----
-
-## AI Agent Workflow
-
-The agent system runs locally and never pushes to the remote. One run = one task.
-
-```
-python ai_agent/agent.py
-  │
-  ├── Safety checks
-  │   ├── Branch must be 'ai-agent' when DRY_RUN=false
-  │   └── Git status logged
-  │
-  ├── memory.update()          — re-index changed files
-  │
-  ├── load_all_tasks()         — read backlog/ in priority order
-  │   critical → bugs → high → medium → TASK.md
-  │
-  ├── assign_specialist(task)  — keyword match
-  │   devops / qa / frontend / docs / backend (default)
-  │
-  ├── specialist.plan(task, memory)  — LLM call via llm.py
-  │
-  ├── reviewer.review(patch)   — safety scan (blocks dangerous patterns)
-  │
-  ├── save_patch()             — write to patches/
-  │
-  ├── write_handoff()          — append to HANDOFF.md
-  ├── write_task_log()         — append row to TASK_LOG.md
-  │
-  └── if DRY_RUN=false and APPLY_PATCH=true and safe:
-        patcher.execute()
-```
+| Control | Implementation |
+|---|---|
+| CSRF | Flask-WTF `CSRFProtect` — `csrf_token` hidden field on all POST forms; `@csrf.exempt` on JSON API routes and Stripe webhook |
+| Rate limiting | Flask-Limiter 4.x — `POST /login` 5/min/IP; `app.view_functions["auth.login"]` reassigned to wrapper so limit is enforced |
+| Stripe webhook | `STRIPE_WEBHOOK_SECRET` env var required — unsigned requests return 400; no fallback |
+| Session | Signed cookie; `g.user` populated from DB on every request (not trusted from session) |
+| Email normalization | Lowercased and stripped on creation and lookup |
 
 ### Environment variables
 
-| Variable | Default | Effect |
+| Variable | Required | Notes |
 |---|---|---|
-| `DRY_RUN` | `true` | Never modify files |
-| `APPLY_PATCH` | `false` | Apply reviewed patches |
-| `ANTHROPIC_API_KEY` | (unset) | Required for LLM calls |
+| `SECRET_KEY` | Yes | Flask session signing |
+| `DATABASE_URL` | Yes (prod) | PostgreSQL connection string |
+| `REDIS_URL` | Yes (prod) | Celery broker + backend |
+| `STRIPE_SECRET_KEY` | Yes (prod) | Stripe API |
+| `STRIPE_WEBHOOK_SECRET` | Yes (prod) | Webhook signature verification |
+| `HUBSPOT_ACCESS_TOKEN` | No | CRM integration |
+| `APP_URL` | No | Base URL for email links (default `https://govrecompete.com`) |
+| `EMAIL_API_KEY` | No | Resend API key — email silently skipped if absent |
+| `SMTP_FROM` | No | Sender address (default `noreply@govrecompete.com`) |
+| `SENTRY_DSN` | No | Sentry error tracking — disabled if absent |
 
 ---
 
-## Patch Pipeline
+## Background Tasks (Celery)
 
-**Module:** `ai_agent/patcher.py`
+**Module:** `tasks.py`  
+**Broker/backend:** Redis (`REDIS_URL`)  
+**Serializer:** JSON  
 
-### Patch file format
+| Task | Schedule | Purpose |
+|---|---|---|
+| `tasks.run_ingest` | Daily 02:00 UTC | SAM.gov ingest pipeline; writes to `ingest_log`; logs ERROR if `record_count < 10` |
+| `tasks.heartbeat` | Every 5 min | Writes timestamp to `beat:health` Redis key (TTL 15 min) |
+| `tasks.check_beat_health` | Every 10 min | Logs ERROR if `beat:health` key is missing or stale |
+| `tasks.send_email_task` | On-demand | Wraps `email_service.send_email()`; retries up to 3× on failure |
 
-```markdown
-# Proposed Patch
-**Task:** Short description
-**Role:** backend
-**Status:** proposed — not applied
+### Ingest quality alert
 
-## Patch: path/to/file.py
-### Before
-```python
-<exact text to replace>
-```
-### After
-```python
-<replacement text>
-```
-```
-
-### Execution pipeline
-
-```
-parse_patch(path)
-  → validate()
-      ✓ No path traversal (..)
-      ✓ File exists within repo root
-      ✓ File is UTF-8 text
-      ✓ Before text appears exactly once
-  → _apply_changes()
-      → backup all files to memory
-      → write After text
-  → _run_tests()  (pytest --tb=short -q)
-      → PASS: _commit() → git add + git commit
-      → FAIL: _rollback() → restore from backup
-               _save_failure_report() → patches/failures/
-```
-
-### Safety scanner (`reviewer.py`)
-
-Blocks patches containing: `git push`, `rm -rf`, `DROP TABLE`, `DELETE FROM`,
-`subprocess` exec, `.env` file reads, hardcoded API keys.
+After each successful `run_ingest`, `record_count = COUNT(*) FROM contracts` is checked.
+If `record_count < _QUALITY_THRESHOLD` (10), an ERROR is logged. The `ingest_log` row
+is still written as `status="success"` — the alert signals a data quality concern, not a task failure.
 
 ---
 
-## Testing Pipeline
+## Email Infrastructure (Sprint D)
+
+**Module:** `email_service.py`  
+**Provider:** Resend (REST API at `https://api.resend.com/emails`)  
+**Auth:** `EMAIL_API_KEY` env var (Bearer token)  
+**Sender:** `SMTP_FROM` env var  
+
+If `EMAIL_API_KEY` is not set, `send_email()` logs a WARNING and returns `None`.
+All callers must handle a `None` return gracefully.
+
+Email templates live in `templates/email/`. Child templates extend `email/base.html`
+(HTML, inline CSS only — no `<style>` blocks for Gmail compatibility) and `email/base.txt`.
+
+---
+
+## Testing
 
 **Runner:** pytest  
 **Location:** `tests/`  
+**Count:** 941 tests (as of Sprint C completion)  
+**Isolation:** `tmp_path` fixtures, `monkeypatch` for `DB_PATH` + `_cached_engine.cache_clear()`
 
 ### Test files
 
-| File | What it tests | Count |
-|---|---|---|
-| `test_memory.py` | Repository memory index — parse, search, update | 32 |
-| `test_patcher.py` | Patch pipeline — parse, validate, apply, rollback | 25 |
-| `test_app.py` | Flask routes — compare, contract data | 5 |
-| `test_auth.py` | Auth — registration, login, logout, protection | 22 |
+| File | What it tests |
+|---|---|
+| `test_app.py` | Flask routes — contracts, compare, vendor, agency, CSV export, webhook, dashboard freshness |
+| `test_auth.py` | Auth — registration, login, logout, CSRF, rate limiting |
+| `test_analytics.py` | Dashboard analytics, vendor/agency profiles, opportunity recommendations |
+| `test_db.py` | Schema init, upsert, FTS, watchlist constraints, saved searches, contract_notes |
+| `test_watchlist.py` | Watchlist add/remove routes + /watchlist page |
+| `test_saved_searches.py` | /searches/save, DELETE /searches/:id, /searches page |
+| `test_notes.py` | POST /contract/:id/note |
+| `test_data_freshness.py` | GET /api/data-freshness |
+| `test_celery_ingest.py` | run_ingest task, ingest_log, quality alert, beat schedule |
+| `test_memory.py` | AI agent repository memory index |
+| `test_patcher.py` | AI agent patch pipeline |
 
-**Total: 84 tests**
+### Test fixture pattern
 
-### Test isolation
+```python
+@pytest.fixture()
+def test_db(tmp_path, monkeypatch):
+    db_path = str(tmp_path / "test.db")
+    monkeypatch.setattr(db_module, "DB_PATH", db_path)
+    db_module._cached_engine.cache_clear()
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    db_module.init_db()
+    yield db_path
+    db_module._cached_engine.cache_clear()
 
-- All tests use `tmp_path` fixtures — never the live `contracts.db`
-- `db.DB_PATH` is monkey-patched per-test via `yield` fixtures
-- Patcher tests create real `git init` repos in `tmp_path`
-- Auth tests register a fixture user before exercising routes
-
-### Running tests
-
-```bash
-python -m pytest --tb=short -q
+@pytest.fixture()
+def client(test_db):
+    flask_app.app.config["TESTING"] = True
+    flask_app.app.config["WTF_CSRF_ENABLED"] = False
+    flask_app.app.config["RATELIMIT_ENABLED"] = False
+    ...
 ```
-
-The patcher treats pytest exit code 5 (no tests collected) as a pass, so new
-files don't block agent runs before their tests are written.
 
 ---
 
-## Deployment Flow
+## Deployment
 
-### Railway (production)
+### Procfile
 
 ```
-git push origin main (human action)
-  → Railway detects push
-  → Procfile: python -c "from db import init_db; init_db()"
-  → Procfile: gunicorn app:app --bind 0.0.0.0:$PORT
-  → Railway polls GET /health every 30s
+release: python -c "import os; url=os.environ.get('DATABASE_URL',''); exec(open('migrations/001_initial_pg.sql').read()) if url else None"
+web: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2
+worker: celery -A tasks worker --loglevel=info
+beat: celery -A tasks beat --loglevel=info
 ```
 
-### Environment variables (Railway)
+### Railway environment variables (minimum required)
 
-| Variable | Required | Purpose |
-|---|---|---|
-| `PORT` | Auto-set | gunicorn bind port |
-| `SECRET_KEY` | Yes | Flask session signing |
-| `STRIPE_WEBHOOK_SECRET` | Yes | Stripe webhook signature verification — requests without a valid signature return 400 |
+`SECRET_KEY`, `DATABASE_URL`, `REDIS_URL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`
 
-### Known limitation
+### Deploy protocol
 
-SQLite `contracts.db` is stored on Railway's ephemeral filesystem. A redeploy
-wipes the database. Phase 2 migrates to the Railway PostgreSQL plugin with a
-persistent volume.
+1. `pytest -q` — full suite must pass (zero failures)
+2. `git push origin main`
+3. Railway runs release command (PostgreSQL migration)
+4. Railway starts web + worker + beat processes
+5. `GET /health` → `{"status": "ok"}` — verify within 60s
 
 ---
 
@@ -333,74 +310,81 @@ persistent volume.
 /
 ├── app.py                   # Flask app — routes only
 ├── auth.py                  # Auth Blueprint (/login /register /logout)
-├── users.py                 # User model, password hashing
-├── db.py                    # Database — schema, queries, init
-├── analytics.py             # Aggregation queries (vendor, agency profiles)
+├── users.py                 # User model (SQLAlchemy Core)
+├── db.py                    # Database — schema, get_engine(), init_db(), queries
+├── analytics.py             # Aggregation queries (SQLAlchemy Core)
+├── email_service.py         # send_email() via Resend API
 ├── report_builder.py        # Dashboard summary builder
-├── change_detector.py       # Contract change detection across snapshots
+├── change_detector.py       # Contract change detection
 ├── views.py                 # Saved view presets
-├── Procfile                 # Railway startup command
-├── requirements.txt         # Python dependencies
+├── tasks.py                 # Celery tasks (ingest, heartbeat, send_email_task)
+├── Procfile                 # Railway startup
+├── requirements.txt         # Pinned Python dependencies
+├── migrations/
+│   └── 001_initial_pg.sql   # Idempotent PostgreSQL schema
 │
-├── templates/               # Jinja2 HTML templates
-│   ├── base.html            # Layout, nav, CSS
-│   ├── dashboard.html
-│   ├── contracts.html       # List with checkboxes + compare button
-│   ├── contract_detail.html
-│   ├── compare.html         # Side-by-side comparison
+├── templates/
+│   ├── base.html            # Layout, nav (Dashboard/Contracts/Watchlist/Saved Searches/Views/Ingest)
+│   ├── dashboard.html       # Analytics + freshness indicator
+│   ├── contracts.html       # List with watch toggles, compare, save search, CSV export
+│   ├── contract_detail.html # Detail + bookmark toggle + notes
+│   ├── watchlist.html       # Bookmarked contracts
+│   ├── searches.html        # Saved searches
+│   ├── compare.html
 │   ├── vendor.html
 │   ├── agency.html
 │   ├── views.html
 │   ├── ingest.html
 │   ├── login.html
-│   └── register.html
+│   ├── register.html
+│   ├── demo.html
+│   ├── early_access.html
+│   └── email/
+│       ├── base.html        # Branded email layout (inline CSS)
+│       ├── base.txt         # Plain-text email layout
+│       ├── welcome.html     # Welcome email (sent on registration)
+│       └── welcome.txt
 │
-├── tests/                   # pytest test suite (84 tests)
-│   ├── test_memory.py
-│   ├── test_patcher.py
+├── tests/                   # pytest suite (941 tests)
 │   ├── test_app.py
-│   └── test_auth.py
+│   ├── test_auth.py
+│   ├── test_analytics.py
+│   ├── test_db.py
+│   ├── test_watchlist.py
+│   ├── test_saved_searches.py
+│   ├── test_notes.py
+│   ├── test_data_freshness.py
+│   ├── test_celery_ingest.py
+│   ├── test_memory.py
+│   └── test_patcher.py
 │
 ├── ai_agent/                # AI engineering system
-│   ├── agent.py             # Entry point + safety checks
-│   ├── manager.py           # Orchestrator
-│   ├── llm.py               # Anthropic API wrapper
-│   ├── reviewer.py          # Safety scanner
-│   ├── memory.py            # Repository knowledge index
-│   ├── patcher.py           # Patch apply + rollback pipeline
-│   ├── backend_engineer.py
-│   ├── frontend_engineer.py
-│   ├── qa_engineer.py
-│   ├── devops_engineer.py
-│   └── docs_writer.py
-│
-├── patches/                 # Patch records (proposed and applied)
-│   └── failures/            # Failure reports (gitignored)
-│
-├── backlog/                 # Agent task queue (priority-ordered)
-│   ├── critical.md
-│   ├── bugs.md
-│   ├── high.md
-│   ├── medium.md
-│   └── ideas.md
+│   ├── queue/               # Pending tasks (dependency-ordered)
+│   ├── done/                # Completed task records
+│   └── CURRENT_STATE.md     # Point-in-time system snapshot
 │
 ├── company/                 # Business and product documents
-│   ├── CEO.md               # Engineering operating manual
-│   ├── VISION.md            # Product vision
-│   ├── ROADMAP.md           # Phased roadmap
-│   ├── COMPETITORS.md       # Market landscape
-│   ├── SPRINT.md            # Active sprint
-│   ├── CUSTOMERS.md         # Customer registry
-│   ├── FEATURE_SCORECARD.md # Feature prioritization scoring
-│   ├── PRODUCT_BACKLOG.md   # Long-term feature backlog
-│   └── RELEASE_PLAN.md      # Release milestones
+│   ├── SPRINT.md            # Active sprint (M3)
+│   └── ...
 │
-├── docs/                    # Technical documentation
+├── docs/
 │   ├── ARCHITECTURE.md      # This file
-│   ├── PRODUCT.md           # Component-level architecture
-│   └── STYLE.md             # Coding standards
+│   ├── PRODUCT.md
+│   └── STYLE.md
 │
-├── HANDOFF.md               # Agent run log (append-only)
-├── TASK.md                  # Agent sprint work queue
-└── TASK_LOG.md              # One-line-per-run history table
+└── TASK_LOG.md              # One-line-per-task history
 ```
+
+---
+
+## Sprint Status (as of Task 093)
+
+| Sprint | Status | Tasks |
+|---|---|---|
+| A — Platform Stability | **Complete** | PostgreSQL compat, CSRF, rate limiting, webhook sig, pinned deps |
+| B — Retention Core | **Complete** | Watchlist, saved searches, contract notes, CSV export |
+| C — Data Trust | **Complete** | ingest_log, /api/data-freshness, dashboard freshness, quality alert |
+| D — Email Infrastructure | **In progress** | email_service.py, Celery task, templates, welcome email on register |
+| E — Expiration Alerts | Not started | Depends on B (done) + D |
+| F — Monetization | Not started | Depends on A (done) + D |
+| G — Operational Excellence | **In progress** | Sentry (Task 101) |
