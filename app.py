@@ -168,11 +168,32 @@ def health():
 def dashboard():
     analytics = dashboard_analytics()
     recommendations = opportunity_recommendations()
+    engine = get_engine()
+    last_ingest = None
+    hours_ago = None
+    with engine.connect() as conn:
+        row = conn.execute(
+            text(
+                "SELECT created_at FROM ingest_log"
+                " WHERE status = 'success' ORDER BY created_at DESC LIMIT 1"
+            )
+        ).fetchone()
+    if row:
+        last_ingest = row[0]
+        try:
+            ts = datetime.fromisoformat(last_ingest)
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            hours_ago = round((datetime.now(timezone.utc) - ts).total_seconds() / 3600, 1)
+        except (ValueError, TypeError):
+            pass
     return render_template(
         "dashboard.html",
         report=build_report(date.today().isoformat()),
         analytics=analytics,
         recommendations=recommendations,
+        last_ingest=last_ingest,
+        hours_ago=hours_ago,
     )
 
 

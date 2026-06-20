@@ -683,3 +683,26 @@ def test_csv_export_redirects_when_not_logged_in(test_db):
         rv = c.get("/contracts/export.csv")
     assert rv.status_code == 302
     assert "/login" in rv.headers["Location"]
+
+
+def test_dashboard_shows_unknown_when_no_ingest(client):
+    rv = client.get("/")
+    assert rv.status_code == 200
+    assert b"Data freshness unknown" in rv.data
+
+
+def test_dashboard_shows_freshness_banner_when_ingest_exists(client, test_db):
+    import sqlite3
+    from datetime import datetime, timezone, timedelta
+    ts = (datetime.now(timezone.utc) - timedelta(hours=3)).isoformat()
+    con = sqlite3.connect(test_db)
+    con.execute(
+        "INSERT INTO ingest_log (run_date, source, record_count, duration_seconds, status, created_at)"
+        " VALUES (?, 'usaspending', 50, 2.0, 'success', ?)",
+        (ts[:10], ts),
+    )
+    con.commit()
+    con.close()
+    rv = client.get("/")
+    assert rv.status_code == 200
+    assert b"Data last updated" in rv.data

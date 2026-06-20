@@ -4,6 +4,11 @@
 {% block content %}
 <h1>Government Recompete Monitor</h1>
 <div class="muted">Data as of {{ report.run_date }}</div>
+{% if last_ingest %}
+<div class="muted" style="font-size:13px;">Data last updated {{ hours_ago }}h ago ({{ last_ingest[:10] }})</div>
+{% else %}
+<div class="muted" style="font-size:13px;">Data freshness unknown — no ingest completed yet.</div>
+{% endif %}
 
 <div class="cards" style="margin-top:20px">
   <a href="/contracts" class="card" style="text-decoration:none;color:inherit;">
