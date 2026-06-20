@@ -140,6 +140,18 @@ issue number. dry_run=True reports what would be imported without writing files.
 error patterns, sleep-after-limit, max_tasks_per_window, max_runtime_minutes caps.
 loop.py gained --daemon, --max-tasks, --sleep-after-limit, --max-runtime CLI flags.
 
+## 2026-06-20 — [BACKEND] Task 053: Human Escalation
+**Status:** completed
+**Files changed:** ai_agent/escalation.py (new), tests/test_escalation.py (new), ai_agent/done/053-human-escalation.md
+**Tests:** 540 → 589 (+49)
+**Notes:** Three escalation triggers: `check_task_ambiguity()` flags tasks with
+bodies < 30 chars or < 5 words or purely vague verbs. `check_repeated_failures()`
+fires at a configurable threshold (default 3). `check_risky_code()` scans patches
+for 14 sensitive patterns (schema changes, auth, payment, AWS, config files).
+`write_escalation_report()` writes structured ESCALATE.md (append or overwrite).
+`should_escalate()` helper to test any trigger list. Complements the existing
+`AutonomousLoop._escalate()` method which handles the consecutive-failures gate.
+
 ## 2026-06-20 — Queue reconciliation (Tasks 049–052)
 **Status:** reconciled
 **Root cause:** Commit daeea92 removed stale queue entries 049/050/051; its revert
