@@ -33,3 +33,4 @@ Append-only log. Each row = one agent run.
 | 2026-06-20 00:00 UTC | backend | Task 075: Add rate limiting to /login — 5 POST/min per IP | 075-rate-limit-login.md | completed:115-tests-passing |
 | 2026-06-20 00:00 UTC | backend | Task 076: Pin celery, redis, SQLAlchemy in requirements.txt | 076-pin-unpinned-packages.md | completed:94-tests-passing |
 | 2026-06-20 00:00 UTC | backend | Task 077: Add user_watchlist table to schema | 077-watchlist-schema.md | completed:7-tests-passing |
+| 2026-06-20 00:00 UTC | backend | Task 078: Add POST /watchlist/add and /watchlist/remove routes | 078-watchlist-routes.md | completed:8-tests-passing |

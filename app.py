@@ -5,7 +5,7 @@ import os
 import subprocess
 import sys
 import threading
-from datetime import date
+from datetime import date, datetime, timezone
 from logging.handlers import RotatingFileHandler
 
 import stripe
@@ -17,9 +17,12 @@ from flask_wtf.csrf import CSRFProtect
 
 from auth import bp as auth_bp
 from change_detector import detect_changes
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from db import (
     connect,
     get_contracts,
+    get_engine,
     init_db,
     save_demo_request,
     save_early_access,
@@ -133,6 +136,8 @@ _PUBLIC_PATHS = frozenset({
     "/demo",
     "/early-access",
     "/stripe/webhook",
+    "/watchlist/add",
+    "/watchlist/remove",
 })
 
 
@@ -432,6 +437,44 @@ def contract_detail(internal_id):
         return redirect("/contracts")
 
     return render_template("contract_detail.html", row=row)
+
+
+@app.route("/watchlist/add", methods=["POST"])
+@csrf.exempt
+def watchlist_add():
+    if not g.user:
+        return jsonify({"error": "login required"}), 401
+    internal_id = (request.get_json(silent=True) or {}).get("internal_id", "").strip()
+    if not internal_id:
+        return jsonify({"ok": False, "error": "internal_id required"}), 400
+    now = datetime.now(timezone.utc).isoformat()
+    engine = get_engine()
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text("INSERT INTO user_watchlist (user_id, internal_id, added_at) VALUES (:uid, :iid, :ts)"),
+                {"uid": g.user["id"], "iid": internal_id, "ts": now},
+            )
+        return jsonify({"ok": True})
+    except IntegrityError:
+        return jsonify({"ok": True, "already": True})
+
+
+@app.route("/watchlist/remove", methods=["POST"])
+@csrf.exempt
+def watchlist_remove():
+    if not g.user:
+        return jsonify({"error": "login required"}), 401
+    internal_id = (request.get_json(silent=True) or {}).get("internal_id", "").strip()
+    if not internal_id:
+        return jsonify({"ok": False, "error": "internal_id required"}), 400
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(
+            text("DELETE FROM user_watchlist WHERE user_id = :uid AND internal_id = :iid"),
+            {"uid": g.user["id"], "iid": internal_id},
+        )
+    return jsonify({"ok": True})
 
 
 @app.route("/compare")
