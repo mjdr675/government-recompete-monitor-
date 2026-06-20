@@ -48,3 +48,4 @@ Append-only log. Each row = one agent run.
 | 2026-06-20 00:00 UTC | backend | Task 090: Add CSV export from /contracts | 090-csv-export.md | completed:932-tests-passing |
 | 2026-06-20 00:00 UTC | backend | Task 091: Add GET /api/data-freshness route | 091-data-freshness-api.md | completed:937-tests-passing |
 | 2026-06-20 00:00 UTC | frontend | Task 092: Add data freshness indicator to dashboard | 092-data-freshness-dashboard.md | completed:939-tests-passing |
+| 2026-06-20 00:00 UTC | backend | Task 093: Add data quality alert for low ingest record count | 093-ingest-quality-alert.md | completed:941-tests-passing |

@@ -38,6 +38,7 @@ tasks.conf.beat_schedule = {
 _BEAT_HEALTH_KEY = "beat:health"
 _BEAT_HEALTH_TTL = 900  # 15 minutes in seconds
 _BEAT_STALE_THRESHOLD = timedelta(minutes=15)
+_QUALITY_THRESHOLD = 10
 
 
 @tasks.task(name="tasks.heartbeat")
@@ -123,6 +124,11 @@ def run_ingest(self):
         finished_at = datetime.now(timezone.utc).isoformat()
         with engine.connect() as conn:
             record_count = conn.execute(text("SELECT COUNT(*) FROM contracts")).scalar() or 0
+        if record_count < _QUALITY_THRESHOLD:
+            logger.error(
+                "run_ingest: suspiciously low record count (%d) — possible silent failure or empty API response",
+                record_count,
+            )
         with engine.begin() as conn:
             conn.execute(text("""
                 UPDATE celery_task_log

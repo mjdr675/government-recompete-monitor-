@@ -64,7 +64,20 @@ class TestRunIngestTask:
 
     def test_run_ingest_logs_on_success(self, test_db, caplog, monkeypatch):
         import logging
+        import sqlite3
         import tasks as tasks_module
+
+        # Pre-populate enough contracts so the quality-alert threshold is not crossed
+        con = sqlite3.connect(test_db)
+        for i in range(15):
+            con.execute(
+                "INSERT OR IGNORE INTO contracts"
+                " (internal_id, vendor, agency, value, days_remaining, recompete_score, priority, updated_at)"
+                " VALUES (?, 'V', 'A', 0, 0, 0, 'LOW', '2026-01-01')",
+                (f"C{i:04d}",),
+            )
+        con.commit()
+        con.close()
 
         mock_main = MagicMock(return_value=None)
         monkeypatch.setattr(
@@ -315,3 +328,46 @@ class TestIngestLog:
         tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
         con.close()
         assert "ingest_log" in tables
+
+
+# ---------------------------------------------------------------------------
+# Data quality alert (Task 093)
+# ---------------------------------------------------------------------------
+
+class TestIngestQualityAlert:
+    def _insert_contracts(self, test_db, n):
+        import sqlite3
+        con = sqlite3.connect(test_db)
+        for i in range(n):
+            con.execute(
+                "INSERT OR IGNORE INTO contracts"
+                " (internal_id, vendor, agency, value, days_remaining, recompete_score, priority, updated_at)"
+                " VALUES (?, 'V', 'A', 0, 0, 0, 'LOW', '2026-01-01')",
+                (f"C{i:04d}",),
+            )
+        con.commit()
+        con.close()
+
+    def test_low_record_count_logs_error(self, test_db, monkeypatch, caplog):
+        import logging
+        import tasks as tasks_module
+
+        self._insert_contracts(test_db, 2)
+        monkeypatch.setattr("janitorial_recompete_report.main", MagicMock(), raising=False)
+
+        with caplog.at_level(logging.ERROR, logger="tasks"):
+            tasks_module.run_ingest.apply()
+
+        assert any("suspiciously low record count" in r.message for r in caplog.records if r.levelno >= logging.ERROR)
+
+    def test_normal_record_count_no_quality_error(self, test_db, monkeypatch, caplog):
+        import logging
+        import tasks as tasks_module
+
+        self._insert_contracts(test_db, 15)
+        monkeypatch.setattr("janitorial_recompete_report.main", MagicMock(), raising=False)
+
+        with caplog.at_level(logging.ERROR, logger="tasks"):
+            tasks_module.run_ingest.apply()
+
+        assert not any("suspiciously low record count" in r.message for r in caplog.records)
