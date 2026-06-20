@@ -42,6 +42,7 @@ def test_db(tmp_path):
 def client(test_db):
     import app as flask_app
     flask_app.app.config["TESTING"] = True
+    flask_app.app.config["WTF_CSRF_ENABLED"] = False
     flask_app.app.secret_key = "test-secret-key"
     with flask_app.app.test_client() as c:
         # Register and auto-login a fixture user so route tests bypass the auth gate
@@ -626,3 +627,26 @@ def test_dashboard_recommendations_critical_reason(test_db, client):
     rv = client.get("/")
     body = rv.data.decode()
     assert "Critical priority" in body
+
+
+# ---------------------------------------------------------------------------
+# Stripe webhook
+# ---------------------------------------------------------------------------
+
+def test_webhook_rejects_without_secret(monkeypatch, client):
+    import app as flask_app
+    monkeypatch.setattr(flask_app, "STRIPE_WEBHOOK_SECRET", None)
+    rv = client.post("/stripe/webhook", data=b"{}", content_type="application/json")
+    assert rv.status_code == 400
+
+
+def test_webhook_rejects_bad_signature(monkeypatch, client):
+    import app as flask_app
+    monkeypatch.setattr(flask_app, "STRIPE_WEBHOOK_SECRET", "whsec_test")
+    rv = client.post(
+        "/stripe/webhook",
+        data=b'{"type":"checkout.session.completed"}',
+        content_type="application/json",
+        headers={"Stripe-Signature": "bad-sig"},
+    )
+    assert rv.status_code == 400

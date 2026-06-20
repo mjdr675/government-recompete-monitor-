@@ -111,6 +111,11 @@ def _warn_if_ephemeral_db() -> None:
 _warn_if_ephemeral_db()
 
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+if not STRIPE_WEBHOOK_SECRET:
+    logging.warning(
+        "STRIPE_WEBHOOK_SECRET is not set. POST /stripe/webhook will return 400 "
+        "for all requests. Set this env var in production."
+    )
 
 _PUBLIC_PATHS = frozenset({
     "/health",
@@ -273,11 +278,11 @@ def cancel():
 def stripe_webhook():
     payload = request.get_data()
     sig = request.headers.get("Stripe-Signature", "")
+    if not STRIPE_WEBHOOK_SECRET:
+        logging.warning("Stripe webhook received but STRIPE_WEBHOOK_SECRET is not configured")
+        return "Webhook secret not configured", 400
     try:
-        if STRIPE_WEBHOOK_SECRET:
-            event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
-        else:
-            event = stripe.Event.construct_from(request.get_json(force=True), stripe.api_key)
+        event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
     except (stripe.error.SignatureVerificationError, ValueError) as e:
         logging.warning("Stripe webhook signature error: %s", e)
         return "Bad request", 400

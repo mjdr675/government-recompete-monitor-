@@ -317,6 +317,7 @@ git push origin main (human action)
 |---|---|---|
 | `PORT` | Auto-set | gunicorn bind port |
 | `SECRET_KEY` | Yes | Flask session signing |
+| `STRIPE_WEBHOOK_SECRET` | Yes | Stripe webhook signature verification — requests without a valid signature return 400 |
 
 ### Known limitation
 
