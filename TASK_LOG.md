@@ -53,3 +53,4 @@ Append-only log. Each row = one agent run.
 | 2026-06-20 00:00 UTC | backend | Task 095: Add email_service.py with send_email() via Resend API | 095-email-service.md | completed:5-tests-passing |
 | 2026-06-20 00:00 UTC | backend | Task 096: Add /ingest/email-test admin route | 096-email-test-route.md | completed:949-tests-passing |
 | 2026-06-20 00:00 UTC | backend | Task 097: Add send_email_task Celery task | 097-email-celery-task.md | completed:3-tests-passing |
+| 2026-06-20 00:00 UTC | frontend | Task 098: Add branded email base templates | 098-email-base-template.md | completed:952-tests-passing |

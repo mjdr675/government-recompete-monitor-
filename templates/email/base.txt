@@ -1,0 +1,5 @@
+{% block text_content %}{% endblock %}
+
+---
+You received this email because you registered at govrecompete.com.
+To unsubscribe: {{ unsubscribe_url | default('https://govrecompete.com/unsubscribe') }}
