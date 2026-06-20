@@ -45,6 +45,16 @@ architecture reference, coding standards, and phased roadmap.
 
 Reviewed for cross-document duplication and consistency before commit. All tests pass.
 
+## 2026-06-20 — [BACKEND] Task 049: GitHub PR Builder
+**Status:** completed
+**Files changed:** ai_agent/pr_builder.py (new), tests/test_pr_builder.py (new), ai_agent/done/049-github-pr-builder.md
+**Tests:** 411 → 449 (+38)
+**Notes:** Implemented `ai_agent/pr_builder.py` with `build_pr_draft()` function that collects
+changed files (git diff), commits (git log), completed tasks from ai_agent/done/, and optional
+pytest results, then writes a Markdown draft to ai_agent/pr_drafts/. Template-based title/
+description generation; falls back gracefully when there are no commits or tasks. 38 tests cover
+all helper functions and the main public API.
+
 ## 2026-06-18 21:38 UTC — [BACKEND/AUTH] Production authentication system
 
 **Role:** human-directed sprint  
