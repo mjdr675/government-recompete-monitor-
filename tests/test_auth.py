@@ -28,6 +28,7 @@ def auth_db(tmp_path):
 def client(auth_db):
     import app as flask_app
     flask_app.app.config["TESTING"] = True
+    flask_app.app.config["WTF_CSRF_ENABLED"] = False
     flask_app.app.secret_key = "test-secret-key"
     with flask_app.app.test_client() as c:
         yield c
@@ -241,3 +242,14 @@ def test_create_user_duplicate_email_raises_value_error(auth_db):
     create_user("dup@example.com", "password123")
     with pytest.raises(ValueError, match="already registered"):
         create_user("DUP@EXAMPLE.COM", "different456")
+
+
+def test_csrf_rejected_on_login_post(auth_db):
+    import app as flask_app
+    flask_app.app.config["TESTING"] = True
+    flask_app.app.config["WTF_CSRF_ENABLED"] = True
+    flask_app.app.secret_key = "test-secret-key"
+    with flask_app.app.test_client() as c:
+        rv = c.post("/login", data={"email": "x@example.com", "password": "pw"})
+        assert rv.status_code == 400
+    flask_app.app.config["WTF_CSRF_ENABLED"] = False

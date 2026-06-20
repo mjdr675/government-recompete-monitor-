@@ -130,6 +130,7 @@ traffic. Phase 2 migrates to PostgreSQL when concurrent write contention appears
 - All routes except `/health`, `/login`, `/register` require an active session
 - `g.user` is populated from DB on every request (not from session data directly)
 - Email addresses are normalized to lowercase on creation and lookup
+- CSRF protection via Flask-WTF `CSRFProtect` — all POST forms require a valid `csrf_token` field; `POST /stripe/webhook` is exempt via `@csrf.exempt`
 
 ### Environment variables
 

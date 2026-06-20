@@ -11,6 +11,7 @@ from logging.handlers import RotatingFileHandler
 import stripe
 from dotenv import load_dotenv
 from flask import Flask, flash, g, jsonify, redirect, render_template, request, session, url_for
+from flask_wtf.csrf import CSRFProtect
 
 from auth import bp as auth_bp
 from change_detector import detect_changes
@@ -36,6 +37,7 @@ load_dotenv()
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
+csrf = CSRFProtect(app)
 app.register_blueprint(auth_bp)
 app.jinja_env.globals["format_filter_summary"] = format_filter_summary
 
@@ -267,6 +269,7 @@ def cancel():
 
 
 @app.route("/stripe/webhook", methods=["POST"])
+@csrf.exempt
 def stripe_webhook():
     payload = request.get_data()
     sig = request.headers.get("Stripe-Signature", "")
