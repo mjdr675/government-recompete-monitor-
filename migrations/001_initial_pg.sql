@@ -143,3 +143,12 @@ CREATE TABLE IF NOT EXISTS user_saved_searches (
     query_params_json TEXT NOT NULL,
     created_at        TEXT NOT NULL
 );
+
+-- Per-user private notes on contracts
+CREATE TABLE IF NOT EXISTS contract_notes (
+    id          SERIAL PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    internal_id TEXT NOT NULL,
+    body        TEXT NOT NULL,
+    created_at  TEXT NOT NULL
+);

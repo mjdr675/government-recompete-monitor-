@@ -121,3 +121,15 @@ def test_user_saved_searches_allows_multiple_per_user(db):
     count = con.execute("SELECT COUNT(*) FROM user_saved_searches WHERE user_id=?", (uid,)).fetchone()[0]
     con.close()
     assert count == 2
+
+
+# ---------------------------------------------------------------------------
+# contract_notes table (Task 088)
+# ---------------------------------------------------------------------------
+
+def test_contract_notes_table_exists(db):
+    import sqlite3
+    con = sqlite3.connect(db)
+    tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    con.close()
+    assert "contract_notes" in tables

@@ -169,6 +169,15 @@ def init_db():
             created_at       TEXT NOT NULL
         )
         """))
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS contract_notes (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            internal_id TEXT NOT NULL,
+            body        TEXT NOT NULL,
+            created_at  TEXT NOT NULL
+        )
+        """))
 
 
 def upsert_contract(row):
