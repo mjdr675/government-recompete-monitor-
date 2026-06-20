@@ -29,6 +29,7 @@ def client(auth_db):
     import app as flask_app
     flask_app.app.config["TESTING"] = True
     flask_app.app.config["WTF_CSRF_ENABLED"] = False
+    flask_app.app.config["RATELIMIT_ENABLED"] = False
     flask_app.app.secret_key = "test-secret-key"
     with flask_app.app.test_client() as c:
         yield c
@@ -248,8 +249,24 @@ def test_csrf_rejected_on_login_post(auth_db):
     import app as flask_app
     flask_app.app.config["TESTING"] = True
     flask_app.app.config["WTF_CSRF_ENABLED"] = True
+    flask_app.app.config["RATELIMIT_ENABLED"] = False
     flask_app.app.secret_key = "test-secret-key"
     with flask_app.app.test_client() as c:
         rv = c.post("/login", data={"email": "x@example.com", "password": "pw"})
         assert rv.status_code == 400
     flask_app.app.config["WTF_CSRF_ENABLED"] = False
+
+
+def test_login_rate_limited(auth_db):
+    import app as flask_app
+    flask_app.app.config["TESTING"] = True
+    flask_app.app.config["WTF_CSRF_ENABLED"] = False
+    flask_app.app.config["RATELIMIT_ENABLED"] = True
+    flask_app.app.config["RATELIMIT_STORAGE_URI"] = "memory://"
+    flask_app.app.secret_key = "test-secret-key"
+    with flask_app.app.test_client() as c:
+        for _ in range(5):
+            c.post("/login", data={"email": "x@example.com", "password": "wrong"})
+        rv = c.post("/login", data={"email": "x@example.com", "password": "wrong"})
+        assert rv.status_code == 429
+    flask_app.app.config["RATELIMIT_ENABLED"] = False

@@ -43,6 +43,7 @@ def client(test_db):
     import app as flask_app
     flask_app.app.config["TESTING"] = True
     flask_app.app.config["WTF_CSRF_ENABLED"] = False
+    flask_app.app.config["RATELIMIT_ENABLED"] = False
     flask_app.app.secret_key = "test-secret-key"
     with flask_app.app.test_client() as c:
         # Register and auto-login a fixture user so route tests bypass the auth gate

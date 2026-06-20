@@ -69,7 +69,7 @@ Request arrives
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | GET | `/health` | None | Railway uptime probe |
-| GET/POST | `/login` | None | Sign-in form |
+| GET/POST | `/login` | None | Sign-in form — `POST` rate-limited to 5/min per IP |
 | GET/POST | `/register` | None | Account creation |
 | GET | `/logout` | None | Clear session |
 | GET | `/` | Required | Dashboard summary |

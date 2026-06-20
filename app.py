@@ -11,6 +11,8 @@ from logging.handlers import RotatingFileHandler
 import stripe
 from dotenv import load_dotenv
 from flask import Flask, flash, g, jsonify, redirect, render_template, request, session, url_for
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
 
 from auth import bp as auth_bp
@@ -38,7 +40,11 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
 csrf = CSRFProtect(app)
+limiter = Limiter(app=app, key_func=get_remote_address, default_limits=[])
 app.register_blueprint(auth_bp)
+app.view_functions["auth.login"] = limiter.limit(
+    "5 per minute", per_method=True, methods=["POST"]
+)(app.view_functions["auth.login"])
 app.jinja_env.globals["format_filter_summary"] = format_filter_summary
 
 init_db()
