@@ -1,4 +1,5 @@
-from db import connect
+from db import connect, get_engine
+from sqlalchemy import text
 
 
 def dashboard_analytics(con):
@@ -137,43 +138,50 @@ def opportunity_recommendations(con):
 
 
 def agency_summary(run_date, limit=10):
-    with connect() as con:
-        return con.execute("""
+    engine = get_engine()
+    with engine.connect() as conn:
+        return conn.execute(text("""
             SELECT c.agency, COUNT(*) AS count, SUM(c.value) AS total_value
             FROM changes ch
             JOIN contracts c ON ch.internal_id = c.internal_id
-            WHERE ch.run_date = ?
+            WHERE ch.run_date = :run_date
             GROUP BY c.agency
             ORDER BY count DESC, total_value DESC
-            LIMIT ?
-        """, (run_date, limit)).fetchall()
+            LIMIT :limit
+        """), {"run_date": run_date, "limit": limit}).fetchall()
+
 
 def vendor_summary(run_date, limit=10):
-    with connect() as con:
-        return con.execute("""
+    engine = get_engine()
+    with engine.connect() as conn:
+        return conn.execute(text("""
             SELECT c.vendor, COUNT(*) AS count, SUM(c.value) AS total_value
             FROM changes ch
             JOIN contracts c ON ch.internal_id = c.internal_id
-            WHERE ch.run_date = ?
+            WHERE ch.run_date = :run_date
             GROUP BY c.vendor
             ORDER BY count DESC, total_value DESC
-            LIMIT ?
-        """, (run_date, limit)).fetchall()
+            LIMIT :limit
+        """), {"run_date": run_date, "limit": limit}).fetchall()
+
 
 def value_summary(run_date):
-    with connect() as con:
-        rows = con.execute("""
+    engine = get_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
             SELECT ch.change_type, SUM(c.value)
             FROM changes ch
             LEFT JOIN contracts c ON ch.internal_id = c.internal_id
-            WHERE ch.run_date = ?
+            WHERE ch.run_date = :run_date
             GROUP BY ch.change_type
-        """, (run_date,)).fetchall()
-    return {change_type: total or 0 for change_type, total in rows}
+        """), {"run_date": run_date}).fetchall()
+    return {row[0]: row[1] or 0 for row in rows}
+
 
 def top_opportunities(run_date, limit=10):
-    with connect() as con:
-        return con.execute("""
+    engine = get_engine()
+    with engine.connect() as conn:
+        return conn.execute(text("""
             SELECT
                 c.priority,
                 c.vendor,
@@ -184,21 +192,22 @@ def top_opportunities(run_date, limit=10):
                 ch.change_type
             FROM changes ch
             JOIN contracts c ON ch.internal_id = c.internal_id
-            WHERE ch.run_date = ?
+            WHERE ch.run_date = :run_date
             ORDER BY c.recompete_score DESC, c.value DESC
-            LIMIT ?
-        """, (run_date, limit)).fetchall()
+            LIMIT :limit
+        """), {"run_date": run_date, "limit": limit}).fetchall()
+
 
 def top_contracts_overall(limit=25):
-    with connect() as con:
-        con.row_factory = lambda cur, row: {col[0]: row[i] for i, col in enumerate(cur.description)}
-        return con.execute("""
+    engine = get_engine()
+    with engine.connect() as conn:
+        return conn.execute(text("""
             SELECT internal_id, vendor, agency, value, end_date,
                    days_remaining, priority, recompete_score
             FROM contracts
             ORDER BY recompete_score DESC, value DESC
-            LIMIT ?
-        """, (limit,)).fetchall()
+            LIMIT :limit
+        """), {"limit": limit}).mappings().fetchall()
 
 def vendor_profile_analytics(con, vendor):
     con.row_factory = lambda cur, row: {col[0]: row[i] for i, col in enumerate(cur.description)}
