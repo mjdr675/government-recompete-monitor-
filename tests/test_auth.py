@@ -234,3 +234,10 @@ def test_password_not_stored_in_plaintext(auth_db):
     assert row is not None
     assert row[0] != "mypassword"
     assert row[0].startswith(("scrypt:", "pbkdf2:", "argon2"))
+
+
+def test_create_user_duplicate_email_raises_value_error(auth_db):
+    from users import create_user
+    create_user("dup@example.com", "password123")
+    with pytest.raises(ValueError, match="already registered"):
+        create_user("DUP@EXAMPLE.COM", "different456")

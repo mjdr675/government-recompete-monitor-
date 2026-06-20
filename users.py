@@ -1,9 +1,10 @@
-import sqlite3
 from datetime import datetime, timezone
 
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from db import connect
+from db import get_engine
 
 
 def create_user(email: str, password: str) -> dict:
@@ -13,35 +14,54 @@ def create_user(email: str, password: str) -> dict:
     """
     password_hash = generate_password_hash(password)
     now = datetime.now(timezone.utc).isoformat()
+    email = email.lower().strip()
+    engine = get_engine()
+    is_pg = engine.dialect.name == "postgresql"
     try:
-        with connect() as con:
-            cur = con.execute(
-                "INSERT INTO users (email, password_hash, created_at) VALUES (?, ?, ?)",
-                (email.lower().strip(), password_hash, now),
-            )
-            con.commit()
-            return {"id": cur.lastrowid, "email": email.lower().strip(), "created_at": now}
-    except sqlite3.IntegrityError:
+        with engine.begin() as conn:
+            if is_pg:
+                result = conn.execute(
+                    text(
+                        "INSERT INTO users (email, password_hash, created_at)"
+                        " VALUES (:email, :password_hash, :created_at) RETURNING id"
+                    ),
+                    {"email": email, "password_hash": password_hash, "created_at": now},
+                )
+                user_id = result.scalar()
+            else:
+                result = conn.execute(
+                    text(
+                        "INSERT INTO users (email, password_hash, created_at)"
+                        " VALUES (:email, :password_hash, :created_at)"
+                    ),
+                    {"email": email, "password_hash": password_hash, "created_at": now},
+                )
+                user_id = result.lastrowid
+        return {"id": user_id, "email": email, "created_at": now}
+    except IntegrityError:
         raise ValueError(f"Email already registered: {email}")
 
 
 def get_user_by_id(user_id: int) -> dict | None:
-    with connect() as con:
-        con.row_factory = sqlite3.Row
-        row = con.execute(
-            "SELECT id, email, created_at FROM users WHERE id=? AND is_active=1",
-            (user_id,),
-        ).fetchone()
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT id, email, created_at FROM users WHERE id = :id AND is_active = 1"),
+            {"id": user_id},
+        ).mappings().fetchone()
         return dict(row) if row else None
 
 
 def get_user_by_email(email: str) -> dict | None:
-    with connect() as con:
-        con.row_factory = sqlite3.Row
-        row = con.execute(
-            "SELECT id, email, password_hash, created_at FROM users WHERE email=? AND is_active=1",
-            (email.lower().strip(),),
-        ).fetchone()
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = conn.execute(
+            text(
+                "SELECT id, email, password_hash, created_at"
+                " FROM users WHERE email = :email AND is_active = 1"
+            ),
+            {"email": email.lower().strip()},
+        ).mappings().fetchone()
         return dict(row) if row else None
 
 
