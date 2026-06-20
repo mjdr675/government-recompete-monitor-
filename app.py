@@ -4,7 +4,9 @@ import logging
 import os
 import subprocess
 import sys
+import threading
 from datetime import date
+from logging.handlers import RotatingFileHandler
 
 import stripe
 from dotenv import load_dotenv
@@ -37,6 +39,36 @@ app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
 app.register_blueprint(auth_bp)
 
 init_db()
+
+# ---------------------------------------------------------------------------
+# Ingest logging
+# ---------------------------------------------------------------------------
+
+INGEST_LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ingest.log")
+
+
+def _setup_ingest_logger() -> logging.Logger:
+    logger = logging.getLogger("ingest")
+    if not logger.handlers:
+        handler = RotatingFileHandler(INGEST_LOG_PATH, maxBytes=1_000_000, backupCount=3)
+        handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+    return logger
+
+
+_ingest_logger = _setup_ingest_logger()
+
+
+def _capture_subprocess_output(proc: subprocess.Popen, logger: logging.Logger) -> None:
+    """Background thread: drain subprocess stdout+stderr into the ingest log."""
+    try:
+        for line in iter(proc.stdout.readline, b""):
+            logger.info(line.decode("utf-8", errors="replace").rstrip())
+        proc.wait()
+        logger.info("[exit code %d]", proc.returncode)
+    except Exception as exc:
+        logger.warning("[capture error: %s]", exc)
 
 
 def _warn_if_ephemeral_db() -> None:
@@ -313,15 +345,32 @@ def ingest():
                 message = f"Imported {len(rows)} contracts from CSV."
 
         elif action == "api":
-            subprocess.Popen(
+            _ingest_logger.info("=== API pull started ===")
+            proc = subprocess.Popen(
                 [sys.executable, "recompete_report.py"],
                 cwd=os.path.dirname(os.path.abspath(__file__)),
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
             )
-            message = "API pull started in background. Refresh the dashboard in a few minutes."
+            threading.Thread(
+                target=_capture_subprocess_output,
+                args=(proc, _ingest_logger),
+                daemon=True,
+            ).start()
+            message = "API pull started in background. View progress at /ingest/status."
 
     return render_template("ingest.html", message=message, error=error)
+
+
+@app.route("/ingest/status")
+def ingest_status():
+    try:
+        with open(INGEST_LOG_PATH, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+        tail = "".join(lines[-50:]) if lines else "(no log entries yet)"
+    except FileNotFoundError:
+        tail = "(ingest.log not found — no API pull has run yet)"
+    return tail, 200, {"Content-Type": "text/plain; charset=utf-8"}
 
 
 @app.route("/contract/<internal_id>")
