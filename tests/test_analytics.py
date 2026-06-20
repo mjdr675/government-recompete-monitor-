@@ -3,7 +3,7 @@
 import sqlite3
 import pytest
 import db as db_module
-from analytics import opportunity_recommendations, dashboard_analytics
+from analytics import opportunity_recommendations, dashboard_analytics, vendor_profile_analytics
 
 
 @pytest.fixture()
@@ -163,3 +163,31 @@ def test_dashboard_analytics_top_agencies_ordered_by_pipeline(con):
     result = dashboard_analytics()
     agency_names = [r["agency"] for r in result["top_agencies"]]
     assert agency_names[0] == "BigAgency"
+
+
+# ---------------------------------------------------------------------------
+# vendor_profile_analytics
+# ---------------------------------------------------------------------------
+
+def test_vendor_profile_returns_expected_keys(con):
+    _insert(con, "V1", "AcmeCorp", "DOD", 1_000_000, "HIGH", 80, 60)
+    result = vendor_profile_analytics("AcmeCorp")
+    for key in ("summary", "agencies", "upcoming", "active", "pipeline_by_priority",
+                "score_distribution", "win_loss_summary", "change_events", "timeline"):
+        assert key in result
+
+
+def test_vendor_profile_summary_counts(con):
+    _insert(con, "V1", "AcmeCorp", "DOD", 1_000_000, "CRITICAL", 85, 45)
+    _insert(con, "V2", "AcmeCorp", "DHS", 500_000, "HIGH", 70, -10)
+    result = vendor_profile_analytics("AcmeCorp")
+    assert result["summary"]["contracts"] == 2
+    assert result["summary"]["active_contracts"] == 1
+    assert result["summary"]["critical_contracts"] == 1
+
+
+def test_vendor_profile_unknown_vendor_returns_empty(con):
+    result = vendor_profile_analytics("NoSuchVendor")
+    assert result["agencies"] == []
+    assert result["upcoming"] == []
+    assert result["active"] == []

@@ -208,9 +208,7 @@ def contracts():
 
 @app.route("/vendor/<name>")
 def vendor_profile(name):
-    con = connect()
-    profile = vendor_profile_query(con, name)
-    con.close()
+    profile = vendor_profile_query(name)
     return render_template("vendor.html", vendor=name, profile=profile)
 
 
