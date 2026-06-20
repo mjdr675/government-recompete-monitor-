@@ -41,6 +41,19 @@ _BEAT_STALE_THRESHOLD = timedelta(minutes=15)
 _QUALITY_THRESHOLD = 10
 
 
+@tasks.task(name="tasks.send_email_task", bind=True, max_retries=3, default_retry_delay=60)
+def send_email_task(self, to: str, subject: str, html_body: str, text_body: str = ""):
+    from email_service import send_email
+    try:
+        result = send_email(to=to, subject=subject, html_body=html_body, text_body=text_body)
+        if result is None:
+            logger.warning("send_email_task: EMAIL_API_KEY not set, skipping send to %s", to)
+        return result
+    except Exception as exc:
+        logger.error("send_email_task failed (to=%s): %s", to, exc)
+        raise self.retry(exc=exc)
+
+
 @tasks.task(name="tasks.heartbeat")
 def heartbeat():
     """Write current UTC timestamp to beat:health Redis key with 15-min TTL."""
