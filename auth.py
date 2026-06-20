@@ -23,8 +23,19 @@ def login_required(f):
 @bp.before_app_request
 def load_logged_in_user() -> None:
     """Populate g.user for every request so templates can reference it."""
+    from db import get_engine
+    from sqlalchemy import text as sa_text
     user_id = session.get("user_id")
     g.user = get_user_by_id(user_id) if user_id else None
+    if g.user:
+        with get_engine().connect() as conn:
+            row = conn.execute(
+                sa_text("SELECT COUNT(*) FROM user_watchlist WHERE user_id = :uid"),
+                {"uid": g.user["id"]},
+            ).fetchone()
+            g.watchlist_count = row[0] if row else 0
+    else:
+        g.watchlist_count = 0
 
 
 @bp.route("/login", methods=["GET", "POST"])
