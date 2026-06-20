@@ -51,3 +51,4 @@ Append-only log. Each row = one agent run.
 | 2026-06-20 00:00 UTC | backend | Task 093: Add data quality alert for low ingest record count | 093-ingest-quality-alert.md | completed:941-tests-passing |
 | 2026-06-20 00:00 UTC | docs | Task 094: Update ARCHITECTURE.md to reflect Sprint A–C completion | 094-update-architecture-docs.md | completed |
 | 2026-06-20 00:00 UTC | backend | Task 095: Add email_service.py with send_email() via Resend API | 095-email-service.md | completed:5-tests-passing |
+| 2026-06-20 00:00 UTC | backend | Task 096: Add /ingest/email-test admin route | 096-email-test-route.md | completed:949-tests-passing |

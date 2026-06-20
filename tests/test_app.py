@@ -706,3 +706,28 @@ def test_dashboard_shows_freshness_banner_when_ingest_exists(client, test_db):
     rv = client.get("/")
     assert rv.status_code == 200
     assert b"Data last updated" in rv.data
+
+
+def test_email_test_returns_ok_when_send_succeeds(client, monkeypatch):
+    import app as flask_app
+    monkeypatch.setattr(flask_app, "send_email", lambda **kw: {"id": "abc"})
+    rv = client.get("/ingest/email-test")
+    assert rv.status_code == 200
+    assert rv.get_json()["ok"] is True
+
+
+def test_email_test_returns_503_when_no_api_key(client, monkeypatch):
+    import app as flask_app
+    monkeypatch.setattr(flask_app, "send_email", lambda **kw: None)
+    rv = client.get("/ingest/email-test")
+    assert rv.status_code == 503
+    assert rv.get_json()["ok"] is False
+
+
+def test_email_test_returns_500_when_send_raises(client, monkeypatch):
+    import app as flask_app
+    def boom(**kw): raise RuntimeError("timeout")
+    monkeypatch.setattr(flask_app, "send_email", boom)
+    rv = client.get("/ingest/email-test")
+    assert rv.status_code == 500
+    assert rv.get_json()["ok"] is False

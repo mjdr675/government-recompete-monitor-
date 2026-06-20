@@ -18,6 +18,7 @@ from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
 
 from auth import bp as auth_bp
+from email_service import send_email
 from change_detector import detect_changes
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -463,6 +464,22 @@ def ingest():
             return jsonify({"task_id": job.id})
 
     return render_template("ingest.html", message=message, error=error)
+
+
+@app.route("/ingest/email-test")
+def ingest_email_test():
+    try:
+        result = send_email(
+            to=g.user["email"],
+            subject="Test email — Gov Recompete Monitor",
+            html_body="<p>Email delivery is working.</p>",
+            text_body="Email delivery is working.",
+        )
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    if result is None:
+        return jsonify({"ok": False, "error": "EMAIL_API_KEY not set"}), 503
+    return jsonify({"ok": True, "to": g.user["email"]})
 
 
 @app.route("/ingest/status")
