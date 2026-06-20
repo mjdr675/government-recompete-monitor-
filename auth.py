@@ -1,9 +1,13 @@
 import functools
+import logging
+import os
 
 from flask import (Blueprint, g, redirect, render_template,
                    request, session, url_for)
 
 from users import create_user, get_user_by_id, verify_password
+
+logger = logging.getLogger(__name__)
 
 bp = Blueprint("auth", __name__)
 
@@ -78,6 +82,19 @@ def register():
                 session.clear()
                 session["user_id"] = user["id"]
                 session["user_email"] = user["email"]
+                try:
+                    from tasks import send_email_task
+                    app_url = os.environ.get("APP_URL", "https://govrecompete.com")
+                    html_body = render_template("email/welcome.html", user_email=email, app_url=app_url)
+                    text_body = render_template("email/welcome.txt", user_email=email, app_url=app_url)
+                    send_email_task.delay(
+                        to=email,
+                        subject="Welcome to Gov Recompete Monitor",
+                        html_body=html_body,
+                        text_body=text_body,
+                    )
+                except Exception as exc:
+                    logger.warning("Could not enqueue welcome email for %s: %s", email, exc)
                 return redirect("/")
             except ValueError as exc:
                 error = str(exc)

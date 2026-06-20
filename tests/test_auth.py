@@ -270,3 +270,30 @@ def test_login_rate_limited(auth_db):
         rv = c.post("/login", data={"email": "x@example.com", "password": "wrong"})
         assert rv.status_code == 429
     flask_app.app.config["RATELIMIT_ENABLED"] = False
+
+
+def test_registration_enqueues_welcome_email(client, monkeypatch):
+    from unittest.mock import MagicMock, patch
+    import tasks as tasks_module
+    mock_delay = MagicMock()
+    monkeypatch.setattr(tasks_module.send_email_task, "delay", mock_delay)
+    client.post("/register", data={
+        "email": "newuser@example.com",
+        "password": "password123",
+        "confirm": "password123",
+    })
+    mock_delay.assert_called_once()
+    call_kwargs = mock_delay.call_args[1]
+    assert call_kwargs["to"] == "newuser@example.com"
+    assert "Welcome" in call_kwargs["subject"]
+
+
+def test_registration_succeeds_if_email_task_raises(client, monkeypatch):
+    import tasks as tasks_module
+    monkeypatch.setattr(tasks_module.send_email_task, "delay", lambda **kw: (_ for _ in ()).throw(RuntimeError("Redis down")))
+    rv = client.post("/register", data={
+        "email": "another@example.com",
+        "password": "password123",
+        "confirm": "password123",
+    })
+    assert rv.status_code == 302
