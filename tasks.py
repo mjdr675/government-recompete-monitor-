@@ -35,6 +35,12 @@ tasks.conf.beat_schedule = {
     },
 }
 
+_sentry_dsn = os.environ.get("SENTRY_DSN", "")
+if _sentry_dsn:
+    import sentry_sdk
+    from sentry_sdk.integrations.celery import CeleryIntegration
+    sentry_sdk.init(dsn=_sentry_dsn, integrations=[CeleryIntegration()], traces_sample_rate=0.0)
+
 _BEAT_HEALTH_KEY = "beat:health"
 _BEAT_HEALTH_TTL = 900  # 15 minutes in seconds
 _BEAT_STALE_THRESHOLD = timedelta(minutes=15)

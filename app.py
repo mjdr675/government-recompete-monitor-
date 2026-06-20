@@ -42,6 +42,18 @@ import hubspot_service
 app = Flask(__name__)
 load_dotenv()
 
+import sentry_sdk
+from sentry_sdk.integrations.flask import FlaskIntegration
+
+_sentry_dsn = os.environ.get("SENTRY_DSN", "")
+if _sentry_dsn:
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        integrations=[FlaskIntegration()],
+        traces_sample_rate=0.1,
+        environment=os.environ.get("RAILWAY_ENVIRONMENT", "development"),
+    )
+
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")

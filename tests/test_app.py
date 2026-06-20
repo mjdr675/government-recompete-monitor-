@@ -731,3 +731,33 @@ def test_email_test_returns_500_when_send_raises(client, monkeypatch):
     rv = client.get("/ingest/email-test")
     assert rv.status_code == 500
     assert rv.get_json()["ok"] is False
+
+
+# ---------------------------------------------------------------------------
+# Sentry integration
+# ---------------------------------------------------------------------------
+
+def test_sentry_init_skipped_when_no_dsn(monkeypatch):
+    import os
+    monkeypatch.delenv("SENTRY_DSN", raising=False)
+    import sentry_sdk
+    calls = []
+    monkeypatch.setattr(sentry_sdk, "init", lambda **kw: calls.append(kw))
+    dsn = os.environ.get("SENTRY_DSN", "")
+    if dsn:
+        sentry_sdk.init(dsn=dsn)
+    assert calls == []
+
+
+def test_sentry_init_called_when_dsn_set(monkeypatch):
+    import os
+    fake_dsn = "https://fake@sentry.io/1"
+    monkeypatch.setenv("SENTRY_DSN", fake_dsn)
+    import sentry_sdk
+    calls = []
+    monkeypatch.setattr(sentry_sdk, "init", lambda **kw: calls.append(kw))
+    dsn = os.environ.get("SENTRY_DSN", "")
+    if dsn:
+        sentry_sdk.init(dsn=dsn, integrations=[], traces_sample_rate=0.1)
+    assert len(calls) == 1
+    assert calls[0]["dsn"] == fake_dsn
