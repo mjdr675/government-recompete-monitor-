@@ -163,20 +163,26 @@ def contracts():
         limit=25,
     )
 
+    _total = result["total"]
+    _page_size = 25
+    _total_pages = max(1, (_total + _page_size - 1) // _page_size)
+
     return render_template(
         "contracts.html",
         rows=result["contracts"],
-        total=result["total"],
+        total=_total,
+        total_pages=_total_pages,
         start=result["start"] + 1 if result["count"] else 0,
         end=result["start"] + result["count"],
         page=result["page"],
         has_prev=result["page"] > 1,
-        has_next=result["start"] + result["count"] < result["total"],
+        has_next=result["start"] + result["count"] < _total,
         priorities=["CRITICAL", "HIGH", "MEDIUM", "LOW"],
         q=q,
         agency=agency,
         priority=priority,
         days=days or "",
+        min_value=min_value or "",
         sort=sort,
         direction=direction,
     )

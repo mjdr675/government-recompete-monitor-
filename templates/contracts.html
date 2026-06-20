@@ -76,15 +76,25 @@ function compareSelected() {
 }
 </script>
 
-<div style="margin-top:18px;">
+<div style="margin-top:18px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+  {% set base_qs %}q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&sort={{ sort }}&dir={{ direction }}{% endset %}
+
   {% if has_prev %}
-    <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&sort={{ sort }}&dir={{ direction }}&page={{ page - 1 }}">Previous</a>
+    <a href="/contracts?{{ base_qs }}&page=1">First</a>
+    <a href="/contracts?{{ base_qs }}&page={{ page - 1 }}">Previous</a>
+  {% else %}
+    <span class="muted" aria-disabled="true">First</span>
+    <span class="muted" aria-disabled="true">Previous</span>
   {% endif %}
 
-  <span class="muted" style="margin:0 12px;">Page {{ page }}</span>
+  <span class="muted" style="margin:0 8px;">Page {{ page }} of {{ total_pages }}</span>
 
   {% if has_next %}
-    <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&sort={{ sort }}&dir={{ direction }}&page={{ page + 1 }}">Next</a>
+    <a href="/contracts?{{ base_qs }}&page={{ page + 1 }}">Next</a>
+    <a href="/contracts?{{ base_qs }}&page={{ total_pages }}">Last</a>
+  {% else %}
+    <span class="muted" aria-disabled="true">Next</span>
+    <span class="muted" aria-disabled="true">Last</span>
   {% endif %}
 </div>
 {% endblock %}
