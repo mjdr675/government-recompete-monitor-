@@ -43,6 +43,25 @@
   <tr><th>Updated</th><td>{{ row["updated_at"] }}</td></tr>
 </table>
 
+{% if g.user %}
+<div style="margin-top:28px;">
+  <h2 style="font-size:16px;margin-bottom:8px;">Notes</h2>
+  <ul id="notes-list" style="list-style:none;padding:0;margin:0 0 12px;">
+    {% for n in notes %}
+    <li style="background:white;border-radius:6px;padding:10px 14px;margin-bottom:8px;box-shadow:0 1px 3px #ddd;">
+      <div>{{ n.body }}</div>
+      <div class="muted" style="font-size:12px;margin-top:4px;">{{ n.created_at[:10] }}</div>
+    </li>
+    {% else %}
+    <li id="notes-empty" class="muted">No notes yet.</li>
+    {% endfor %}
+  </ul>
+  <textarea id="note-body" rows="3" style="width:100%;max-width:600px;padding:8px;box-sizing:border-box;" placeholder="Add a private note..."></textarea><br>
+  <button onclick="addNote()" style="margin-top:6px;">Add note</button>
+  <span id="note-error" class="muted" style="margin-left:8px;color:#b00020;display:none;"></span>
+</div>
+{% endif %}
+
 <script>
 function bookmarkToggle(btn) {
   var id = btn.dataset.id;
@@ -56,6 +75,27 @@ function bookmarkToggle(btn) {
   }).then(function(r) { return r.json(); }).then(function() {
     btn.textContent = isBookmarked ? '☆ Add to watchlist' : '★ Remove from watchlist';
   });
+}
+function addNote() {
+  var body = document.getElementById('note-body').value.trim();
+  var errEl = document.getElementById('note-error');
+  errEl.style.display = 'none';
+  if (!body) { errEl.textContent = 'Note cannot be empty.'; errEl.style.display = 'inline'; return; }
+  var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  fetch('/contract/{{ row["internal_id"] }}/note', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({body: body, csrf_token: token})
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (!data.ok) { errEl.textContent = data.error || 'Error'; errEl.style.display = 'inline'; return; }
+    var empty = document.getElementById('notes-empty');
+    if (empty) empty.remove();
+    var li = document.createElement('li');
+    li.style.cssText = 'background:white;border-radius:6px;padding:10px 14px;margin-bottom:8px;box-shadow:0 1px 3px #ddd;';
+    li.innerHTML = '<div>' + body.replace(/</g,'&lt;') + '</div><div class="muted" style="font-size:12px;margin-top:4px;">' + data.created_at.slice(0,10) + '</div>';
+    document.getElementById('notes-list').prepend(li);
+    document.getElementById('note-body').value = '';
+  }).catch(function() { errEl.textContent = 'Could not save note.'; errEl.style.display = 'inline'; });
 }
 </script>
 {% endblock %}

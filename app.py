@@ -148,8 +148,10 @@ _PUBLIC_PATHS = frozenset({
 def require_login():
     if request.path in _PUBLIC_PATHS:
         return None
-    # DELETE /searches/<id> has a dynamic path; route handles its own auth
+    # Dynamic-path JSON API routes handle their own auth (return 401 JSON)
     if request.method == "DELETE" and request.path.startswith("/searches/"):
+        return None
+    if request.method == "POST" and request.path.endswith("/note"):
         return None
     if "user_id" not in session:
         return redirect(url_for("auth.login", next=request.path))
@@ -454,6 +456,7 @@ def contract_detail(internal_id):
         return redirect("/contracts")
 
     is_bookmarked = False
+    notes = []
     if g.user:
         engine = get_engine()
         with engine.connect() as conn:
@@ -461,9 +464,18 @@ def contract_detail(internal_id):
                 text("SELECT 1 FROM user_watchlist WHERE user_id = :uid AND internal_id = :iid"),
                 {"uid": g.user["id"], "iid": internal_id},
             ).fetchone()
-        is_bookmarked = hit is not None
+            is_bookmarked = hit is not None
+            note_rows = conn.execute(
+                text(
+                    "SELECT id, body, created_at FROM contract_notes"
+                    " WHERE user_id = :uid AND internal_id = :iid"
+                    " ORDER BY created_at DESC"
+                ),
+                {"uid": g.user["id"], "iid": internal_id},
+            ).mappings().fetchall()
+            notes = [dict(r) for r in note_rows]
 
-    return render_template("contract_detail.html", row=row, is_bookmarked=is_bookmarked)
+    return render_template("contract_detail.html", row=row, is_bookmarked=is_bookmarked, notes=notes)
 
 
 @app.route("/watchlist/add", methods=["POST"])
@@ -567,6 +579,39 @@ def searches_delete(search_id):
             {"id": search_id, "uid": g.user["id"]},
         )
     return jsonify({"ok": True})
+
+
+@app.route("/contract/<internal_id>/note", methods=["POST"])
+@csrf.exempt
+def contract_note_add(internal_id):
+    if not g.user:
+        return jsonify({"error": "login required"}), 401
+    body = (request.get_json(silent=True) or {}).get("body", "").strip()
+    if not body:
+        return jsonify({"ok": False, "error": "body required"}), 400
+    now = datetime.now(timezone.utc).isoformat()
+    engine = get_engine()
+    is_pg = engine.dialect.name == "postgresql"
+    with engine.begin() as conn:
+        if is_pg:
+            row = conn.execute(
+                text(
+                    "INSERT INTO contract_notes (user_id, internal_id, body, created_at)"
+                    " VALUES (:uid, :iid, :body, :ts) RETURNING id"
+                ),
+                {"uid": g.user["id"], "iid": internal_id, "body": body, "ts": now},
+            ).fetchone()
+            new_id = row[0]
+        else:
+            result = conn.execute(
+                text(
+                    "INSERT INTO contract_notes (user_id, internal_id, body, created_at)"
+                    " VALUES (:uid, :iid, :body, :ts)"
+                ),
+                {"uid": g.user["id"], "iid": internal_id, "body": body, "ts": now},
+            )
+            new_id = result.lastrowid
+    return jsonify({"ok": True, "id": new_id, "created_at": now})
 
 
 @app.route("/searches")
