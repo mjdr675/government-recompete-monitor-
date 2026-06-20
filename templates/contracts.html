@@ -2,6 +2,7 @@
 {% block title %}Contracts{% endblock %}
 
 {% block content %}
+<meta name="csrf-token" content="{{ csrf_token() }}">
 <h1>Contracts</h1>
 <div class="muted">Showing {{ start }}–{{ end }} of {{ total }} matching contracts</div>
 
@@ -31,6 +32,7 @@
 </div>
 <table>
 <tr>
+  <th>Watch</th>
   <th></th>
   <th>{{ sort_link("priority", "Priority") }}</th>
   <th>{{ sort_link("vendor", "Vendor") }}</th>
@@ -42,6 +44,7 @@
 </tr>
 {% for r in rows %}
 <tr>
+<td><button class="bm-btn" data-id="{{ r['internal_id'] }}" onclick="bookmarkToggle(this)" style="background:none;border:none;cursor:pointer;font-size:16px;" title="Bookmark">{{ "★" if r['internal_id'] in watchlist_ids else "☆" }}</button></td>
 <td><input type="checkbox" class="cmp-check" value="{{ r['internal_id'] }}" onchange="updateCompare()"></td>
 <td>
   <a class="priority-badge priority-{{ (r["priority"] or "unknown").lower().replace(" ", "-").replace("_", "-") }}"
@@ -57,7 +60,7 @@
 <td>{{ r["recompete_score"] }}</td>
 </tr>
 {% else %}
-<tr><td colspan="8">No contracts found.</td></tr>
+<tr><td colspan="9">No contracts found.</td></tr>
 {% endfor %}
 </table>
 
@@ -73,6 +76,19 @@ function compareSelected() {
     window.location.href = '/compare?a=' + encodeURIComponent(checked[0].value) +
                            '&b=' + encodeURIComponent(checked[1].value);
   }
+}
+function bookmarkToggle(btn) {
+  var id = btn.dataset.id;
+  var isBookmarked = btn.textContent.trim() === '★';
+  var url = isBookmarked ? '/watchlist/remove' : '/watchlist/add';
+  var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({internal_id: id, csrf_token: token})
+  }).then(function(r) { return r.json(); }).then(function() {
+    btn.textContent = isBookmarked ? '☆' : '★';
+  });
 }
 </script>
 

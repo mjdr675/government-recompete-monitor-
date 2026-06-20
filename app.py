@@ -201,6 +201,16 @@ def contracts():
     _page_size = 25
     _total_pages = max(1, (_total + _page_size - 1) // _page_size)
 
+    watchlist_ids = set()
+    if g.user:
+        engine = get_engine()
+        with engine.connect() as conn:
+            wl_rows = conn.execute(
+                text("SELECT internal_id FROM user_watchlist WHERE user_id = :uid"),
+                {"uid": g.user["id"]},
+            ).fetchall()
+        watchlist_ids = {r[0] for r in wl_rows}
+
     return render_template(
         "contracts.html",
         rows=result["contracts"],
@@ -219,6 +229,7 @@ def contracts():
         min_value=min_value or "",
         sort=sort,
         direction=direction,
+        watchlist_ids=watchlist_ids,
     )
 
 
