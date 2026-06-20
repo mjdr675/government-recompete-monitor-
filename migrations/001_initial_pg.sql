@@ -104,6 +104,15 @@ CREATE TABLE IF NOT EXISTS early_access (
     hubspot_contact_id  TEXT
 );
 
+-- User watchlist (bookmarked contracts)
+CREATE TABLE IF NOT EXISTS user_watchlist (
+    id          SERIAL PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    internal_id TEXT NOT NULL,
+    added_at    TEXT NOT NULL,
+    UNIQUE(user_id, internal_id)
+);
+
 -- Celery task execution log
 CREATE TABLE IF NOT EXISTS celery_task_log (
     id           SERIAL PRIMARY KEY,

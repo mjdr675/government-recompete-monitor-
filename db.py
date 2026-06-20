@@ -139,6 +139,15 @@ def init_db():
             result_json TEXT
         )
         """))
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS user_watchlist (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            internal_id TEXT NOT NULL,
+            added_at    TEXT NOT NULL,
+            UNIQUE(user_id, internal_id)
+        )
+        """))
 
 
 def upsert_contract(row):

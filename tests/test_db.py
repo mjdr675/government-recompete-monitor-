@@ -65,3 +65,34 @@ def test_save_snapshot_multiple_rows_all_searchable(db):
     db_module.save_snapshot("2026-06-19", rows)
     for i in range(5):
         assert db_module.get_contracts(q=f"Vendor{i}")["total"] == 1
+
+
+# ---------------------------------------------------------------------------
+# user_watchlist schema
+# ---------------------------------------------------------------------------
+
+def test_watchlist_unique_constraint_raises_on_duplicate(db):
+    import sqlite3
+    con = sqlite3.connect(db)
+    con.execute("INSERT INTO users (email, password_hash, created_at) VALUES ('u@x.com', 'h', '2026-01-01')")
+    uid = con.execute("SELECT id FROM users WHERE email='u@x.com'").fetchone()[0]
+    con.execute("INSERT INTO user_watchlist (user_id, internal_id, added_at) VALUES (?, 'C1', '2026-01-01')", (uid,))
+    con.commit()
+    import pytest as _pytest
+    with _pytest.raises(sqlite3.IntegrityError):
+        con.execute("INSERT INTO user_watchlist (user_id, internal_id, added_at) VALUES (?, 'C1', '2026-01-01')", (uid,))
+        con.commit()
+    con.close()
+
+
+def test_watchlist_allows_different_contracts(db):
+    import sqlite3
+    con = sqlite3.connect(db)
+    con.execute("INSERT INTO users (email, password_hash, created_at) VALUES ('u2@x.com', 'h', '2026-01-01')")
+    uid = con.execute("SELECT id FROM users WHERE email='u2@x.com'").fetchone()[0]
+    con.execute("INSERT INTO user_watchlist (user_id, internal_id, added_at) VALUES (?, 'C1', '2026-01-01')", (uid,))
+    con.execute("INSERT INTO user_watchlist (user_id, internal_id, added_at) VALUES (?, 'C2', '2026-01-01')", (uid,))
+    con.commit()
+    count = con.execute("SELECT COUNT(*) FROM user_watchlist WHERE user_id=?", (uid,)).fetchone()[0]
+    assert count == 2
+    con.close()
