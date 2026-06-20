@@ -140,7 +140,7 @@ def health():
 @app.route("/")
 def dashboard():
     con = connect()
-    analytics = dashboard_analytics(con)
+    analytics = dashboard_analytics()
     recommendations = opportunity_recommendations(con)
     con.close()
     return render_template(

@@ -121,7 +121,7 @@ def test_recommendations_no_crash_without_changes_table(con):
 # ---------------------------------------------------------------------------
 
 def test_dashboard_analytics_returns_expected_keys(con):
-    result = dashboard_analytics(con)
+    result = dashboard_analytics()
     assert "platform" in result
     assert "upcoming" in result
     assert "critical" in result
@@ -132,7 +132,7 @@ def test_dashboard_analytics_returns_expected_keys(con):
 def test_dashboard_analytics_platform_counts(con):
     _insert(con, "D1", "Alpha", "DOD", 1_000_000, "CRITICAL", 90, 45)
     _insert(con, "D2", "Beta", "DHS", 2_000_000, "HIGH", 70, 120)
-    result = dashboard_analytics(con)
+    result = dashboard_analytics()
     assert result["platform"]["total_contracts"] == 2
     assert result["platform"]["total_pipeline"] == pytest.approx(3_000_000)
     assert result["platform"]["critical_contracts"] == 1
@@ -142,7 +142,7 @@ def test_dashboard_analytics_platform_counts(con):
 def test_dashboard_analytics_upcoming_within_90_days(con):
     _insert(con, "D1", "Soon", "DOD", 500_000, "HIGH", 70, 30)
     _insert(con, "D2", "Far", "DHS", 500_000, "HIGH", 70, 200)
-    result = dashboard_analytics(con)
+    result = dashboard_analytics()
     vendor_names = [r["vendor"] for r in result["upcoming"]]
     assert "Soon" in vendor_names
     assert "Far" not in vendor_names
@@ -151,7 +151,7 @@ def test_dashboard_analytics_upcoming_within_90_days(con):
 def test_dashboard_analytics_critical_active_only(con):
     _insert(con, "D1", "CritActive", "DOD", 1_000_000, "CRITICAL", 90, 45)
     _insert(con, "D2", "CritExpired", "DHS", 500_000, "CRITICAL", 80, -5)
-    result = dashboard_analytics(con)
+    result = dashboard_analytics()
     vendor_names = [r["vendor"] for r in result["critical"]]
     assert "CritActive" in vendor_names
     assert "CritExpired" not in vendor_names
@@ -160,6 +160,6 @@ def test_dashboard_analytics_critical_active_only(con):
 def test_dashboard_analytics_top_agencies_ordered_by_pipeline(con):
     _insert(con, "D1", "V1", "BigAgency", 5_000_000, "HIGH", 70, 100)
     _insert(con, "D2", "V2", "SmallAgency", 100_000, "LOW", 40, 100)
-    result = dashboard_analytics(con)
+    result = dashboard_analytics()
     agency_names = [r["agency"] for r in result["top_agencies"]]
     assert agency_names[0] == "BigAgency"

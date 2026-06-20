@@ -23,3 +23,4 @@ Append-only log. Each row = one agent run.
 | 2026-06-20 00:00 UTC | backend | Task 054: Cost Budgeting | 054-cost-budgeting.md | completed |
 | 2026-06-20 00:00 UTC | backend | Task 055: AI CTO | 055-ai-cto.md | completed |
 | 2026-06-20 00:00 UTC | backend | Task 066: Fix users.py PostgreSQL compatibility | 066-fix-users-postgresql.md | completed:23-tests-passing |
+| 2026-06-20 00:00 UTC | backend | Task 067: Fix dashboard_analytics() PostgreSQL compatibility | 067-fix-analytics-dashboard.md | completed:15-tests-passing |

@@ -2,60 +2,60 @@ from db import connect, get_engine
 from sqlalchemy import text
 
 
-def dashboard_analytics(con):
+def dashboard_analytics():
     """Platform-wide summary stats and key lists for the customer dashboard."""
-    con.row_factory = lambda cur, row: {col[0]: row[i] for i, col in enumerate(cur.description)}
+    engine = get_engine()
+    with engine.connect() as conn:
+        platform = conn.execute(text("""
+            SELECT
+                COUNT(*) AS total_contracts,
+                COALESCE(SUM(value), 0) AS total_pipeline,
+                SUM(CASE WHEN priority='CRITICAL' THEN 1 ELSE 0 END) AS critical_contracts,
+                SUM(CASE WHEN COALESCE(days_remaining, 0) > 0 THEN 1 ELSE 0 END) AS active_contracts,
+                COALESCE(AVG(recompete_score), 0) AS avg_score
+            FROM contracts
+        """)).mappings().fetchone()
 
-    platform = con.execute("""
-        SELECT
-            COUNT(*) AS total_contracts,
-            COALESCE(SUM(value), 0) AS total_pipeline,
-            SUM(CASE WHEN priority='CRITICAL' THEN 1 ELSE 0 END) AS critical_contracts,
-            SUM(CASE WHEN COALESCE(days_remaining, 0) > 0 THEN 1 ELSE 0 END) AS active_contracts,
-            COALESCE(AVG(recompete_score), 0) AS avg_score
-        FROM contracts
-    """).fetchone()
+        upcoming = conn.execute(text("""
+            SELECT internal_id, award_id, vendor, agency, value, end_date,
+                   days_remaining, priority, recompete_score
+            FROM contracts
+            WHERE COALESCE(days_remaining, -1) BETWEEN 0 AND 90
+            ORDER BY days_remaining ASC
+            LIMIT 10
+        """)).mappings().fetchall()
 
-    upcoming = con.execute("""
-        SELECT internal_id, award_id, vendor, agency, value, end_date,
-               days_remaining, priority, recompete_score
-        FROM contracts
-        WHERE COALESCE(days_remaining, -1) BETWEEN 0 AND 90
-        ORDER BY days_remaining ASC
-        LIMIT 10
-    """).fetchall()
+        critical = conn.execute(text("""
+            SELECT internal_id, award_id, vendor, agency, value, end_date,
+                   days_remaining, recompete_score
+            FROM contracts
+            WHERE priority = 'CRITICAL' AND COALESCE(days_remaining, 0) > 0
+            ORDER BY recompete_score DESC, days_remaining ASC
+            LIMIT 10
+        """)).mappings().fetchall()
 
-    critical = con.execute("""
-        SELECT internal_id, award_id, vendor, agency, value, end_date,
-               days_remaining, recompete_score
-        FROM contracts
-        WHERE priority = 'CRITICAL' AND COALESCE(days_remaining, 0) > 0
-        ORDER BY recompete_score DESC, days_remaining ASC
-        LIMIT 10
-    """).fetchall()
+        top_agencies = conn.execute(text("""
+            SELECT agency, COUNT(*) AS contracts, COALESCE(SUM(value), 0) AS pipeline_value
+            FROM contracts
+            GROUP BY agency
+            ORDER BY pipeline_value DESC
+            LIMIT 5
+        """)).mappings().fetchall()
 
-    top_agencies = con.execute("""
-        SELECT agency, COUNT(*) AS contracts, COALESCE(SUM(value), 0) AS pipeline_value
-        FROM contracts
-        GROUP BY agency
-        ORDER BY pipeline_value DESC
-        LIMIT 5
-    """).fetchall()
-
-    top_vendors = con.execute("""
-        SELECT vendor, COUNT(*) AS contracts, COALESCE(SUM(value), 0) AS pipeline_value
-        FROM contracts
-        GROUP BY vendor
-        ORDER BY pipeline_value DESC
-        LIMIT 5
-    """).fetchall()
+        top_vendors = conn.execute(text("""
+            SELECT vendor, COUNT(*) AS contracts, COALESCE(SUM(value), 0) AS pipeline_value
+            FROM contracts
+            GROUP BY vendor
+            ORDER BY pipeline_value DESC
+            LIMIT 5
+        """)).mappings().fetchall()
 
     return {
-        "platform": platform,
-        "upcoming": upcoming,
-        "critical": critical,
-        "top_agencies": top_agencies,
-        "top_vendors": top_vendors,
+        "platform": dict(platform) if platform else {},
+        "upcoming": [dict(r) for r in upcoming],
+        "critical": [dict(r) for r in critical],
+        "top_agencies": [dict(r) for r in top_agencies],
+        "top_vendors": [dict(r) for r in top_vendors],
     }
 
 
