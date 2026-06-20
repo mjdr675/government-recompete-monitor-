@@ -54,7 +54,7 @@ from ai_agent.manager import (
 )
 from ai_agent.memory import get_memory
 from ai_agent.recovery import RecoveryTracker
-from ai_agent.reviewer import review
+from ai_agent.reviewer import review, ai_review
 
 _AGENT_DIR = Path(__file__).parent
 _DEFAULT_ESCALATE_FILE = _AGENT_DIR / "ESCALATE.md"
@@ -273,6 +273,23 @@ class AutonomousLoop:
                 continue
 
             self._log(task_info.filename, "REVIEW passed")
+
+            # 2b. AI review — quality and correctness check
+            _review_path = self.repo_root / "ai_agent" / "REVIEW.md"
+            ai_approved, ai_findings = ai_review(
+                patch_content,
+                task_title=task.get("title", ""),
+                review_output_path=_review_path,
+            )
+            if not ai_approved:
+                error = "AI review rejected: " + "; ".join(ai_findings[:3])
+                tracker.record(attempt, error, patch_content=patch_content)
+                self._log(task_info.filename, f"AI_REVIEW rejected — {error[:120]}")
+                if attempt == self.max_plan_attempts or tracker.should_cut_short():
+                    outcome = self._record_failure(task_info, error, attempt, start, tracker)
+                    break
+                continue
+            self._log(task_info.filename, "AI_REVIEW passed")
 
             # 3. Save patch to patches/
             patch_path = save_patch(task, specialist.ROLE, patch_content)
