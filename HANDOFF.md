@@ -158,3 +158,16 @@ for 14 sensitive patterns (schema changes, auth, payment, AWS, config files).
 (1a7f3c5) put them back. Task 052 implementation existed in 3b3e13c but queue file
 was never moved to done/. This commit removes the three stale queue entries and moves
 052 to done. No implementation code was changed.
+
+## 2026-06-20 — [BACKEND] Task 054: Cost Budgeting
+**Status:** completed
+**Files changed:** ai_agent/budget.py (new), ai_agent/llm.py, tests/test_budget.py (new), ai_agent/done/054-cost-budgeting.md
+**Tests:** 589 → 655 (+66)
+**Notes:** Implemented `ai_agent/budget.py` with `MODEL_PRICING` dict (7 models),
+`estimate_cost()`, `UsageRecord` / `BudgetConfig` dataclasses, and `BudgetTracker`
+class. BudgetTracker tracks per-session and cumulative token/cost usage, enforces
+optional session/daily/total USD limits, persists records to `budget_usage.json`
+(append-across-sessions), and generates a Markdown report. Daily limit filtering
+uses ISO timestamp prefix matching against the injected clock. All functions are
+fail-open (no limits → should_pause() returns False). Added `call_with_usage()` to
+`llm.py` that returns `(text, input_tokens, output_tokens)` for budget integration.

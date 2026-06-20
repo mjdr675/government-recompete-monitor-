@@ -20,3 +20,4 @@ Append-only log. Each row = one agent run.
 | 2026-06-20 00:00 UTC | backend | Task 052: Daemon Mode | 052-daemon-mode.md | completed:3b3e13c |
 | 2026-06-20 00:00 UTC | reconcile | Queue reconciliation 049–052 | — | stale queue entries removed; 052 moved to done |
 | 2026-06-20 00:00 UTC | backend | Task 053: Human Escalation | 053-human-escalation.md | completed |
+| 2026-06-20 00:00 UTC | backend | Task 054: Cost Budgeting | 054-cost-budgeting.md | completed |
