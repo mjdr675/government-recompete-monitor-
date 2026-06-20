@@ -1,5 +1,6 @@
 import csv
 import io
+import json
 import logging
 import os
 import subprocess
@@ -138,12 +139,16 @@ _PUBLIC_PATHS = frozenset({
     "/stripe/webhook",
     "/watchlist/add",
     "/watchlist/remove",
+    "/searches/save",
 })
 
 
 @app.before_request
 def require_login():
     if request.path in _PUBLIC_PATHS:
+        return None
+    # DELETE /searches/<id> has a dynamic path; route handles its own auth
+    if request.method == "DELETE" and request.path.startswith("/searches/"):
         return None
     if "user_id" not in session:
         return redirect(url_for("auth.login", next=request.path))
@@ -513,6 +518,54 @@ def watchlist():
         ).mappings().fetchall()
     contracts = [dict(r) for r in rows]
     return render_template("watchlist.html", contracts=contracts, count=len(contracts))
+
+
+@app.route("/searches/save", methods=["POST"])
+@csrf.exempt
+def searches_save():
+    if not g.user:
+        return jsonify({"error": "login required"}), 401
+    body = request.get_json(silent=True) or {}
+    name = body.get("name", "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "name required"}), 400
+    params = body.get("params", {})
+    now = datetime.now(timezone.utc).isoformat()
+    engine = get_engine()
+    is_pg = engine.dialect.name == "postgresql"
+    with engine.begin() as conn:
+        if is_pg:
+            row = conn.execute(
+                text(
+                    "INSERT INTO user_saved_searches (user_id, name, query_params_json, created_at)"
+                    " VALUES (:uid, :name, :params, :ts) RETURNING id"
+                ),
+                {"uid": g.user["id"], "name": name, "params": json.dumps(params), "ts": now},
+            ).fetchone()
+            new_id = row[0]
+        else:
+            result = conn.execute(
+                text(
+                    "INSERT INTO user_saved_searches (user_id, name, query_params_json, created_at)"
+                    " VALUES (:uid, :name, :params, :ts)"
+                ),
+                {"uid": g.user["id"], "name": name, "params": json.dumps(params), "ts": now},
+            )
+            new_id = result.lastrowid
+    return jsonify({"ok": True, "id": new_id})
+
+
+@app.route("/searches/<int:search_id>", methods=["DELETE"])
+@csrf.exempt
+def searches_delete(search_id):
+    if not g.user:
+        return jsonify({"error": "login required"}), 401
+    with get_engine().begin() as conn:
+        conn.execute(
+            text("DELETE FROM user_saved_searches WHERE id = :id AND user_id = :uid"),
+            {"id": search_id, "uid": g.user["id"]},
+        )
+    return jsonify({"ok": True})
 
 
 @app.route("/compare")

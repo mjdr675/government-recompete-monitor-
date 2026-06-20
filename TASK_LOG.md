@@ -40,3 +40,4 @@ Append-only log. Each row = one agent run.
 | 2026-06-20 00:00 UTC | backend | Task 082: Add watchlist count badge to nav | 082-watchlist-nav-badge.md | completed:906-tests-passing |
 | 2026-06-20 00:00 UTC | backend | Task 083: Add ingest_log table and write metadata after run_ingest | 083-ingest-log-table.md | completed:909-tests-passing |
 | 2026-06-20 00:00 UTC | backend | Task 084: Add user_saved_searches table | 084-saved-searches-schema.md | completed:9-tests-passing |
+| 2026-06-20 00:00 UTC | backend | Task 085: Add POST /searches/save and DELETE /searches/:id routes | 085-saved-searches-routes.md | completed:920-tests-passing |
