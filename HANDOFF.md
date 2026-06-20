@@ -89,3 +89,16 @@ Reviewed for cross-document duplication and consistency before commit. All tests
 
 **Cross-references updated** in all moved documents to use new paths (company/ and docs/ prefixes).
 No Python code was changed. No application behavior changed.
+
+## 2026-06-20 00:00 UTC — [BACKEND] Task 048: AI Reviewer
+**Status:** completed — commit 312c417
+**Files changed:** ai_agent/reviewer.py, ai_agent/loop.py, tests/test_reviewer.py (new)
+**Tests:** 358 → 378 (+20)
+**Notes:** Added two-stage review to the autonomous loop. Stage 1 (regex scan) already
+existed. Stage 2 (`ai_review()`) calls `claude-haiku-4-5-20251001` with a concise
+code-review prompt, parses DECISION/FINDINGS from the response, writes `ai_agent/REVIEW.md`,
+and fails open (approved=True) when the LLM is unavailable or raises an exception.
+Integrated into `loop.py` between the regex review pass and the patch save step. If the AI
+rejects a patch, the findings are recorded in `RecoveryTracker` and injected as feedback
+into the next plan attempt — this is the "fix automatically and re-review" behaviour the
+task required, reusing the existing retry loop.
