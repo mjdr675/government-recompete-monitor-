@@ -1,5 +1,37 @@
 from urllib.parse import urlencode
 
+_FILTER_LABELS = {
+    "days": "Expiring within",
+    "priority": "Priority",
+    "min_value": "Min value",
+    "naics_code": "NAICS",
+    "agency": "Agency",
+    "keywords": "Keywords",
+}
+
+
+def format_filter_value(key: str, value) -> str:
+    if key == "days":
+        return f"{value} days"
+    if key == "priority":
+        return str(value).title()
+    if key == "min_value":
+        try:
+            return f"${int(value):,}"
+        except (ValueError, TypeError):
+            return str(value)
+    return str(value)
+
+
+def format_filter_summary(filters: dict) -> str:
+    """Return a human-readable summary of a filter dict, e.g. 'Priority: Critical, Expiring within: 90 days'."""
+    parts = []
+    for key, value in filters.items():
+        label = _FILTER_LABELS.get(key, key)
+        formatted = format_filter_value(key, value)
+        parts.append(f"{label}: {formatted}")
+    return ", ".join(parts)
+
 SAVED_VIEWS = {
     "dod-critical": {
         "label": "DoD Critical Contracts",

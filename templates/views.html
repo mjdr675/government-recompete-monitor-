@@ -9,7 +9,7 @@
   {% for key, v in views.items() %}
     <a class="card" href="/views/{{ key }}" style="text-decoration:none;color:inherit;min-width:200px;">
       <div style="font-weight:bold;font-size:15px;">{{ v.label }}</div>
-      <div class="muted" style="margin-top:6px;font-size:13px;">{{ v.filters.items() | map('join', ': ') | join(', ') }}</div>
+      <div class="muted" style="margin-top:6px;font-size:13px;">{{ format_filter_summary(v.filters) }}</div>
     </a>
   {% endfor %}
 </div>

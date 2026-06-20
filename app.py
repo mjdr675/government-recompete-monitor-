@@ -27,7 +27,7 @@ from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
 from analytics import dashboard_analytics, opportunity_recommendations
 from report_builder import build_report
-from views import SAVED_VIEWS, build_view_query
+from views import SAVED_VIEWS, build_view_query, format_filter_summary
 import hubspot_service
 
 app = Flask(__name__)
@@ -37,6 +37,7 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
 app.register_blueprint(auth_bp)
+app.jinja_env.globals["format_filter_summary"] = format_filter_summary
 
 init_db()
 
