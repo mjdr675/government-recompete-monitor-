@@ -12,11 +12,18 @@ customer can use it daily for contract research and opportunity tracking.
 **Entry:** Current state (84 tests, SQLite, single user per deployment)
 **Exit Criteria:**
 - All open backlog items resolved (056-060)
-- Watchlist and saved searches working
-- Email alerts on contract expiration sent reliably
-- Stripe billing portal accessible (upgrade/downgrade/cancel)
+- Contract notes (Task 106) working
+- CSV export (Task 109) working
+- Stripe billing portal accessible (Task 201, upgrade/downgrade/cancel)
+- CSRF protection (Task 210) deployed on all state-modifying routes
+- Structured logging (Task 218) deployed
+- Sentry (Task 219) configured with Railway environment
 - Test count ≥ 130
 - Zero P0 bugs open
+
+> **Note (CTO Review):** Watchlist (107) and expiration alerts (128) were removed from M1
+> exit criteria — both depend on PostgreSQL (062) and org model (069), which are M2
+> foundation tasks. They are now M2 gate requirements.
 
 **Tasks:** 056–083
 **Revenue Goal:** First paying customer ($99–$299/mo)
@@ -37,6 +44,10 @@ research. A new customer can onboard in under 5 minutes without manual help.
 - Background job queue (Celery + Redis) operational
 - Nightly SAM.gov data refresh running on schedule
 - Email delivery operational (transactional email service)
+- Watchlist and saved searches working (Tasks 107, 108)
+- Email alerts on contract expiration sent reliably (Task 128)
+- Database backup verification passing (Task 279)
+- Celery beat health monitoring active (Task 281)
 - Test count ≥ 200
 
 **Tasks:** 084–133
@@ -240,5 +251,5 @@ These streams can run in parallel IF their prerequisite tasks are complete:
 | M2 | 084–133 | 50 | E02, E03, E04, E05, E09, E16 (partial), E18 (partial), E23 |
 | M3 | 134–192 | 59 | E07, E08, E10, E12, E13, E15 (partial), E17, E24 |
 | M4 | 193–251 | 59 | E11, E15, E16, E18, E19, E20, E22 |
-| M5–M6 | 252–278 | 27 | E21, E23 (advanced), AI Agents (advanced) |
-| **Total** | **056–278** | **223** | **24 epics** |
+| M5–M6 | 252–284 | 40 | E21, E23 (advanced), AI Agents (advanced), CTO Review additions |
+| **Total** | **056–284** | **236** | **24 epics** |

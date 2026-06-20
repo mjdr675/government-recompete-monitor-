@@ -165,6 +165,19 @@ The critical path is the sequence of tasks that, if delayed, delays everything.
 | 269 | Partner marketplace | 069, 079, 127 | — |
 | 270 | ML pWin model | 151, 156, 121, 064 | sklearn |
 | 271 | Roadmap index | all roadmap files | — |
+| 272 | 2FA (TOTP) | 069 | pyotp |
+| 273 | Past performance repository | 069 | — |
+| 274 | Key contact/relationship tracker | 069, 151 | — |
+| 275 | Win/loss debrief | 151, 127, 169 | — |
+| 276 | RFP document parsing | 104, 159, 160 | Anthropic SDK |
+| 277 | Set-aside eligibility check | 081, 103 | — |
+| 278 | In-app bid calendar | 154, 128 | — |
+| 279 | Database backup automation | 062, 220 | — |
+| 280 | Object storage for exports | 064, 209, 254 | boto3 |
+| 281 | Celery beat health monitoring | 064, 219, 220 | — |
+| 282 | Cross-org opportunity signals | 069, 107, 151, 202 | — |
+| 283 | AI prompt registry | 102 | — |
+| 284 | AI output quality feedback | 102, 169 | — |
 
 ---
 
@@ -241,22 +254,32 @@ can proceed in parallel without blocking each other:
 
 ### M1 Gate (before calling M1 complete)
 - [ ] Tasks 056–060 complete (backlog cleared)
-- [ ] Task 107 (watchlist) complete
-- [ ] Task 128 (expiration alerts) complete
+- [ ] Task 106 (contract notes) complete
+- [ ] Task 109 (CSV export) complete
 - [ ] Task 201 (billing portal) complete
 - [ ] Task 203 (trial) complete
-- [ ] Task 106 (contract notes) complete
+- [ ] Task 210 (CSRF protection) complete — implement immediately after Task 060
+- [ ] Task 218 (structured logging) complete — implement with Task 057
+- [ ] Task 219 (Sentry) complete — implement with Task 218
 - [ ] First paying customer acquired
 - [ ] 130+ tests passing
 
+> **CTO Review fix:** Tasks 107 (watchlist) and 128 (expiration alerts) removed from M1
+> gate. Both require PostgreSQL (062) and org model (069) which are M2 tasks. Moved to M2.
+
 ### M2 Gate
-- [ ] Task 062 (PostgreSQL) complete
+- [ ] Task 062 (PostgreSQL) complete — first task of M2
 - [ ] Task 064 (Celery) complete
 - [ ] Task 069 (org model) complete
 - [ ] Task 072–074 (onboarding) complete
+- [ ] Task 107 (watchlist) complete
+- [ ] Task 108 (saved searches) complete
 - [ ] Task 127 (email) complete
+- [ ] Task 128 (expiration alerts) complete
 - [ ] Task 076–080 (company intelligence) complete
-- [ ] Task 210, 211, 212 (security basics) complete
+- [ ] Task 211, 212 (additional security) complete
+- [ ] Task 279 (database backup verification) complete — implement with Task 062
+- [ ] Task 281 (Celery beat health monitoring) complete — implement with Task 064
 - [ ] 5+ paying orgs
 - [ ] 200+ tests passing
 
@@ -295,3 +318,20 @@ can proceed in parallel without blocking each other:
 
 **Mitigation:** All external service calls wrapped in try/except with graceful degradation.
 Never crash the app when an external service fails — log, alert, and continue.
+
+---
+
+## 7. Hidden Dependencies (CTO Review Additions)
+
+These chains are not obvious from the immediate dependency entries above. Flag them before
+implementation begins.
+
+| Hidden Chain | Risk |
+|---|---|
+| 066 (email verify) → 127 → 064 → 063 — four-task chain; Task 063 must exist before any auth email | Block if Redis not yet provisioned |
+| 210 (CSRF) — breaks all existing form tests in test_auth.py and test_app.py | Every form test must add `csrf_token` to POST data after Task 210 ships |
+| 069 (org model) adds `g.org` to session — all existing route tests need `g.org` fixture | Route test file requires a `mock_org` fixture from Task 069 onward |
+| 062 (PostgreSQL) restructures `init_db()` — all table tests must work against PG schema | Run full test suite against PostgreSQL in CI from Task 062 onward |
+| 270 (ML pWin) — requires ≥ 30 closed captures with WON/LOST outcome for first training | Data availability dependency; Task 275 (win/loss debrief) must ship early to collect data |
+| 265 (company discovery) — implicitly requires Task 074 (alert threshold) to complete onboarding | Verified in dependency table; implementing agent should confirm 074 is DONE |
+| pgvector extension — mentioned in architecture as future embedding feature; must be installed | Add `CREATE EXTENSION IF NOT EXISTS vector;` to Task 062 migration or Task 279 |

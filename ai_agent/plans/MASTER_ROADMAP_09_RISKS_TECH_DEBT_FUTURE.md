@@ -132,6 +132,57 @@ fails repeatedly (app unavailable), plan state in the DB gets out of sync with S
 
 ---
 
+### AR01 — No API Versioning Strategy (CTO Review Addition)
+**Probability:** Low | **Impact:** Medium
+**Description:** When the public REST API ships (Tasks 214, 226), there is no versioned URL
+prefix strategy. Future breaking changes to response schemas will break customer integrations.
+**Mitigation:**
+- Establish `/api/v1/` URL prefix convention before any API route ships in Task 214
+- Include `"api_version": "1.0"` in all API responses
+- Never remove or rename response fields without bumping the version prefix
+**Owner:** Security/API tasks (Task 214, 226)
+
+---
+
+### AR02 — pgvector Extension Never Installed (CTO Review Addition)
+**Probability:** Medium | **Impact:** Low–Medium
+**Description:** The architecture document lists pgvector as part of the target PostgreSQL
+setup for future embedding-based features (NLU search, pWin, opportunity matching), but no
+task installs or enables the extension. If Tasks 267 or 270 evolve to use embeddings, the
+extension must already be in the database.
+**Mitigation:**
+- Add `CREATE EXTENSION IF NOT EXISTS vector;` to the Task 062 migration script or Task 279
+- No additional libraries required until embeddings are actually used — this is a one-line addition
+**Owner:** Platform foundation (Task 062) or backup task (Task 279)
+
+---
+
+### AR03 — Single Railway Region with No Failover (CTO Review Addition)
+**Probability:** Low | **Impact:** Medium
+**Description:** The entire deployment runs on Railway in a single region. Enterprise
+customers or government-adjacent compliance requirements may demand multi-region deployment
+or at minimum a defined failover region.
+**Mitigation:**
+- Document current region in `docs/ARCHITECTURE.md`
+- Design stateless web tier from the start (no local file state — enforced by Task 280)
+- Add multi-region evaluation as a gate item for M5 enterprise onboarding
+**Owner:** Operations (Task 222), Enterprise Readiness (E21)
+
+---
+
+### AR04 — No Session Invalidation Mechanism (CTO Review Addition)
+**Probability:** Low | **Impact:** Medium
+**Description:** Users cannot see or revoke active sessions. If a device is stolen,
+the attacker retains access until the session cookie expires. For a platform storing
+competitive BD strategy, this is a material security gap.
+**Mitigation:**
+- Add `user_sessions` table: `session_token_hash, user_id, created_at, last_seen, user_agent, ip_address`
+- `GET /settings/security/sessions` — list and revoke active sessions
+- Add as a scope-expansion task to Task 272 (2FA) or create as Task 285 if scope is too large
+**Owner:** Auth (Task 272)
+
+---
+
 ## 2. Technical Debt Strategy
 
 ### Current Known Debt

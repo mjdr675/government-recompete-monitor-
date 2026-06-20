@@ -550,3 +550,387 @@ navigation file for autonomous AI agents and human reviewers.
 **Testing:** None
 **Commit:** `docs: add MASTER_ROADMAP_INDEX.md as navigation file for all 214 tasks`
 **Follow-up:** None
+
+---
+
+## CTO REVIEW ADDITIONS — Tasks 272–284
+# Source: ai_agent/plans/CTO_REVIEW.md
+# Added: 2026-06-20
+
+---
+
+### Task 272 — Add two-factor authentication (TOTP)
+**Epic:** E03 | **Milestone:** M2 | **Complexity:** M
+**Objective:** Add TOTP-based 2FA (RFC 6238 compatible — Google Authenticator, Authy) as
+optional but org-enforceable security layer. The platform stores an org's entire competitive
+BD strategy; a compromised account is a catastrophic business risk.
+**Requirements:**
+- TOTP setup via QR code at `GET /settings/security/2fa/setup`
+- 10 one-time recovery codes generated at setup, shown once, hashed and stored
+- `POST /settings/security/2fa/verify` — confirm TOTP enrollment
+- `POST /settings/security/2fa/disable` — disable with current TOTP code required
+- Login flow: after password check, if TOTP enabled → redirect to `/login/2fa` before session creation
+- Org admin can enforce 2FA for all members: `organizations.require_2fa BOOLEAN DEFAULT FALSE`
+- Members without 2FA enrolled redirected to setup if org enforces it
+**Acceptance Criteria:**
+- [ ] QR code scannable by standard authenticator apps
+- [ ] 10 recovery codes generated, any one works in lieu of TOTP
+- [ ] Session not created until TOTP verified
+- [ ] Org-wide enforcement redirects unenrolled members to setup
+- [ ] All existing tests still pass
+**Hard Dependencies:** Task 069
+**DB Changes:** `users`: add `totp_secret TEXT`, `totp_enabled BOOLEAN DEFAULT FALSE`, `recovery_codes_json TEXT`; `organizations`: add `require_2fa BOOLEAN DEFAULT FALSE`
+**API Changes:** `GET /settings/security/2fa/setup`, `POST /settings/security/2fa/verify`, `POST /settings/security/2fa/disable`, `GET /login/2fa`, `POST /login/2fa`
+**Frontend Changes:** Security settings section in settings; TOTP step in login flow
+**New Dependencies (requirements.txt):** `pyotp` — TOTP generation and verification
+**Suggested Commit Message:** `feat: add TOTP two-factor authentication with org-wide enforcement (Task 272)`
+
+---
+
+### Task 273 — Past performance citation repository
+**Epic:** E10 | **Milestone:** M3 | **Complexity:** M
+**Objective:** Store and manage the org's own past performance references for reuse in
+proposals. This is the most-referenced data source in federal proposal writing; storing it
+in the platform directly increases daily stickiness.
+**Requirements:**
+- CRUD at `GET/POST /settings/past-performance` and `GET/POST/DELETE /settings/past-performance/<id>`
+- Fields: contract number, agency name, scope summary, period of performance (start/end),
+  total value, POC name/phone/email, performance rating (Exceptional/Very Good/Satisfactory/
+  Marginal/Unsatisfactory/N/A), NAICS code, notes
+- Search by NAICS code and agency name
+- Export as formatted CSV and as formatted plain text block (for direct paste into proposals)
+- Link citations to proposal sections (Task 159): `proposal_section_citations (section_id, past_perf_id)`
+**Acceptance Criteria:**
+- [ ] CRUD operations complete without error
+- [ ] Search by NAICS and agency returns correct results
+- [ ] Export produces properly formatted CSV
+- [ ] Citations linkable from proposal section editor
+- [ ] All existing tests still pass
+**Hard Dependencies:** Task 069
+**DB Changes:** New table: `past_performance (id, org_id, contract_num TEXT, agency TEXT, scope TEXT, pop_start TEXT, pop_end TEXT, value REAL, poc_name TEXT, poc_email TEXT, poc_phone TEXT, rating TEXT, naics_code TEXT, notes TEXT, created_at TEXT, updated_at TEXT)`; new table: `proposal_section_citations (section_id INT, past_perf_id INT)`
+**API Changes:** `GET/POST /settings/past-performance`, `GET/POST/DELETE /settings/past-performance/<id>`, `GET /settings/past-performance/export.csv`
+**Frontend Changes:** `templates/settings/past_performance.html`
+**New Dependencies (requirements.txt):** None
+**Suggested Commit Message:** `feat: add past performance citation repository with proposal section linking (Task 273)`
+
+---
+
+### Task 274 — Key contact and relationship tracker
+**Epic:** E10 | **Milestone:** M3 | **Complexity:** M
+**Objective:** Track the org's relationships with agency personnel — contracting officers,
+program managers, end users — the human relationships that determine who wins contracts.
+Fills the gap that GovWin charges thousands per year to partially address.
+**Requirements:**
+- CRUD at `GET/POST /contacts` and `GET/POST/DELETE /contacts/<id>`
+- Fields: name, title, agency, office/division, email, phone, LinkedIn URL,
+  relationship strength (1–5 stars), last interaction date, notes
+- Link contacts to specific contracts: `contract_contacts (internal_id, contact_id, role TEXT)`
+- Link contacts to capture opportunities: `capture_contacts (opp_id, contact_id, role TEXT)`
+- Agency profile shows: "You have N contacts at this agency"
+- Contract detail shows linked contacts if any
+**Acceptance Criteria:**
+- [ ] CRUD operations complete without error
+- [ ] Contacts linkable to contracts and capture opportunities
+- [ ] Agency profile contact count is accurate
+- [ ] All existing tests still pass
+**Hard Dependencies:** Tasks 069, 151
+**DB Changes:** New table: `agency_contacts (id, org_id, name TEXT, title TEXT, agency TEXT, office TEXT, email TEXT, phone TEXT, linkedin_url TEXT, relationship_strength INT, last_interaction TEXT, notes TEXT, created_at TEXT)`; new table: `contract_contacts (internal_id TEXT, contact_id INT, role TEXT)`; new table: `capture_contacts (opp_id INT, contact_id INT, role TEXT)`
+**API Changes:** `GET/POST /contacts`, `GET/POST/DELETE /contacts/<id>`
+**Frontend Changes:** `templates/contacts.html`, contact count on agency profile, contact panel on contract detail
+**New Dependencies (requirements.txt):** None
+**Suggested Commit Message:** `feat: add key contact and relationship tracker linked to agencies and captures (Task 274)`
+
+---
+
+### Task 275 — Win/loss debrief with automatic outcome prompt
+**Epic:** E10 | **Milestone:** M3 | **Complexity:** S
+**Objective:** When a capture moves to SUBMITTED and the proposal due date passes, prompt
+the capture manager to record WON/LOST outcome. Structured outcome data is required to
+train the ML pWin model (Task 270) — without this, the model starves for training data.
+**Requirements:**
+- Celery daily task: find SUBMITTED captures with `proposal_due_date` ≥ 7 days in the past
+  and no debrief recorded → send email + in-app notification: "Did you win [contract name]?"
+- `GET /capture/<opp_id>/debrief` — debrief form
+- `POST /capture/<opp_id>/debrief` — submit debrief
+- Debrief fields: outcome (WON / LOST / NO_BID / CANCELLED), award amount (if WON),
+  winning vendor (if LOST), loss reason (price / technical / past_performance / relationships / other),
+  customer feedback notes, would_bid_again (BOOLEAN)
+- Debrief stored in `capture_debriefs` table
+- Capture pipeline view shows debrief status indicator
+**Acceptance Criteria:**
+- [ ] Celery daily task fires without error
+- [ ] Email notification sent to capture owner after proposal_due_date + 7 days
+- [ ] Debrief form saves all fields correctly
+- [ ] Debrief visible on capture workspace summary
+- [ ] All existing tests still pass
+**Hard Dependencies:** Tasks 151, 127, 169
+**DB Changes:** New table: `capture_debriefs (id, opp_id INT UNIQUE, outcome TEXT, award_amount REAL, winning_vendor TEXT, loss_reason TEXT, feedback_notes TEXT, would_bid_again BOOLEAN, recorded_by INT, recorded_at TEXT)`
+**API Changes:** `GET/POST /capture/<opp_id>/debrief`
+**Frontend Changes:** Debrief link on capture workspace; debrief status chip in pipeline view
+**New Dependencies (requirements.txt):** None
+**Suggested Commit Message:** `feat: add win/loss debrief with automatic outcome prompt after proposal due date (Task 275)`
+
+---
+
+### Task 276 — RFP document download and AI parsing
+**Epic:** E11 | **Milestone:** M4 | **Complexity:** XL
+**Objective:** When a solicitation is linked (Task 104), automatically download the
+solicitation package from SAM.gov and use Claude to extract evaluation criteria, page
+limits, key dates, and requirements. Pre-populate the compliance matrix (Task 160)
+from extracted L-sections. This is the highest-value AI application in the proposal workflow.
+**Requirements:**
+- Celery task triggered on solicitation link: download SAM.gov attachment (PDF/DOCX/ZIP)
+- Store raw document bytes in object storage (Task 280)
+- Claude extraction prompt: identify L-sections (instructions to offerors), M-sections
+  (evaluation criteria), page limits per volume, proposal due date, set-aside type,
+  key personnel requirements, oral presentation requirements if any
+- Store structured extraction in `solicitation_extracts` table as JSON
+- Display extracted summary on contract detail page
+- `POST /solicitation/<solnum>/parse` — re-trigger parsing (manual refresh)
+- Pre-populate compliance matrix rows from extracted L-requirements (Task 160)
+**Acceptance Criteria:**
+- [ ] PDF download completes without timeout for typical SAM.gov solicitation (<50MB)
+- [ ] Claude extraction returns valid JSON with all required fields
+- [ ] Compliance matrix pre-populated from L-section extraction
+- [ ] Extraction visible on contract detail within 60 seconds of solicitation link
+- [ ] Graceful fallback if SAM.gov attachment unavailable
+- [ ] All existing tests still pass
+**Hard Dependencies:** Tasks 104, 159, 160, 280
+**DB Changes:** New table: `solicitation_extracts (solnum TEXT PK, extracted_json TEXT, raw_storage_key TEXT, model_version TEXT, extracted_at TEXT, status TEXT)`
+**API Changes:** `POST /solicitation/<solnum>/parse`, `GET /solicitation/<solnum>/extract`
+**Frontend Changes:** Extraction summary card on contract detail; pre-fill on compliance matrix
+**New Dependencies (requirements.txt):** `pypdf2` or `python-docx` — document text extraction
+**Suggested Commit Message:** `feat: add AI RFP document parsing with automatic compliance matrix pre-population (Task 276)`
+
+---
+
+### Task 277 — Set-aside eligibility check on contract detail
+**Epic:** E05 | **Milestone:** M2 | **Complexity:** S
+**Objective:** Compute and display whether the org is eligible for a contract's set-aside
+type using the org's SAM certifications (Task 081). Prevents wasted BD effort on
+ineligible set-asides and is the most obvious filtering use of org profile data.
+**Requirements:**
+- `check_set_aside_eligibility(org_id, set_aside_type)` function in a new `eligibility.py` module
+- Returns: `ELIGIBLE` / `INELIGIBLE` / `NOT_CERTIFIED` (no data on file) / `OPEN` (no set-aside)
+- Set-aside to certification mapping:
+  - 8(a) → `8a_certified`
+  - SDVOSB → `sdvosb_certified`
+  - WOSB → `wosb_certified`
+  - HUBZone → `hubzone_certified`
+  - SB → `small_business` (size standard check vs. NAICS code)
+  - VOSB → `vosb_certified`
+- Display on contract detail as a color-coded badge: green (ELIGIBLE), red (INELIGIBLE), grey (OPEN/NOT_CERTIFIED)
+- `GET /contracts?eligible_only=true` filter: show only ELIGIBLE or OPEN contracts
+**Acceptance Criteria:**
+- [ ] Eligibility badge appears on contract detail for all set-aside types
+- [ ] `eligible_only=true` filter reduces contract list to eligible contracts
+- [ ] NOT_CERTIFIED shown when org has no certification data (not INELIGIBLE)
+- [ ] All existing tests still pass
+**Hard Dependencies:** Tasks 081, 103
+**DB Changes:** None (reads `org_certifications` and `contracts` tables)
+**API Changes:** `eligible_only` query param added to `GET /contracts`
+**Frontend Changes:** Eligibility badge on contract detail; filter option on contract list
+**New Dependencies (requirements.txt):** None
+**Suggested Commit Message:** `feat: add set-aside eligibility check using org SAM certifications (Task 277)`
+
+---
+
+### Task 278 — In-app bid calendar
+**Epic:** E10 | **Milestone:** M3 | **Complexity:** M
+**Objective:** Unified in-app calendar view showing proposal due dates, capture milestone
+dates, contract expiration alert thresholds, and scheduled exports across all active
+captures. Capture managers live by their calendar; this feature drives daily return visits.
+**Requirements:**
+- `GET /calendar` — month/week toggle (default: month)
+- Events sourced from: `capture_milestones` (Task 154), `capture_opportunities.proposal_due_date`,
+  contract expiration alert thresholds (Task 128), `org_scheduled_exports` (Task 264)
+- Click on any event → navigate to the relevant capture, contract, or settings page
+- Color coding by event type: green (milestone), orange (proposal due), red (expiration), blue (export)
+- `GET /calendar.ics` — iCal feed for the full org calendar (all event types, not just per-capture)
+- Week view shows events by day with time (for due dates/times that have them)
+**Acceptance Criteria:**
+- [ ] Calendar renders all event types in correct date positions
+- [ ] Click navigation works for all event types
+- [ ] iCal feed downloadable and valid RFC 5545
+- [ ] All existing tests still pass
+**Hard Dependencies:** Tasks 154, 128
+**DB Changes:** None (derived from existing tables)
+**API Changes:** `GET /calendar`, `GET /calendar.ics`
+**Frontend Changes:** `templates/calendar.html`; link in main navigation
+**New Dependencies (requirements.txt):** `icalendar` — iCal feed generation
+**Suggested Commit Message:** `feat: add in-app bid calendar with milestone and expiration view (Task 278)`
+
+---
+
+### Task 279 — Database backup automation and verification
+**Epic:** E18 | **Milestone:** M2 | **Complexity:** M
+**Objective:** Ensure daily automated backups with verified restore capability. A failed
+migration or accidental bulk delete without backup verification is existential for a B2B
+SaaS with paying customers. Implement alongside Task 062 (same sprint).
+**Requirements:**
+- Enable Railway PostgreSQL point-in-time recovery and daily snapshot configuration
+- Celery weekly task `verify_backup_integrity()`:
+  - Trigger restore to a test schema (`backup_verify` schema within same PG instance)
+  - Run `SELECT COUNT(*) FROM contracts`, `users`, `organizations` in restore schema
+  - Assert row counts match production (±0)
+  - Alert via Sentry + admin email if mismatch
+  - Drop test schema after verification
+- `GET /health/deep` (Task 220) response includes `last_backup_verified_at` timestamp
+- Create `docs/RESTORE.md` with step-by-step restore procedure
+**Acceptance Criteria:**
+- [ ] Weekly verification task runs without error
+- [ ] Health endpoint reports backup status
+- [ ] Mismatch triggers Sentry alert and admin email
+- [ ] RESTORE.md documents step-by-step procedure
+- [ ] All existing tests still pass
+**Hard Dependencies:** Tasks 062, 220
+**DB Changes:** None
+**API Changes:** `last_backup_verified_at` added to `GET /health/deep` response
+**Frontend Changes:** None
+**New Dependencies (requirements.txt):** None (uses existing Celery, Sentry, email)
+**Suggested Commit Message:** `feat: add database backup verification job and restore documentation (Task 279)`
+
+---
+
+### Task 280 — Object storage for generated files
+**Epic:** E17 | **Milestone:** M3 | **Complexity:** M
+**Objective:** Store generated PDFs, data export ZIPs, and scheduled exports in
+S3-compatible object storage instead of the ephemeral Railway filesystem. Without this,
+large generated files are lost on redeploy and memory-constrained exports will fail.
+**Requirements:**
+- Add `boto3` to requirements
+- Environment vars: `OBJECT_STORAGE_URL`, `OBJECT_STORAGE_BUCKET`, `OBJECT_STORAGE_KEY`, `OBJECT_STORAGE_SECRET`
+- Create `storage_service.py`:
+  - `upload(key: str, data: bytes, content_type: str) -> str` — returns public or signed URL
+  - `get_presigned_url(key: str, expires_in: int = 3600) -> str`
+  - `delete(key: str) -> None`
+- Replace filesystem writes in Tasks 209 (PDF), 254 (data export), 264 (scheduled export) with `storage_service.upload()`
+- In local dev without object storage configured: fall back to `/tmp` with a logged warning
+- Railway provides Cloudflare R2 as S3-compatible storage (preferred)
+**Acceptance Criteria:**
+- [ ] `storage_service.py` tests pass (mock boto3)
+- [ ] PDF export (Task 209) uses object storage in production
+- [ ] Data export (Task 254) uses object storage in production
+- [ ] Local dev falls back gracefully without `OBJECT_STORAGE_URL` set
+- [ ] All existing tests still pass
+**Hard Dependencies:** Tasks 064, 209, 254
+**DB Changes:** None
+**API Changes:** None
+**Frontend Changes:** None (transparent to end user)
+**New Dependencies (requirements.txt):** `boto3` — S3-compatible object storage client
+**Suggested Commit Message:** `feat: add S3-compatible object storage for generated exports and PDF reports (Task 280)`
+
+---
+
+### Task 281 — Celery beat health monitoring
+**Epic:** E18 | **Milestone:** M2 | **Complexity:** S
+**Objective:** Detect and alert when Celery beat stops scheduling tasks, preventing silent
+failure of nightly scans, alert delivery, and daily briefings. Implement alongside Task 064
+(same sprint — set up beat, immediately add health monitoring).
+**Requirements:**
+- Register heartbeat task in beat schedule: `record_beat_heartbeat` every 5 minutes
+- `record_beat_heartbeat()` Celery task: write `{timestamp}` to `beat:health` Redis key with 15-min TTL
+- `check_beat_health()` Celery task (scheduled every 10 min):
+  - Read `beat:health` key — if missing or timestamp > 15 min old: fire Sentry alert + send email to platform admin list
+  - If healthy: no action
+- `GET /health/deep` (Task 220) checks `beat:health` key and includes `celery_beat_healthy: true/false`
+**Acceptance Criteria:**
+- [ ] `record_beat_heartbeat` runs every 5 min when beat is healthy
+- [ ] `/health/deep` reports beat status
+- [ ] Sentry alert fires when beat key is missing for > 15 minutes
+- [ ] All existing tests still pass
+**Hard Dependencies:** Tasks 064, 219, 220
+**DB Changes:** None (Redis key only)
+**API Changes:** `celery_beat_healthy` field added to `GET /health/deep` response
+**Frontend Changes:** None
+**New Dependencies (requirements.txt):** None
+**Suggested Commit Message:** `feat: add Celery beat health monitoring with alert on scheduler failure (Task 281)`
+
+---
+
+### Task 282 — Cross-org opportunity signal aggregation
+**Epic:** E09 | **Milestone:** M4 | **Complexity:** L
+**Objective:** Aggregate anonymous behavioral signals across opted-in orgs to surface
+"market heat" — how many orgs are tracking a contract, how many have it in their pipeline.
+This data is unavailable from any competitor and grows more valuable as the platform scales.
+It is the platform's largest network-effect moat opportunity.
+**Requirements:**
+- Opt-in at org level: `org.share_signals BOOLEAN DEFAULT FALSE`, toggled by admin in settings
+- When opted-in org watchlists (Task 107) or captures (Task 151) a contract: increment anonymous counter
+- `contract_signals` table: `internal_id TEXT PK, track_count INT DEFAULT 0, capture_count INT DEFAULT 0, last_updated TEXT`
+- Display on contract detail: "Tracked by N organizations" — no org names or identifying info revealed
+- `GET /contracts?signal_heat=high` filter: show contracts with track_count ≥ 5
+- Dashboard widget: "Trending this week — N orgs newly tracking NAICS 561720"
+- Gated on Professional+ plan (Task 202)
+**Acceptance Criteria:**
+- [ ] Opt-in toggle works; non-opted-in org actions do not increment counters
+- [ ] Contract detail shows tracking count for opted-in data
+- [ ] `signal_heat=high` filter returns correct contracts
+- [ ] Dashboard widget shows NAICS trends
+- [ ] No org identity revealed in any signal
+- [ ] Gated correctly by plan tier
+- [ ] All existing tests still pass
+**Hard Dependencies:** Tasks 069, 107, 151, 202
+**DB Changes:** `organizations`: add `share_signals BOOLEAN DEFAULT FALSE`; new table: `contract_signals (internal_id TEXT PK, track_count INT DEFAULT 0, capture_count INT DEFAULT 0, last_updated TEXT)`
+**API Changes:** `signal_heat` filter param on `GET /contracts`
+**Frontend Changes:** Signal count badge on contract detail; trending widget on dashboard
+**New Dependencies (requirements.txt):** None
+**Suggested Commit Message:** `feat: add cross-org opportunity signal aggregation with opt-in privacy model (Task 282)`
+
+---
+
+### Task 283 — AI prompt registry with version tracking
+**Epic:** E12 | **Milestone:** M3 | **Complexity:** M
+**Objective:** Centralize all Anthropic prompts in a versioned registry. Currently, prompts
+are implied to be hardcoded in service files. As prompt count grows (8+ tasks generate AI
+content), managing prompt quality becomes a competitive advantage. Implement after Task 102
+establishes `ai_service.py`.
+**Requirements:**
+- `ai_prompts` table: `name TEXT PK`, `version INT`, `system_prompt TEXT`, `user_prompt_template TEXT`,
+  `model_preference TEXT`, `max_tokens INT`, `active BOOLEAN DEFAULT TRUE`
+- `ai_prompt_history` table: logs prior versions on update
+- `ai_service.py` updated: `call(prompt_name, context_vars, override_model=None)` — loads prompt by name
+- All existing AI calls (Tasks 102, 120, 160–168) updated to reference prompt by name
+- `GET /admin/prompts` (admin role only) — list all active prompts and version history
+- `POST /admin/prompts/<name>` — update prompt text (creates history record, bumps version)
+**Acceptance Criteria:**
+- [ ] All AI calls reference a prompt name, not a hardcoded string
+- [ ] Admin prompt editor loads, displays, and saves without error
+- [ ] Prior prompt version retained in history table on update
+- [ ] All existing AI feature tests still pass (update mocks to use registry)
+- [ ] All existing tests still pass
+**Hard Dependencies:** Task 102
+**DB Changes:** New table: `ai_prompts`; new table: `ai_prompt_history`
+**API Changes:** `GET /admin/prompts`, `POST /admin/prompts/<name>`
+**Frontend Changes:** `templates/admin/prompts.html`
+**New Dependencies (requirements.txt):** None
+**Suggested Commit Message:** `feat: add AI prompt registry with versioning and admin management UI (Task 283)`
+
+---
+
+### Task 284 — User feedback on AI-generated content
+**Epic:** E12 | **Milestone:** M3 | **Complexity:** S
+**Objective:** Collect explicit thumbs-up/thumbs-down feedback on every AI-generated output.
+Without this signal, there is no way to know whether AI outputs are helping customers win
+contracts. Feedback data drives prompt improvement and is a source of proprietary quality
+signal competitors cannot replicate.
+**Requirements:**
+- After any AI-generated content displayed (capture plan, opportunity analysis, win themes,
+  competitor research, agency brief): show a discreet 👍/👎 widget below the content
+- `POST /ai-feedback` — `{analysis_id, rating (1/-1), comment (optional), user_id, org_id}`
+- Store in `ai_feedback` table
+- Weekly Celery task `aggregate_ai_quality()`: compute rating distribution by prompt name + version
+  from `ai_prompt_history`; store summary in `ai_quality_snapshots` table
+- `GET /admin/ai-quality` (admin only) — dashboard: rating % per prompt, trend over last 4 weeks
+**Acceptance Criteria:**
+- [ ] 👍/👎 widget visible under all AI-generated content blocks
+- [ ] Feedback stores correctly in DB with user and org context
+- [ ] Admin quality dashboard loads and shows rating distribution
+- [ ] Weekly aggregation task runs without error
+- [ ] All existing tests still pass
+**Hard Dependencies:** Task 102 (`ai_analyses` table), Task 169 (notification pattern reference)
+**DB Changes:** New table: `ai_feedback (id, analysis_id INT, rating INT, comment TEXT, user_id INT, org_id INT, created_at TEXT)`; new table: `ai_quality_snapshots (id, prompt_name TEXT, prompt_version INT, week TEXT, positive_count INT, negative_count INT, total_count INT)`
+**API Changes:** `POST /ai-feedback`, `GET /admin/ai-quality`
+**Frontend Changes:** Feedback widget component in base AI content template; `templates/admin/ai_quality.html`
+**New Dependencies (requirements.txt):** None
+**Suggested Commit Message:** `feat: add thumbs up/down feedback on AI outputs with admin quality dashboard (Task 284)`
