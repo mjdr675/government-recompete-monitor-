@@ -10,7 +10,7 @@ from logging.handlers import RotatingFileHandler
 
 import stripe
 from dotenv import load_dotenv
-from flask import Flask, flash, g, redirect, render_template, request, session, url_for
+from flask import Flask, flash, g, jsonify, redirect, render_template, request, session, url_for
 
 from auth import bp as auth_bp
 from change_detector import detect_changes
@@ -370,25 +370,37 @@ def ingest():
                 message = f"Imported {len(rows)} contracts from CSV."
 
         elif action == "api":
-            _ingest_logger.info("=== API pull started ===")
-            proc = subprocess.Popen(
-                [sys.executable, "recompete_report.py"],
-                cwd=os.path.dirname(os.path.abspath(__file__)),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-            )
-            threading.Thread(
-                target=_capture_subprocess_output,
-                args=(proc, _ingest_logger),
-                daemon=True,
-            ).start()
-            message = "API pull started in background. View progress at /ingest/status."
+            from tasks import run_ingest
+            job = run_ingest.delay()
+            return jsonify({"task_id": job.id})
 
     return render_template("ingest.html", message=message, error=error)
 
 
 @app.route("/ingest/status")
 def ingest_status():
+    task_id = request.args.get("task_id")
+    if task_id:
+        try:
+            from tasks import tasks as celery_app
+            result = celery_app.AsyncResult(task_id)
+            status = result.status
+            if result.successful():
+                message = "Ingest completed successfully."
+                progress = 100
+            elif result.failed():
+                message = f"Ingest failed: {result.result}"
+                progress = 0
+            else:
+                message = "Ingest is running…"
+                progress = 50
+            return jsonify({"task_id": task_id, "status": status,
+                            "message": message, "progress": progress})
+        except Exception as exc:
+            logging.getLogger(__name__).warning("AsyncResult error: %s", exc)
+            return jsonify({"task_id": task_id, "status": "UNKNOWN",
+                            "message": "Unable to fetch task status.", "progress": 0})
+
     try:
         with open(INGEST_LOG_PATH, "r", encoding="utf-8", errors="replace") as f:
             lines = f.readlines()

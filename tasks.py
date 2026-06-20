@@ -1,14 +1,18 @@
+import json
 import logging
 import os
 from datetime import datetime, timedelta, timezone
 
 from celery import Celery
+from celery.schedules import crontab
 
 logger = logging.getLogger(__name__)
 
+_redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 tasks = Celery(
     "recompete",
-    broker=os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
+    broker=_redis_url,
+    backend=_redis_url,
 )
 
 tasks.conf.task_serializer = "json"
@@ -23,6 +27,10 @@ tasks.conf.beat_schedule = {
     "check-beat-health-every-10-minutes": {
         "task": "tasks.check_beat_health",
         "schedule": 600.0,
+    },
+    "nightly-ingest-0200-utc": {
+        "task": "tasks.run_ingest",
+        "schedule": crontab(hour=2, minute=0),
     },
 }
 
@@ -69,3 +77,71 @@ def check_beat_health():
             logger.debug("Beat health OK — last heartbeat %s ago", age)
     except Exception as exc:
         logger.error("Beat health check error: %s", exc)
+
+
+@tasks.task(name="tasks.run_ingest", bind=True)
+def run_ingest(self):
+    """Run SAM.gov ingest pipeline and log to celery_task_log."""
+    from db import get_engine
+    from sqlalchemy import text
+
+    engine = get_engine()
+    is_pg = engine.dialect.name == "postgresql"
+    task_id = self.request.id or "unknown"
+    started_at = datetime.now(timezone.utc).isoformat()
+
+    with engine.begin() as conn:
+        if is_pg:
+            log_id = conn.execute(text("""
+                INSERT INTO celery_task_log (task_name, status, started_at, result_json)
+                VALUES (:task_name, :status, :started_at, :result_json)
+                RETURNING id
+            """), {
+                "task_name": "run_ingest",
+                "status": "RUNNING",
+                "started_at": started_at,
+                "result_json": json.dumps({"task_id": task_id}),
+            }).scalar()
+        else:
+            result = conn.execute(text("""
+                INSERT INTO celery_task_log (task_name, status, started_at, result_json)
+                VALUES (:task_name, :status, :started_at, :result_json)
+            """), {
+                "task_name": "run_ingest",
+                "status": "RUNNING",
+                "started_at": started_at,
+                "result_json": json.dumps({"task_id": task_id}),
+            })
+            log_id = result.lastrowid
+
+    try:
+        from janitorial_recompete_report import main
+        main()
+        finished_at = datetime.now(timezone.utc).isoformat()
+        with engine.begin() as conn:
+            conn.execute(text("""
+                UPDATE celery_task_log
+                SET status=:status, finished_at=:finished_at, result_json=:result_json
+                WHERE id=:id
+            """), {
+                "status": "SUCCESS",
+                "finished_at": finished_at,
+                "result_json": json.dumps({"task_id": task_id, "result": "ok"}),
+                "id": log_id,
+            })
+        return {"status": "SUCCESS", "task_id": task_id}
+    except Exception as exc:
+        logger.exception("run_ingest failed (task_id=%s)", task_id)
+        finished_at = datetime.now(timezone.utc).isoformat()
+        with engine.begin() as conn:
+            conn.execute(text("""
+                UPDATE celery_task_log
+                SET status=:status, finished_at=:finished_at, result_json=:result_json
+                WHERE id=:id
+            """), {
+                "status": "FAILURE",
+                "finished_at": finished_at,
+                "result_json": json.dumps({"task_id": task_id, "error": str(exc)}),
+                "id": log_id,
+            })
+        raise

@@ -27,12 +27,72 @@
   <div class="card" style="flex:1;min-width:280px;">
     <h2 style="margin-top:0;">API Pull</h2>
     <p class="muted">Fetch fresh contract data from USASpending.gov and enrich with SAM.gov. Runs in the background — check the dashboard in a few minutes.</p>
-    <form method="post">
-      <input type="hidden" name="action" value="api">
-      <button type="submit">Start Pull</button>
-    </form>
+    <button id="start-pull-btn" onclick="startPull()">Start Pull</button>
+    <div id="pull-status" style="margin-top:12px;display:none;">
+      <span id="pull-status-text" class="muted">Enqueuing…</span>
+      <div id="pull-progress-bar" style="margin-top:6px;height:6px;background:#e5e7eb;border-radius:3px;">
+        <div id="pull-progress-fill" style="height:6px;background:#10b981;border-radius:3px;width:0%;transition:width 0.4s;"></div>
+      </div>
+    </div>
     <p style="margin-top:12px;"><a href="/ingest/status">View log</a></p>
   </div>
 
 </div>
+
+<script>
+function startPull() {
+  var btn = document.getElementById('start-pull-btn');
+  var statusDiv = document.getElementById('pull-status');
+  var statusText = document.getElementById('pull-status-text');
+  var progressFill = document.getElementById('pull-progress-fill');
+
+  btn.disabled = true;
+  statusDiv.style.display = 'block';
+  statusText.textContent = 'Enqueuing ingest task…';
+
+  var formData = new FormData();
+  formData.append('action', 'api');
+
+  fetch('/ingest', {method: 'POST', body: formData})
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.task_id) {
+        statusText.textContent = 'Error: no task ID returned.';
+        btn.disabled = false;
+        return;
+      }
+      statusText.textContent = 'Task enqueued (ID: ' + data.task_id.slice(0, 8) + '…). Polling…';
+      pollStatus(data.task_id);
+    })
+    .catch(function(err) {
+      statusText.textContent = 'Failed to enqueue: ' + err;
+      btn.disabled = false;
+    });
+}
+
+function pollStatus(taskId) {
+  var statusText = document.getElementById('pull-status-text');
+  var progressFill = document.getElementById('pull-progress-fill');
+  var btn = document.getElementById('start-pull-btn');
+
+  var interval = setInterval(function() {
+    fetch('/ingest/status?task_id=' + encodeURIComponent(taskId))
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        statusText.textContent = data.message || data.status;
+        progressFill.style.width = (data.progress || 0) + '%';
+        if (data.status === 'SUCCESS' || data.status === 'FAILURE') {
+          clearInterval(interval);
+          btn.disabled = false;
+          if (data.status === 'SUCCESS') {
+            progressFill.style.background = '#10b981';
+          } else {
+            progressFill.style.background = '#ef4444';
+          }
+        }
+      })
+      .catch(function() { /* keep polling on transient error */ });
+  }, 2000);
+}
+</script>
 {% endblock %}
