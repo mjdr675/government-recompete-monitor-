@@ -31,3 +31,4 @@ Append-only log. Each row = one agent run.
 | 2026-06-20 00:00 UTC | backend | Task 072: Add CSRF tokens to ingest, demo, early-access forms | 072-csrf-remaining-forms.md | completed:45-tests-passing |
 | 2026-06-20 00:00 UTC | backend | Task 074: Enforce Stripe webhook signature verification | 074-enforce-stripe-webhook-secret.md | completed:69-tests-passing |
 | 2026-06-20 00:00 UTC | backend | Task 075: Add rate limiting to /login — 5 POST/min per IP | 075-rate-limit-login.md | completed:115-tests-passing |
+| 2026-06-20 00:00 UTC | backend | Task 076: Pin celery, redis, SQLAlchemy in requirements.txt | 076-pin-unpinned-packages.md | completed:94-tests-passing |
