@@ -8,11 +8,39 @@ from datetime import datetime, timezone
 # the local working-directory path for development.
 DB_PATH = os.environ.get("DB_PATH", "contracts.db")
 
-def connect():
+
+def get_connection():
+    """
+    Return a database connection.
+
+    Prefers PostgreSQL when DATABASE_URL is set; falls back to SQLite
+    (DB_PATH) for local development and testing.  Callers that need
+    SQLite-specific row_factory or cursor must configure them after
+    receiving the connection.
+    """
+    database_url = os.environ.get("DATABASE_URL", "")
+    if database_url:
+        try:
+            import psycopg2  # noqa: PLC0415
+            return psycopg2.connect(database_url)
+        except ImportError as exc:
+            raise RuntimeError(
+                "psycopg2 not installed. Run: pip install psycopg2-binary"
+            ) from exc
     return sqlite3.connect(DB_PATH)
 
+
+def connect():
+    """Backward-compatible wrapper around get_connection()."""
+    return get_connection()
+
+
 def init_db():
-    with connect() as con:
+    database_url = os.environ.get("DATABASE_URL", "")
+    if database_url:
+        # PostgreSQL schema management is handled by the Task 062 migration.
+        return
+    with sqlite3.connect(DB_PATH) as con:
         con.execute("""
         CREATE TABLE IF NOT EXISTS contracts (
             internal_id TEXT PRIMARY KEY,
@@ -395,7 +423,7 @@ def save_early_access(email: str, hubspot_contact_id: str | None = None) -> None
 _SORTABLE = {"recompete_score", "value", "days_remaining", "end_date", "priority", "vendor", "agency"}
 
 def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort="recompete_score", direction="desc", page=1, limit=25):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
