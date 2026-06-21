@@ -176,6 +176,7 @@ _PUBLIC_PATHS = frozenset({
     "/create-checkout-session",
     "/success",
     "/cancel",
+    "/subscribe",
     "/demo",
     "/early-access",
     "/stripe/webhook",
@@ -402,6 +403,12 @@ def success():
 @app.route("/cancel")
 def cancel():
     return "<h1>Checkout canceled</h1><p>You were not charged.</p>"
+
+
+@app.route("/subscribe")
+def subscribe():
+    expired = request.args.get("expired") == "1"
+    return render_template("subscribe.html", expired=expired)
 
 
 @app.route("/billing/portal", methods=["POST"])
