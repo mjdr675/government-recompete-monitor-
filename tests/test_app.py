@@ -45,13 +45,16 @@ def client(test_db):
     flask_app.app.config["WTF_CSRF_ENABLED"] = False
     flask_app.app.config["RATELIMIT_ENABLED"] = False
     flask_app.app.secret_key = "test-secret-key"
+    # Reset in-memory rate limit counters so registrations don't accumulate across tests.
+    flask_app.limiter.reset()
     with flask_app.app.test_client() as c:
         # Register and auto-login a fixture user so route tests bypass the auth gate
-        c.post("/register", data={
+        rv = c.post("/register", data={
             "email": "fixture@example.com",
             "password": "testpass123",
             "confirm": "testpass123",
         })
+        assert rv.status_code in (200, 302), f"Registration failed: {rv.status_code}"
         yield c
 
 

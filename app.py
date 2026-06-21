@@ -363,15 +363,22 @@ def contracts():
     _page_size = 25
     _total_pages = max(1, (_total + _page_size - 1) // _page_size)
 
+    engine = get_engine()
     watchlist_ids = set()
     if g.user:
-        engine = get_engine()
         with engine.connect() as conn:
             wl_rows = conn.execute(
                 text("SELECT internal_id FROM user_watchlist WHERE user_id = :uid"),
                 {"uid": g.user["id"]},
             ).fetchall()
         watchlist_ids = {r[0] for r in wl_rows}
+
+    with engine.connect() as conn:
+        agency_rows = conn.execute(text(
+            "SELECT DISTINCT agency FROM contracts WHERE agency IS NOT NULL AND agency != ''"
+            " ORDER BY agency"
+        )).fetchall()
+    all_agencies = [r[0] for r in agency_rows]
 
     return render_template(
         "contracts.html",
@@ -384,6 +391,7 @@ def contracts():
         has_prev=result["page"] > 1,
         has_next=result["start"] + result["count"] < _total,
         priorities=["CRITICAL", "HIGH", "MEDIUM", "LOW"],
+        all_agencies=all_agencies,
         q=q,
         agency=agency,
         priority=priority,

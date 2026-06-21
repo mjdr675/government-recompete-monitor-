@@ -6,23 +6,56 @@
 <h1>Contracts</h1>
 <div class="muted">Showing {{ start }}–{{ end }} of {{ total }} matching contracts</div>
 
-<form method="get">
-  <input name="q" value="{{ q }}" placeholder="Search vendor, agency, award...">
-  <select name="priority">
-    <option value="">All priorities</option>
-    {% for p in priorities %}
-      <option value="{{ p }}" {% if p == priority %}selected{% endif %}>{{ p }}</option>
-    {% endfor %}
-  </select>
-  <input name="days" value="{{ days }}" placeholder="Expiring within days" style="width:160px;">
-  <input type="hidden" name="sort" value="{{ sort }}">
-  <input type="hidden" name="dir" value="{{ direction }}">
-  <button type="submit">Filter</button>
-  <a href="/contracts">Reset</a>
+<form method="get" style="background:white;border-radius:8px;padding:16px 18px;box-shadow:0 1px 4px #ddd;margin-bottom:18px;">
+  <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
+    <div style="flex:2;min-width:160px;">
+      <label style="display:block;font-size:12px;color:#666;margin-bottom:3px;">Search</label>
+      <input name="q" value="{{ q }}" placeholder="Vendor, agency, award ID…" style="width:100%;box-sizing:border-box;">
+    </div>
+    <div style="flex:2;min-width:160px;">
+      <label style="display:block;font-size:12px;color:#666;margin-bottom:3px;">Agency</label>
+      <select name="agency" style="width:100%;padding:8px;box-sizing:border-box;">
+        <option value="">All agencies</option>
+        {% for a in all_agencies %}
+          <option value="{{ a }}" {% if a == agency %}selected{% endif %}>{{ a }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="flex:1;min-width:110px;">
+      <label style="display:block;font-size:12px;color:#666;margin-bottom:3px;">Priority</label>
+      <select name="priority" style="width:100%;padding:8px;box-sizing:border-box;">
+        <option value="">All</option>
+        {% for p in priorities %}
+          <option value="{{ p }}" {% if p == priority %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="flex:1;min-width:110px;">
+      <label style="display:block;font-size:12px;color:#666;margin-bottom:3px;">Expiring within</label>
+      <select name="days" style="width:100%;padding:8px;box-sizing:border-box;">
+        <option value="">Any time</option>
+        {% for d in [30, 60, 90, 180, 365] %}
+          <option value="{{ d }}" {% if days|string == d|string %}selected{% endif %}>{{ d }} days</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="flex:1;min-width:110px;">
+      <label style="display:block;font-size:12px;color:#666;margin-bottom:3px;">Min value ($)</label>
+      <input name="min_value" value="{{ min_value }}" placeholder="e.g. 1000000" style="width:100%;box-sizing:border-box;">
+    </div>
+    <input type="hidden" name="sort" value="{{ sort }}">
+    <input type="hidden" name="dir" value="{{ direction }}">
+    <div style="display:flex;gap:8px;align-items:center;padding-top:18px;">
+      <button type="submit" style="padding:8px 18px;background:#1a2744;color:white;border:none;border-radius:4px;cursor:pointer;">Filter</button>
+      <a href="/contracts" style="font-size:13px;color:#666;">Reset</a>
+    </div>
+  </div>
   {% if g.user %}
-  <button type="button" onclick="saveSearch()" style="margin-left:8px;">Save this search</button>
-  <span id="save-confirm" class="muted" style="margin-left:6px;display:none;">Search saved</span>
-  <a href="/contracts/export.csv?{{ request.query_string.decode() }}" style="margin-left:8px;">Export CSV</a>
+  <div style="margin-top:10px;border-top:1px solid #f3f4f6;padding-top:10px;display:flex;gap:12px;font-size:13px;">
+    <button type="button" onclick="saveSearch()" style="background:none;border:none;padding:0;cursor:pointer;color:#1f4f8f;font-size:13px;">Save this search</button>
+    <span id="save-confirm" class="muted" style="display:none;">Saved</span>
+    <a href="/contracts/export.csv?{{ request.query_string.decode() }}">Export CSV</a>
+  </div>
   {% endif %}
 </form>
 
