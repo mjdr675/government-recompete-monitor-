@@ -104,3 +104,23 @@ def get_user_by_reset_token(token: str) -> dict | None:
             {"token": token, "now": now},
         ).mappings().fetchone()
     return dict(row) if row else None
+
+
+def update_password(user_id: int, new_password: str) -> None:
+    password_hash = generate_password_hash(new_password)
+    with get_engine().begin() as conn:
+        conn.execute(
+            text("UPDATE users SET password_hash = :hash WHERE id = :id"),
+            {"hash": password_hash, "id": user_id},
+        )
+
+
+def clear_reset_token(user_id: int) -> None:
+    with get_engine().begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE users SET reset_token = NULL, reset_token_expires_at = NULL"
+                " WHERE id = :id"
+            ),
+            {"id": user_id},
+        )

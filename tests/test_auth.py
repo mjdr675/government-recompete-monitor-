@@ -341,3 +341,73 @@ def test_registration_succeeds_if_email_task_raises(client, monkeypatch):
         "confirm": "password123",
     })
     assert rv.status_code == 302
+
+
+# ---------------------------------------------------------------------------
+# /reset-password (Task 105)
+# ---------------------------------------------------------------------------
+
+def _seed_user_with_token(auth_db):
+    """Register a user and return (email, token)."""
+    from users import create_user, set_reset_token
+    create_user("pw@example.com", "oldpassword1")
+    token = set_reset_token("pw@example.com")
+    return "pw@example.com", token
+
+
+def test_reset_password_get_valid_token(client, auth_db):
+    email, token = _seed_user_with_token(auth_db)
+    rv = client.get(f"/reset-password?token={token}")
+    assert rv.status_code == 200
+    assert b"token" in rv.data
+
+
+def test_reset_password_get_invalid_token(client):
+    rv = client.get("/reset-password?token=badtoken")
+    assert rv.status_code == 200
+    assert b"Invalid" in rv.data or b"expired" in rv.data
+
+
+def test_reset_password_post_updates_password(client, auth_db):
+    email, token = _seed_user_with_token(auth_db)
+    rv = client.post("/reset-password", data={
+        "token": token, "password": "newpassword1", "confirm": "newpassword1"
+    })
+    assert rv.status_code == 302
+    assert "/login" in rv.headers["Location"]
+    # New password must work
+    rv2 = client.post("/login", data={"email": email, "password": "newpassword1"})
+    assert rv2.status_code == 302
+    # Old token must be cleared
+    from users import get_user_by_reset_token
+    assert get_user_by_reset_token(token) is None
+
+
+def test_reset_password_post_mismatched_passwords(client, auth_db):
+    email, token = _seed_user_with_token(auth_db)
+    rv = client.post("/reset-password", data={
+        "token": token, "password": "newpassword1", "confirm": "different99"
+    })
+    assert rv.status_code == 200
+    assert b"match" in rv.data.lower()
+    # Token must still be valid (no DB change)
+    from users import get_user_by_reset_token
+    assert get_user_by_reset_token(token) is not None
+
+
+def test_reset_password_post_expired_token(client):
+    rv = client.post("/reset-password", data={
+        "token": "expiredtoken", "password": "newpassword1", "confirm": "newpassword1"
+    })
+    assert rv.status_code == 400
+
+
+def test_reset_token_cannot_be_reused(client, auth_db):
+    email, token = _seed_user_with_token(auth_db)
+    client.post("/reset-password", data={
+        "token": token, "password": "newpassword1", "confirm": "newpassword1"
+    })
+    rv = client.post("/reset-password", data={
+        "token": token, "password": "anotherpass1", "confirm": "anotherpass1"
+    })
+    assert rv.status_code == 400

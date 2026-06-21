@@ -2,10 +2,12 @@ import functools
 import logging
 import os
 
-from flask import (Blueprint, g, redirect, render_template,
+from flask import (Blueprint, flash, g, redirect, render_template,
                    request, session, url_for)
 
-from users import create_user, get_user_by_id, set_reset_token, verify_password
+from users import (clear_reset_token, create_user, get_user_by_id,
+                   get_user_by_reset_token, set_reset_token, update_password,
+                   verify_password)
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +135,33 @@ def forgot_password():
         except Exception as exc:
             logger.warning("Could not enqueue reset email for %s: %s", email, exc)
     return render_template("forgot_password.html", sent=True)
+
+
+@bp.route("/reset-password", methods=["GET", "POST"])
+def reset_password():
+    if request.method == "GET":
+        token = request.args.get("token", "")
+        user = get_user_by_reset_token(token)
+        if not user:
+            return render_template("reset_password.html", error="Invalid or expired link.")
+        return render_template("reset_password.html", token=token)
+
+    token = request.form.get("token", "")
+    user = get_user_by_reset_token(token)
+    if not user:
+        return render_template("reset_password.html", error="Invalid or expired link.", token=token), 400
+    password = request.form.get("password", "")
+    confirm = request.form.get("confirm", "")
+    if len(password) < 8:
+        return render_template("reset_password.html", token=token,
+                               error="Password must be at least 8 characters.")
+    if password != confirm:
+        return render_template("reset_password.html", token=token,
+                               error="Passwords do not match.")
+    update_password(user["id"], password)
+    clear_reset_token(user["id"])
+    flash("Password updated. Please log in.")
+    return redirect(url_for("auth.login"))
 
 
 @bp.route("/logout")

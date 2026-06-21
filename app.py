@@ -146,6 +146,7 @@ _PUBLIC_PATHS = frozenset({
     "/login",
     "/register",
     "/forgot-password",
+    "/reset-password",
     "/create-checkout-session",
     "/success",
     "/cancel",
