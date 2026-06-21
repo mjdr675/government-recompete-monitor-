@@ -39,7 +39,13 @@ from analytics import dashboard_analytics, opportunity_recommendations
 from report_builder import build_report
 from views import SAVED_VIEWS, build_view_query, format_filter_summary
 import hubspot_service
-from users import get_user_by_email, get_user_by_stripe_customer, set_subscription
+from users import (
+    get_user_by_email,
+    get_user_by_stripe_customer,
+    set_subscription,
+    update_password,
+    verify_password,
+)
 
 class _JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
@@ -956,6 +962,29 @@ def compare():
     id_b = request.args.get("b", "").strip()
     return render_template("compare.html", a=_fetch(id_a), b=_fetch(id_b),
                            id_a=id_a, id_b=id_b)
+
+
+@app.route("/settings/account", methods=["GET", "POST"])
+def settings_account():
+    user = g.get("user")
+    if not user:
+        return redirect(url_for("auth.login"))
+    error = None
+    success = None
+    if request.method == "POST":
+        current_pw = request.form.get("current_password", "")
+        new_pw = request.form.get("new_password", "")
+        confirm_pw = request.form.get("confirm_password", "")
+        if not verify_password(user["email"], current_pw):
+            error = "Current password is incorrect."
+        elif len(new_pw) < 8:
+            error = "New password must be at least 8 characters."
+        elif new_pw != confirm_pw:
+            error = "New passwords do not match."
+        else:
+            update_password(user["id"], new_pw)
+            success = "Password updated successfully."
+    return render_template("settings_account.html", user=user, error=error, success=success)
 
 
 @app.route("/settings/alerts", methods=["GET", "POST"])
