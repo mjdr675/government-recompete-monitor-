@@ -305,6 +305,10 @@ def dashboard():
             hours_ago = round((datetime.now(timezone.utc) - ts).total_seconds() / 3600, 1)
         except (ValueError, TypeError):
             pass
+    show_onboarding = (
+        g.get("watchlist_count", 0) == 0
+        and not session.get("onboarding_dismissed")
+    )
     return render_template(
         "dashboard.html",
         report=build_report(date.today().isoformat()),
@@ -312,7 +316,14 @@ def dashboard():
         recommendations=recommendations,
         last_ingest=last_ingest,
         hours_ago=hours_ago,
+        show_onboarding=show_onboarding,
     )
+
+
+@app.route("/onboarding/dismiss", methods=["POST"])
+def onboarding_dismiss():
+    session["onboarding_dismissed"] = "1"
+    return redirect(url_for("dashboard"))
 
 
 @app.route("/contracts")
