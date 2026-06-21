@@ -761,3 +761,21 @@ def test_sentry_init_called_when_dsn_set(monkeypatch):
         sentry_sdk.init(dsn=dsn, integrations=[], traces_sample_rate=0.1)
     assert len(calls) == 1
     assert calls[0]["dsn"] == fake_dsn
+
+
+def test_sentry_capture_exception_called_on_stripe_webhook_error(client, monkeypatch):
+    import sentry_sdk
+    import stripe
+    captured = []
+    monkeypatch.setattr(sentry_sdk, "capture_exception", lambda exc: captured.append(exc))
+    monkeypatch.setattr(stripe.Webhook, "construct_event", lambda *a, **kw: (_ for _ in ()).throw(Exception("boom")))
+    import app as flask_app
+    monkeypatch.setattr(flask_app, "STRIPE_WEBHOOK_SECRET", "test-secret")
+    rv = client.post(
+        "/stripe/webhook",
+        data=b"payload",
+        headers={"Stripe-Signature": "sig", "Content-Type": "application/json"},
+    )
+    assert rv.status_code == 500
+    assert len(captured) == 1
+    assert str(captured[0]) == "boom"

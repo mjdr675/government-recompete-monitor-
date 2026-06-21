@@ -10,6 +10,7 @@ import threading
 from datetime import date, datetime, timezone
 from logging.handlers import RotatingFileHandler
 
+import sentry_sdk
 import stripe
 from dotenv import load_dotenv
 from flask import Flask, flash, g, jsonify, redirect, render_template, request, session, url_for
@@ -348,6 +349,7 @@ def create_checkout_session():
         )
         return redirect(checkout.url, code=303)
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         return str(e), 500
 
 
@@ -364,7 +366,8 @@ def success():
                 hubspot_service.handle_stripe_checkout(
                     email=email, name=name, stripe_session_id=session_id
                 )
-        except Exception:
+        except Exception as exc:
+            sentry_sdk.capture_exception(exc)
             logging.exception("Could not retrieve Stripe session %s", session_id)
     return "<h1>Payment successful</h1><p>Welcome to Recompete Beta.</p>"
 
@@ -387,6 +390,10 @@ def stripe_webhook():
     except (stripe.error.SignatureVerificationError, ValueError) as e:
         logging.warning("Stripe webhook signature error: %s", e)
         return "Bad request", 400
+    except Exception as exc:
+        sentry_sdk.capture_exception(exc)
+        logging.exception("Unexpected error parsing Stripe webhook: %s", exc)
+        return "Internal error", 500
 
     if event["type"] == "checkout.session.completed":
         checkout = event["data"]["object"]
@@ -490,6 +497,7 @@ def ingest_email_test():
             text_body="Email delivery is working.",
         )
     except Exception as exc:
+        sentry_sdk.capture_exception(exc)
         return jsonify({"ok": False, "error": str(exc)}), 500
     if result is None:
         return jsonify({"ok": False, "error": "EMAIL_API_KEY not set"}), 503
@@ -516,6 +524,7 @@ def ingest_status():
             return jsonify({"task_id": task_id, "status": status,
                             "message": message, "progress": progress})
         except Exception as exc:
+            sentry_sdk.capture_exception(exc)
             logging.getLogger(__name__).warning("AsyncResult error: %s", exc)
             return jsonify({"task_id": task_id, "status": "UNKNOWN",
                             "message": "Unable to fetch task status.", "progress": 0})

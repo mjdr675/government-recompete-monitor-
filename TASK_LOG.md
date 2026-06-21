@@ -61,3 +61,4 @@ Append-only log. Each row = one agent run.
 | 2026-06-21 00:00 UTC | backend | Task 103: Add /forgot-password route with reset token generation | 103-forgot-password-route.md | completed:4-tests-passing |
 | 2026-06-21 00:00 UTC | frontend | Task 104: Add password reset email templates HTML and TXT | 104-password-reset-email-template.md | completed:6-tests-passing |
 | 2026-06-21 00:00 UTC | backend | Task 105: Add /reset-password route to complete password reset flow | 105-reset-password-route.md | completed:6-tests-passing |
+| 2026-06-21 00:00 UTC | backend | Task 106: Wire sentry_sdk.capture_exception into app.py except blocks | 106-sentry-capture-exception-app.md | completed:1-test-passing |
