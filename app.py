@@ -404,6 +404,28 @@ def cancel():
     return "<h1>Checkout canceled</h1><p>You were not charged.</p>"
 
 
+@app.route("/billing/portal", methods=["POST"])
+def billing_portal():
+    user = g.get("user")
+    if not user:
+        return redirect(url_for("auth.login"))
+    stripe_customer_id = user.get("stripe_customer_id")
+    if not stripe_customer_id:
+        flash("No active subscription found.", "error")
+        return redirect(url_for("dashboard"))
+    try:
+        portal = stripe.billing_portal.Session.create(
+            customer=stripe_customer_id,
+            return_url=request.host_url.rstrip("/") + "/",
+        )
+        return redirect(portal.url, code=303)
+    except Exception as exc:
+        sentry_sdk.capture_exception(exc)
+        logging.exception("Billing portal error: %s", exc)
+        flash("Could not open billing portal. Please try again later.", "error")
+        return redirect(url_for("dashboard"))
+
+
 @app.route("/stripe/webhook", methods=["POST"])
 @csrf.exempt
 def stripe_webhook():
