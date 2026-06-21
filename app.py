@@ -115,6 +115,9 @@ def _set_security_headers(response):
 app.view_functions["auth.login"] = limiter.limit(
     "5 per minute", per_method=True, methods=["POST"]
 )(app.view_functions["auth.login"])
+app.view_functions["auth.register"] = limiter.limit(
+    "10 per hour", per_method=True, methods=["POST"]
+)(app.view_functions["auth.register"])
 app.jinja_env.globals["format_filter_summary"] = format_filter_summary
 
 init_db()
