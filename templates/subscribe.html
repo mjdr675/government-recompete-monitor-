@@ -1,33 +1,69 @@
 {% extends "base.html" %}
+{% block title %}Subscribe — Recompete.us{% endblock %}
 {% block content %}
-<h2>Subscribe to Gov Recompete Monitor</h2>
+<style>
+  .subscribe-wrap{max-width:520px;margin:0 auto;padding:0 0 48px}
+  .plan-card{background:white;border-radius:10px;box-shadow:0 2px 8px #ddd;padding:28px 32px;margin-bottom:24px}
+  .price-row{display:flex;align-items:baseline;gap:6px;margin:12px 0 20px}
+  .price-big{font-size:44px;font-weight:bold;color:#1a2744;line-height:1}
+  .price-per{font-size:16px;color:#666}
+  .feature-list{list-style:none;padding:0;margin:0 0 24px}
+  .feature-list li{padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:15px;color:#333}
+  .feature-list li::before{content:"✓ ";color:#16a34a;font-weight:bold}
+  .btn-checkout{display:block;width:100%;padding:14px;background:#2563eb;color:white;border:none;
+    border-radius:6px;font-size:16px;font-weight:bold;cursor:pointer;text-align:center;box-sizing:border-box}
+  .btn-checkout:hover{background:#1d4ed8}
+  .trust-row{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;font-size:13px;color:#555}
+</style>
 
-{% if expired %}
-<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:4px;padding:12px 16px;margin-bottom:20px;">
-  Your free trial has ended. Subscribe to continue tracking government recompetes.
-</div>
-{% endif %}
+<div class="subscribe-wrap">
+  <h1 style="margin-bottom:6px">Upgrade to Pro</h1>
 
-<div style="max-width:480px;">
-  <h3>Pro Plan — $49/month</h3>
-  <ul style="line-height:2;">
-    <li>Unlimited contract tracking</li>
-    <li>Daily watchlist alerts</li>
-    <li>Recompete opportunity detection</li>
-    <li>Export to CSV</li>
-    <li>Saved searches &amp; views</li>
-  </ul>
-
-  <form method="post" action="/create-checkout-session">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit"
-      style="background:#1a56db;color:#fff;border:none;padding:12px 28px;font-size:16px;border-radius:4px;cursor:pointer;">
-      Start Subscription
-    </button>
-  </form>
-
-  <p style="margin-top:16px;font-size:13px;color:#555;">
-    Secure payment via Stripe. Cancel anytime from your account settings.
+  {% if expired %}
+  <div style="background:#fee2e2;border:1px solid #ef4444;border-radius:6px;padding:12px 16px;margin-bottom:20px;color:#991b1b;">
+    <strong>Your free trial has ended.</strong> Subscribe now to continue tracking government recompetes.
+  </div>
+  {% else %}
+  <p style="color:#555;margin-bottom:24px">
+    Continue after your trial with full access to the contract intelligence platform.
   </p>
+  {% endif %}
+
+  <div class="plan-card">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2 style="margin:0;color:#1a2744">Pro Plan</h2>
+      <span style="background:#dbeafe;color:#1e40af;font-size:12px;font-weight:bold;padding:3px 10px;border-radius:999px">MOST POPULAR</span>
+    </div>
+    <div class="price-row">
+      <span class="price-big">$49</span>
+      <span class="price-per">/ month</span>
+    </div>
+
+    <ul class="feature-list">
+      <li>Unlimited contract tracking across all agencies</li>
+      <li>Daily watchlist expiry alerts by email</li>
+      <li>Recompete opportunity scoring on every contract</li>
+      <li>Agency &amp; vendor intelligence profiles</li>
+      <li>Saved searches and custom views</li>
+      <li>Export contracts to CSV</li>
+      <li>Contract notes and annotations</li>
+    </ul>
+
+    <form method="post" action="/create-checkout-session">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn-checkout">Subscribe now — $49/month</button>
+    </form>
+
+    <div class="trust-row">
+      <span>&#128274; Secure payment via Stripe</span>
+      <span>&#128274; Cancel anytime</span>
+    </div>
+  </div>
+
+  <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:16px 20px;font-size:14px;color:#166534">
+    <strong>Questions?</strong>
+    <a href="/demo" style="color:#15803d">Request a demo</a> or email
+    <a href="mailto:hello@recompete.us" style="color:#15803d">hello@recompete.us</a>.
+  </div>
 </div>
 {% endblock %}
