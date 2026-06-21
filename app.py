@@ -168,6 +168,7 @@ if not STRIPE_WEBHOOK_SECRET:
     )
 
 _PUBLIC_PATHS = frozenset({
+    "/",
     "/health",
     "/login",
     "/register",
@@ -223,6 +224,24 @@ def require_login():
                     return redirect(url_for("subscribe", expired="1"))
 
 
+@app.context_processor
+def inject_trial_info():
+    user = g.get("user")
+    if not user or user.get("subscription_status") == "active":
+        return {"trial_days_remaining": None}
+    trial_ends_at = user.get("trial_ends_at")
+    if not trial_ends_at:
+        return {"trial_days_remaining": None}
+    try:
+        trial_end = datetime.fromisoformat(trial_ends_at)
+        if trial_end.tzinfo is None:
+            trial_end = trial_end.replace(tzinfo=timezone.utc)
+        days = (trial_end - datetime.now(timezone.utc)).days
+        return {"trial_days_remaining": max(0, days)}
+    except (ValueError, TypeError):
+        return {"trial_days_remaining": None}
+
+
 @app.route("/health")
 def health():
     # Railway polls this endpoint to confirm the app is running.
@@ -230,6 +249,14 @@ def health():
 
 
 @app.route("/")
+def index():
+    """Public landing page; authenticated users are redirected to /dashboard."""
+    if "user_id" in session:
+        return redirect(url_for("dashboard"))
+    return render_template("landing.html")
+
+
+@app.route("/dashboard")
 def dashboard():
     analytics = dashboard_analytics()
     recommendations = opportunity_recommendations()

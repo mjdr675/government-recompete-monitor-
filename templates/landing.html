@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Recompete.us — Government Contract Recompete Intelligence{% endblock %}
+{% block content %}
+<style>
+  .hero{text-align:center;padding:64px 24px 48px;max-width:720px;margin:0 auto}
+  .hero h1{font-size:40px;line-height:1.15;color:#1a2744;margin-bottom:16px}
+  .hero p{font-size:18px;color:#444;line-height:1.6;margin-bottom:32px}
+  .cta-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+  .cta-primary{background:#2563eb;color:white;padding:14px 28px;border-radius:6px;font-size:16px;font-weight:bold;text-decoration:none;transition:background .15s}
+  .cta-primary:hover{background:#1d4ed8;text-decoration:none;color:white}
+  .cta-secondary{background:white;color:#1a2744;padding:14px 28px;border-radius:6px;font-size:16px;font-weight:bold;text-decoration:none;border:2px solid #1a2744;transition:background .15s}
+  .cta-secondary:hover{background:#f0f4ff;text-decoration:none}
+  .features{display:flex;gap:24px;flex-wrap:wrap;max-width:900px;margin:48px auto;padding:0 24px}
+  .feature{flex:1;min-width:220px;background:white;border-radius:10px;padding:24px;box-shadow:0 1px 4px #ddd}
+  .feature h3{margin:0 0 10px;color:#1a2744;font-size:17px}
+  .feature p{margin:0;color:#555;font-size:14px;line-height:1.6}
+  .feature-icon{font-size:28px;margin-bottom:12px}
+  .pricing{background:white;border-radius:12px;box-shadow:0 2px 8px #ddd;max-width:440px;margin:0 auto 64px;padding:32px 36px;text-align:center}
+  .pricing h2{color:#1a2744;margin-bottom:6px}
+  .price{font-size:42px;font-weight:bold;color:#1a2744;margin:16px 0 4px}
+  .price span{font-size:18px;font-weight:normal;color:#666}
+  .pricing ul{list-style:none;padding:0;margin:20px 0 28px;text-align:left}
+  .pricing ul li{padding:8px 0;border-bottom:1px solid #f0f0f0;color:#333;font-size:15px}
+  .pricing ul li::before{content:"✓ ";color:#2563eb;font-weight:bold}
+  .trial-note{font-size:13px;color:#666;margin-top:12px}
+  .section-label{text-align:center;font-size:13px;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:8px}
+  .divider{border:none;border-top:1px solid #e5e7eb;margin:0 24px}
+  @media(max-width:600px){.hero h1{font-size:28px}.price{font-size:32px}.pricing{padding:24px 20px}}
+</style>
+
+<div class="hero">
+  <div class="section-label">Government Contract Intelligence</div>
+  <h1>Know which contracts are up for recompete — before your competitors do</h1>
+  <p>Recompete.us monitors the full SAM.gov contract database and alerts you when high-value government contracts approach expiration. Never miss a recompete opportunity again.</p>
+  <div class="cta-row">
+    <a href="/register" class="cta-primary">Start 14-day free trial</a>
+    <a href="/demo" class="cta-secondary">Request a demo</a>
+  </div>
+  <p style="font-size:13px;color:#888;margin-top:16px">No credit card required to start your trial.</p>
+</div>
+
+<hr class="divider">
+
+<div class="features">
+  <div class="feature">
+    <div class="feature-icon">&#128269;</div>
+    <h3>Contract Discovery</h3>
+    <p>Search and filter thousands of active government contracts by agency, value, priority, and expiration date. Find opportunities that match your capabilities.</p>
+  </div>
+  <div class="feature">
+    <div class="feature-icon">&#9201;</div>
+    <h3>Expiry Alerts</h3>
+    <p>Add contracts to your watchlist and receive daily email alerts when they approach expiration. Get notified 30, 60, or 90 days before a recompete window opens.</p>
+  </div>
+  <div class="feature">
+    <div class="feature-icon">&#128200;</div>
+    <h3>Recompete Scoring</h3>
+    <p>Every contract is scored for recompete probability based on incumbent history, budget cycles, and expiration proximity. Focus your BD on the highest-probability opportunities.</p>
+  </div>
+  <div class="feature">
+    <div class="feature-icon">&#127775;</div>
+    <h3>Saved Views</h3>
+    <p>Build custom views and saved searches for your target agencies, NAICS codes, or contract value ranges. Your pipeline, organized your way.</p>
+  </div>
+</div>
+
+<hr class="divider">
+
+<div style="padding:48px 24px 16px;text-align:center">
+  <div class="section-label">Pricing</div>
+  <h2 style="font-size:26px;color:#1a2744;margin-bottom:32px">Simple, transparent pricing</h2>
+</div>
+
+<div class="pricing">
+  <h2>Pro Plan</h2>
+  <div class="price">$49<span>/month</span></div>
+  <ul>
+    <li>Unlimited contract tracking</li>
+    <li>Daily watchlist expiry alerts</li>
+    <li>Recompete opportunity scoring</li>
+    <li>Export to CSV</li>
+    <li>Saved searches &amp; custom views</li>
+    <li>Agency &amp; vendor profiles</li>
+  </ul>
+  <a href="/register" class="cta-primary" style="display:block;text-align:center">Start 14-day free trial</a>
+  <p class="trial-note">14-day free trial included. No credit card required. Cancel anytime.</p>
+</div>
+
+<div style="text-align:center;padding:0 24px 64px">
+  <p style="color:#888;font-size:14px">
+    Already have an account? <a href="/login">Sign in →</a>
+  </p>
+</div>
+{% endblock %}

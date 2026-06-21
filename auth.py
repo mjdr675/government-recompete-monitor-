@@ -47,7 +47,7 @@ def load_logged_in_user() -> None:
 @bp.route("/login", methods=["GET", "POST"])
 def login():
     if g.get("user"):
-        return redirect("/")
+        return redirect("/dashboard")
     error = None
     if request.method == "POST":
         email = request.form.get("email", "").strip()
@@ -57,7 +57,7 @@ def login():
             session.clear()
             session["user_id"] = user["id"]
             session["user_email"] = user["email"]
-            next_url = request.args.get("next") or "/"
+            next_url = request.args.get("next") or "/dashboard"
             return redirect(next_url)
         error = "Invalid email or password."
     return render_template("login.html", error=error)
@@ -66,7 +66,7 @@ def login():
 @bp.route("/register", methods=["GET", "POST"])
 def register():
     if g.get("user"):
-        return redirect("/")
+        return redirect("/dashboard")
     error = None
     if request.method == "POST":
         email = request.form.get("email", "").strip()
@@ -98,7 +98,7 @@ def register():
                     )
                 except Exception as exc:
                     logger.warning("Could not enqueue welcome email for %s: %s", email, exc)
-                return redirect("/")
+                return redirect("/dashboard")
             except ValueError as exc:
                 error = str(exc)
     return render_template("register.html", error=error)

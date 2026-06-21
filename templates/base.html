@@ -1,18 +1,29 @@
 <!doctype html>
 <html>
 <head>
-  <title>{% block title %}Government Recompete Monitor{% endblock %}</title>
+  <title>{% block title %}Recompete.us — Government Contract Intelligence{% endblock %}</title>
   <style>
-    body{font-family:Arial,sans-serif;margin:32px;background:#f7f7f7;color:#222}
+    body{font-family:Arial,sans-serif;margin:0;background:#f7f7f7;color:#222}
+    .topbar{background:#1a2744;color:white;padding:0 24px;display:flex;align-items:center;min-height:50px}
+    .topbar-brand{font-weight:bold;font-size:16px;color:white;text-decoration:none;margin-right:28px;letter-spacing:.3px}
+    .topbar-nav{display:flex;align-items:center;flex:1}
+    .topbar-nav a{color:rgba(255,255,255,.82);text-decoration:none;padding:14px 12px;font-size:14px;display:block;transition:color .12s}
+    .topbar-nav a:hover{color:white}
+    .topbar-right{display:flex;align-items:center;gap:10px;margin-left:auto}
+    .topbar-right a{color:rgba(255,255,255,.82);text-decoration:none;font-size:13px}
+    .topbar-right a:hover{color:white;text-decoration:underline}
+    .btn-signup{background:#2563eb;color:white!important;padding:6px 14px;border-radius:4px;font-weight:bold;font-size:13px;text-decoration:none!important}
+    .btn-signup:hover{background:#1d4ed8!important}
+    .trial-banner{background:#fef3c7;border-bottom:1px solid #f59e0b;padding:8px 24px;font-size:13px}
+    .trial-banner.urgent{background:#fee2e2;border-bottom-color:#ef4444}
+    .content{padding:28px 32px}
     a{color:#1f4f8f;text-decoration:none}
     a:hover{text-decoration:underline}
-    .nav{margin-bottom:24px}
-    .nav a{margin-right:18px;font-weight:bold}
     h1{margin-bottom:4px}
     .muted{color:#666;margin-bottom:18px}
     .cards{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px}
-    .card{background:white;border-radius:10px;padding:18px;min-width:140px;box-shadow:0 1px 4px #ddd;transition:box-shadow .15s,background .15s;cursor:pointer;}
-    .card:hover{background:#f0f4ff;box-shadow:0 3px 10px #c7d2e8;}
+    .card{background:white;border-radius:10px;padding:18px;min-width:140px;box-shadow:0 1px 4px #ddd;transition:box-shadow .15s,background .15s;cursor:pointer}
+    .card:hover{background:#f0f4ff;box-shadow:0 3px 10px #c7d2e8}
     .num{font-size:28px;font-weight:bold}
     table{width:100%;border-collapse:collapse;background:white;margin:16px 0 28px}
     th,td{padding:10px;border-bottom:1px solid #eee;text-align:left;vertical-align:top}
@@ -23,34 +34,60 @@
     .priority-high{background:#d97706}
     .priority-medium{background:#2563eb}
     .priority-low{background:#4b5563}
-    @media(max-width:700px){body{margin:12px}.cards{gap:10px}.card{min-width:120px;padding:12px}.num{font-size:22px}th,td{padding:6px 4px;font-size:13px}}
-    @media(max-width:480px){body{margin:8px}.nav a{margin-right:10px;font-size:14px}}
+    @media(max-width:700px){.content{padding:12px}.cards{gap:10px}.card{min-width:120px;padding:12px}.num{font-size:22px}th,td{padding:6px 4px;font-size:13px}.topbar-nav a{padding:10px 8px;font-size:13px}}
+    @media(max-width:480px){.topbar{padding:0 12px}.topbar-nav a{padding:10px 6px;font-size:12px}}
   </style>
 </head>
 <body>
-  <div class="nav">
-    <a href="/">Dashboard</a>
-    <a href="/contracts">Contracts</a>
-    <a href="/watchlist">Watchlist ({{ g.watchlist_count }})</a>
-    <a href="/searches">Saved Searches</a>
-    <a href="/views">Views</a>
-    <a href="/ingest">Ingest</a>
+  <div class="topbar">
+    <a class="topbar-brand" href="{% if g.user %}/dashboard{% else %}/{% endif %}">Recompete.us</a>
     {% if g.user %}
-      <span style="float:right;font-size:13px;" class="muted">
-        {{ g.user['email'] }} &middot;
+      <nav class="topbar-nav">
+        <a href="/dashboard">Dashboard</a>
+        <a href="/contracts">Contracts</a>
+        <a href="/watchlist">Watchlist{% if g.watchlist_count %} ({{ g.watchlist_count }}){% endif %}</a>
+        <a href="/searches">Saved Searches</a>
+        <a href="/views">Views</a>
+        <a href="/settings/alerts">Alerts</a>
+        <a href="/ingest">Ingest</a>
+      </nav>
+      <div class="topbar-right">
+        <span style="font-size:13px;color:rgba(255,255,255,.65)">{{ g.user['email'] }}</span>
         {% if g.user.get('stripe_customer_id') %}
-          <form method="post" action="/billing/portal" style="display:inline">
+          <form method="post" action="/billing/portal" style="display:inline;margin:0">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" style="background:none;border:none;padding:0;cursor:pointer;font-size:13px;color:inherit;text-decoration:underline">Manage Subscription</button>
+            <button type="submit" style="background:none;border:none;padding:0;cursor:pointer;font-size:13px;color:rgba(255,255,255,.82);text-decoration:underline">Subscription</button>
           </form>
-          &middot;
+        {% else %}
+          <a href="/subscribe" style="color:#fbbf24;font-weight:bold">Upgrade</a>
         {% endif %}
         <a href="/logout">Sign out</a>
-      </span>
+      </div>
+    {% else %}
+      <div class="topbar-right">
+        <a href="/login">Sign in</a>
+        <a href="/register" class="btn-signup">Start free trial</a>
+      </div>
     {% endif %}
   </div>
 
-  {% block content %}{% endblock %}
+  {% if g.user and trial_days_remaining is not none %}
+    {% if trial_days_remaining <= 3 %}
+      <div class="trial-banner urgent">
+        <strong>Trial ending soon:</strong> {{ trial_days_remaining }} day{{ 's' if trial_days_remaining != 1 else '' }} remaining &mdash;
+        <a href="/subscribe" style="color:#b91c1c;font-weight:bold">Subscribe now to keep access →</a>
+      </div>
+    {% else %}
+      <div class="trial-banner">
+        <strong>Free trial:</strong> {{ trial_days_remaining }} day{{ 's' if trial_days_remaining != 1 else '' }} remaining &mdash;
+        <a href="/subscribe" style="color:#92400e">Upgrade to Pro →</a>
+      </div>
+    {% endif %}
+  {% endif %}
+
+  <div class="content">
+    {% block content %}{% endblock %}
+  </div>
   {% block scripts %}{% endblock %}
 </body>
 </html>
