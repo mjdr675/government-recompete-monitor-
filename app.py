@@ -187,6 +187,16 @@ _PUBLIC_PATHS = frozenset({
 })
 
 
+_SUBSCRIPTION_EXEMPT = frozenset({
+    "/subscribe",
+    "/billing/portal",
+    "/logout",
+    "/create-checkout-session",
+    "/success",
+    "/cancel",
+})
+
+
 @app.before_request
 def require_login():
     if request.path in _PUBLIC_PATHS:
@@ -200,6 +210,17 @@ def require_login():
         return None
     if "user_id" not in session:
         return redirect(url_for("auth.login", next=request.path))
+    # Trial / subscription gate
+    if request.path not in _SUBSCRIPTION_EXEMPT:
+        user = g.get("user")
+        if user and user.get("subscription_status") != "active":
+            trial_ends_at = user.get("trial_ends_at")
+            if trial_ends_at:
+                trial_end = datetime.fromisoformat(trial_ends_at)
+                if trial_end.tzinfo is None:
+                    trial_end = trial_end.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) > trial_end:
+                    return redirect(url_for("subscribe", expired="1"))
 
 
 @app.route("/health")
