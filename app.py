@@ -145,6 +145,7 @@ _PUBLIC_PATHS = frozenset({
     "/health",
     "/login",
     "/register",
+    "/forgot-password",
     "/create-checkout-session",
     "/success",
     "/cancel",

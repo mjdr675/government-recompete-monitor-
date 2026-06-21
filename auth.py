@@ -5,7 +5,7 @@ import os
 from flask import (Blueprint, g, redirect, render_template,
                    request, session, url_for)
 
-from users import create_user, get_user_by_id, verify_password
+from users import create_user, get_user_by_id, set_reset_token, verify_password
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +99,40 @@ def register():
             except ValueError as exc:
                 error = str(exc)
     return render_template("register.html", error=error)
+
+
+@bp.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    if request.method == "GET":
+        return render_template("forgot_password.html")
+    email = request.form.get("email", "").strip()
+    token = set_reset_token(email)
+    if token:
+        try:
+            from tasks import send_email_task
+            app_url = os.environ.get("APP_URL", "https://govrecompete.com")
+            reset_url = f"{app_url}/reset-password?token={token}"
+            try:
+                html_body = render_template(
+                    "email/password_reset.html", reset_url=reset_url, app_url=app_url
+                )
+                text_body = render_template(
+                    "email/password_reset.txt", reset_url=reset_url, app_url=app_url
+                )
+            except Exception:
+                html_body = (
+                    f'<p>Click to reset your password: <a href="{reset_url}">{reset_url}</a></p>'
+                )
+                text_body = f"Reset your password: {reset_url}"
+            send_email_task.delay(
+                to=email,
+                subject="Reset your Gov Recompete Monitor password",
+                html_body=html_body,
+                text_body=text_body,
+            )
+        except Exception as exc:
+            logger.warning("Could not enqueue reset email for %s: %s", email, exc)
+    return render_template("forgot_password.html", sent=True)
 
 
 @bp.route("/logout")

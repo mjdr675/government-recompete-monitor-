@@ -1,4 +1,5 @@
-from datetime import datetime, timezone
+import secrets
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -71,3 +72,35 @@ def verify_password(email: str, password: str) -> dict | None:
     if user and check_password_hash(user["password_hash"], password):
         return {"id": user["id"], "email": user["email"], "created_at": user["created_at"]}
     return None
+
+
+def set_reset_token(email: str) -> str | None:
+    """Generate a reset token for the user and persist it. Returns the token or None."""
+    user = get_user_by_email(email)
+    if not user:
+        return None
+    token = secrets.token_hex(32)
+    expires_at = (datetime.utcnow() + timedelta(hours=1)).isoformat()
+    with get_engine().begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE users SET reset_token = :token, reset_token_expires_at = :expires_at"
+                " WHERE email = :email"
+            ),
+            {"token": token, "expires_at": expires_at, "email": email.lower().strip()},
+        )
+    return token
+
+
+def get_user_by_reset_token(token: str) -> dict | None:
+    """Return the user row for a valid, unexpired reset token, or None."""
+    now = datetime.utcnow().isoformat()
+    with get_engine().connect() as conn:
+        row = conn.execute(
+            text(
+                "SELECT id, email, created_at FROM users"
+                " WHERE reset_token = :token AND reset_token_expires_at > :now AND is_active = 1"
+            ),
+            {"token": token, "now": now},
+        ).mappings().fetchone()
+    return dict(row) if row else None

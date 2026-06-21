@@ -288,6 +288,50 @@ def test_registration_enqueues_welcome_email(client, monkeypatch):
     assert "Welcome" in call_kwargs["subject"]
 
 
+# ---------------------------------------------------------------------------
+# /forgot-password (Task 103)
+# ---------------------------------------------------------------------------
+
+def test_forgot_password_get_returns_200(client):
+    rv = client.get("/forgot-password")
+    assert rv.status_code == 200
+
+
+def test_forgot_password_post_unknown_email_returns_200(client):
+    rv = client.post("/forgot-password", data={"email": "nobody@example.com"})
+    assert rv.status_code == 200
+
+
+def test_forgot_password_post_known_email_sets_token(client, auth_db, monkeypatch):
+    import sqlite3
+    import tasks as tasks_module
+    from unittest.mock import MagicMock
+    from users import create_user
+    create_user("reset@example.com", "password123")
+    mock_delay = MagicMock()
+    monkeypatch.setattr(tasks_module.send_email_task, "delay", mock_delay)
+    rv = client.post("/forgot-password", data={"email": "reset@example.com"})
+    assert rv.status_code == 200
+    mock_delay.assert_called_once()
+    con = sqlite3.connect(auth_db)
+    row = con.execute(
+        "SELECT reset_token, reset_token_expires_at FROM users WHERE email='reset@example.com'"
+    ).fetchone()
+    con.close()
+    assert row[0] is not None
+    assert row[1] is not None
+
+
+def test_forgot_password_post_known_email_no_enumeration(client, monkeypatch):
+    import tasks as tasks_module
+    from unittest.mock import MagicMock
+    monkeypatch.setattr(tasks_module.send_email_task, "delay", MagicMock())
+    rv_known = client.post("/forgot-password", data={"email": "anyone@example.com"})
+    rv_unknown = client.post("/forgot-password", data={"email": "ghost@example.com"})
+    assert b"reset link" in rv_known.data.lower() or b"sent" in rv_known.data.lower() or b"registered" in rv_known.data.lower()
+    assert rv_known.data == rv_unknown.data
+
+
 def test_registration_succeeds_if_email_task_raises(client, monkeypatch):
     import tasks as tasks_module
     monkeypatch.setattr(tasks_module.send_email_task, "delay", lambda **kw: (_ for _ in ()).throw(RuntimeError("Redis down")))
