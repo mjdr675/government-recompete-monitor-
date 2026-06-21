@@ -57,3 +57,40 @@ def test_welcome_html_has_no_style_blocks(app_ctx):
         app_url="https://govrecompete.com",
     )
     assert "<style" not in html
+
+
+# ---------------------------------------------------------------------------
+# reset_password templates (Task 104)
+# ---------------------------------------------------------------------------
+
+def test_reset_html_renders(app_ctx):
+    from flask import render_template
+    html = render_template(
+        "email/reset_password.html",
+        user_email="reset@example.com",
+        reset_url="https://govrecompete.com/reset-password?token=abc123",
+    )
+    assert "reset@example.com" in html
+    assert "https://govrecompete.com/reset-password?token=abc123" in html
+    assert "Reset Password" in html
+
+
+def test_reset_txt_renders(app_ctx):
+    from flask import render_template
+    txt = render_template(
+        "email/reset_password.txt",
+        user_email="reset@example.com",
+        reset_url="https://govrecompete.com/reset-password?token=abc123",
+    )
+    lines = txt.splitlines()
+    assert any(line.strip() == "https://govrecompete.com/reset-password?token=abc123" for line in lines)
+
+
+def test_reset_html_has_no_style_blocks(app_ctx):
+    from flask import render_template
+    html = render_template(
+        "email/reset_password.html",
+        user_email="u@example.com",
+        reset_url="https://govrecompete.com/reset-password?token=xyz",
+    )
+    assert "<style" not in html
