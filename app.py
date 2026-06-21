@@ -1053,6 +1053,38 @@ def settings_alerts():
     return render_template("settings_alerts.html", prefs=prefs)
 
 
+@app.route("/admin")
+def admin_dashboard():
+    admin_email = os.environ.get("ADMIN_EMAIL", "").lower()
+    user = g.get("user")
+    if not user or user.get("email", "").lower() != admin_email or not admin_email:
+        return "Not found", 404
+    engine = get_engine()
+    with engine.connect() as conn:
+        users_rows = conn.execute(text(
+            "SELECT id, email, created_at, subscription_status, trial_ends_at, stripe_customer_id"
+            " FROM users WHERE is_active = 1 ORDER BY created_at DESC LIMIT 200"
+        )).mappings().fetchall()
+        counts = conn.execute(text(
+            "SELECT subscription_status, COUNT(*) as n FROM users"
+            " WHERE is_active = 1 GROUP BY subscription_status"
+        )).mappings().fetchall()
+        total_users = conn.execute(text(
+            "SELECT COUNT(*) FROM users WHERE is_active = 1"
+        )).scalar() or 0
+        active_count = sum(r["n"] for r in counts if r["subscription_status"] == "active")
+    stats = {r["subscription_status"]: r["n"] for r in counts}
+    mrr = active_count * 49
+    return render_template(
+        "admin.html",
+        users=list(users_rows),
+        stats=stats,
+        total_users=total_users,
+        active_count=active_count,
+        mrr=mrr,
+    )
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     app.run(host="0.0.0.0", port=port, debug=False)

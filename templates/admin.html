@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Admin — Recompete.us{% endblock %}
+{% block content %}
+<h1 style="margin-bottom:4px">Admin Dashboard</h1>
+<p class="muted">Operator view — not visible to regular users.</p>
+
+<div class="cards" style="margin-top:20px">
+  <div class="card">
+    <div class="muted">Total Users</div>
+    <div class="num">{{ total_users }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Active (Paid)</div>
+    <div class="num" style="color:#16a34a">{{ active_count }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Trialing</div>
+    <div class="num" style="color:#d97706">{{ stats.get('trialing', 0) }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Canceled</div>
+    <div class="num" style="color:#b00020">{{ stats.get('canceled', 0) }}</div>
+  </div>
+  <div class="card" style="border-left:4px solid #16a34a">
+    <div class="muted">MRR (est.)</div>
+    <div class="num" style="color:#16a34a">${{ "{:,}".format(mrr) }}</div>
+  </div>
+</div>
+
+<h2>All Users <span class="muted" style="font-size:14px;font-weight:normal">(newest first, up to 200)</span></h2>
+<div style="overflow-x:auto">
+<table>
+  <tr>
+    <th>Email</th>
+    <th>Signed Up</th>
+    <th>Status</th>
+    <th>Trial Ends</th>
+    <th>Stripe</th>
+  </tr>
+  {% for u in users %}
+  <tr>
+    <td>{{ u.email }}</td>
+    <td style="font-size:13px;white-space:nowrap">{{ u.created_at[:10] if u.created_at else '—' }}</td>
+    <td>
+      {% if u.subscription_status == 'active' %}
+        <span class="priority-badge" style="background:#16a34a">active</span>
+      {% elif u.subscription_status == 'trialing' %}
+        <span class="priority-badge priority-high">trial</span>
+      {% else %}
+        <span class="priority-badge priority-low">{{ u.subscription_status or '—' }}</span>
+      {% endif %}
+    </td>
+    <td style="font-size:13px">
+      {% if u.trial_ends_at %}
+        {{ u.trial_ends_at[:10] }}
+      {% else %}—{% endif %}
+    </td>
+    <td style="font-size:12px;color:#666">
+      {% if u.stripe_customer_id %}
+        {{ u.stripe_customer_id[:14] }}…
+      {% else %}—{% endif %}
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5" class="muted">No users yet.</td></tr>
+  {% endfor %}
+</table>
+</div>
+{% endblock %}
