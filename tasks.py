@@ -60,6 +60,10 @@ tasks.conf.beat_schedule = {
         "task": "tasks.run_ingest",
         "schedule": crontab(hour=2, minute=0),
     },
+    "watchlist-alerts-0700-utc": {
+        "task": "tasks.check_watchlist_alerts",
+        "schedule": crontab(hour=7, minute=0),
+    },
 }
 
 _sentry_dsn = os.environ.get("SENTRY_DSN", "")
@@ -253,3 +257,90 @@ def run_ingest(self):
                 "created_at": finished_at,
             })
         raise
+
+
+@tasks.task(name="tasks.check_watchlist_alerts")
+def check_watchlist_alerts():
+    """Send expiry alert emails for watchlisted contracts; deduplicate via alert_log."""
+    from db import get_engine
+    from sqlalchemy import text
+
+    engine = get_engine()
+    app_url = os.environ.get("APP_URL", "https://govrecompete.com")
+    now = datetime.now(timezone.utc).isoformat()
+
+    with engine.connect() as conn:
+        users = conn.execute(text("""
+            SELECT u.id, u.email, COALESCE(ap.expiry_days, 30) AS expiry_days
+            FROM users u
+            LEFT JOIN alert_preferences ap ON ap.user_id = u.id
+            WHERE u.is_active = 1
+              AND (ap.enabled IS NULL OR ap.enabled = 1)
+        """)).mappings().fetchall()
+
+    for user in users:
+        user_id = user["id"]
+        user_email = user["email"]
+        expiry_days = user["expiry_days"]
+
+        with engine.connect() as conn:
+            contracts = conn.execute(text("""
+                SELECT c.internal_id, c.vendor, c.agency, c.value, c.days_remaining
+                FROM user_watchlist w
+                JOIN contracts c ON c.internal_id = w.internal_id
+                WHERE w.user_id = :uid
+                  AND c.days_remaining IS NOT NULL
+                  AND c.days_remaining >= 0
+                  AND c.days_remaining <= :days
+                  AND c.internal_id NOT IN (
+                      SELECT internal_id FROM alert_log
+                      WHERE user_id = :uid AND alert_type = 'expiry'
+                  )
+                ORDER BY c.days_remaining ASC
+            """), {"uid": user_id, "days": expiry_days}).mappings().fetchall()
+
+        if not contracts:
+            continue
+
+        try:
+            from flask import Flask
+            _app = Flask(__name__, template_folder="templates")
+            with _app.app_context():
+                from flask import render_template as _render
+                html_body = _render(
+                    "email/watchlist_alert.html",
+                    user_email=user_email,
+                    contracts=contracts,
+                    expiry_days=expiry_days,
+                    app_url=app_url,
+                )
+                text_body = _render(
+                    "email/watchlist_alert.txt",
+                    user_email=user_email,
+                    contracts=contracts,
+                    expiry_days=expiry_days,
+                    app_url=app_url,
+                )
+            send_email_task.delay(
+                to=user_email,
+                subject=f"Watchlist Alert: {len(contracts)} contract(s) expiring soon",
+                html_body=html_body,
+                text_body=text_body,
+            )
+            with engine.begin() as conn:
+                for c in contracts:
+                    try:
+                        conn.execute(text("""
+                            INSERT INTO alert_log (user_id, internal_id, alert_type, sent_at)
+                            VALUES (:uid, :iid, 'expiry', :now)
+                        """), {"uid": user_id, "iid": c["internal_id"], "now": now})
+                    except Exception:
+                        pass  # already logged (unique constraint)
+            logger.info(
+                "check_watchlist_alerts: sent %d alerts to %s", len(contracts), user_email
+            )
+        except Exception as exc:
+            sentry_sdk.capture_exception(exc)
+            logger.error(
+                "check_watchlist_alerts: failed for user %d (%s): %s", user_id, user_email, exc
+            )
