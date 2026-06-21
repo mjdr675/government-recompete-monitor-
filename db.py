@@ -1,8 +1,10 @@
+import glob
 import json
 import os
 import sqlite3
 from datetime import datetime, timezone
 from functools import lru_cache
+from pathlib import Path
 
 from sqlalchemy import create_engine, text
 
@@ -50,11 +52,34 @@ def connect():
     return get_connection()
 
 
+def _apply_pg_migrations() -> None:
+    """Apply all *.sql files in migrations/ against the PostgreSQL database.
+
+    All statements use IF NOT EXISTS / ADD COLUMN IF NOT EXISTS guards so this
+    is safe to call repeatedly at every release (idempotent).
+    """
+    migrations_dir = Path(__file__).parent / "migrations"
+    if not migrations_dir.is_dir():
+        return
+    sql_files = sorted(migrations_dir.glob("*.sql"))
+    engine = get_engine()
+    import logging as _log
+    for sql_file in sql_files:
+        statements = [s.strip() for s in sql_file.read_text().split(";") if s.strip()]
+        with engine.begin() as conn:
+            for stmt in statements:
+                if stmt.lstrip().startswith("--"):
+                    continue
+                try:
+                    conn.execute(text(stmt))
+                except Exception as exc:
+                    _log.warning("Migration %s: %s", sql_file.name, exc)
+
+
 def init_db():
     database_url = os.environ.get("DATABASE_URL", "")
     if database_url:
-        # PostgreSQL schema management is handled by migrations/001_initial_pg.sql
-        # applied via the Procfile release command.
+        _apply_pg_migrations()
         return
 
     engine = get_engine()
