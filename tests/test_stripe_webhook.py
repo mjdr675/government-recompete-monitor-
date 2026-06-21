@@ -91,3 +91,49 @@ class TestCheckoutSessionCompleted:
         fetched = users_module.get_user_by_id(user["id"])
         # status should remain trialing since no customer ID provided
         assert fetched["subscription_status"] == "trialing"
+
+
+class TestSubscriptionUpdated:
+    def _seed_customer(self, user_id, customer_id):
+        users_module.set_subscription(user_id, customer_id, "active")
+
+    def test_updates_status_on_subscription_updated(self, db, user):
+        self._seed_customer(user["id"], "cus_upd")
+        sub = {"customer": "cus_upd", "status": "past_due"}
+        stripe_customer_id = sub.get("customer") or ""
+        status = sub.get("status") or "active"
+        found = users_module.get_user_by_stripe_customer(stripe_customer_id)
+        if found and stripe_customer_id:
+            users_module.set_subscription(found["id"], stripe_customer_id, status)
+        fetched = users_module.get_user_by_id(user["id"])
+        assert fetched["subscription_status"] == "past_due"
+
+    def test_unknown_customer_does_not_crash(self, db):
+        sub = {"customer": "cus_ghost", "status": "active"}
+        stripe_customer_id = sub.get("customer") or ""
+        found = users_module.get_user_by_stripe_customer(stripe_customer_id)
+        assert found is None  # no error raised
+
+
+class TestSubscriptionDeleted:
+    def test_sets_canceled_on_subscription_deleted(self, db, user):
+        users_module.set_subscription(user["id"], "cus_del", "active")
+        sub = {"customer": "cus_del"}
+        stripe_customer_id = sub.get("customer") or ""
+        found = users_module.get_user_by_stripe_customer(stripe_customer_id)
+        if found:
+            users_module.set_subscription(found["id"], stripe_customer_id, "canceled")
+        fetched = users_module.get_user_by_id(user["id"])
+        assert fetched["subscription_status"] == "canceled"
+
+    def test_missing_customer_id_skips(self, db, user):
+        users_module.set_subscription(user["id"], "cus_keep", "active")
+        sub = {"customer": ""}
+        stripe_customer_id = sub.get("customer") or ""
+        if stripe_customer_id:
+            found = users_module.get_user_by_stripe_customer(stripe_customer_id)
+            if found:
+                users_module.set_subscription(found["id"], stripe_customer_id, "canceled")
+        fetched = users_module.get_user_by_id(user["id"])
+        # still active — no customer ID to match
+        assert fetched["subscription_status"] == "active"

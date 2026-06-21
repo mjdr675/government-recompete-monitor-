@@ -39,7 +39,7 @@ from analytics import dashboard_analytics, opportunity_recommendations
 from report_builder import build_report
 from views import SAVED_VIEWS, build_view_query, format_filter_summary
 import hubspot_service
-from users import get_user_by_email, set_subscription
+from users import get_user_by_email, get_user_by_stripe_customer, set_subscription
 
 class _JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
@@ -436,6 +436,24 @@ def stripe_webhook():
             user = get_user_by_email(email)
             if user and stripe_customer_id:
                 set_subscription(user["id"], stripe_customer_id, "active")
+
+    elif event["type"] == "customer.subscription.updated":
+        sub = event["data"]["object"]
+        stripe_customer_id = sub.get("customer") or ""
+        status = sub.get("status") or "active"
+        if stripe_customer_id:
+            user = get_user_by_stripe_customer(stripe_customer_id)
+            if user:
+                set_subscription(user["id"], stripe_customer_id, status)
+
+    elif event["type"] == "customer.subscription.deleted":
+        sub = event["data"]["object"]
+        stripe_customer_id = sub.get("customer") or ""
+        if stripe_customer_id:
+            user = get_user_by_stripe_customer(stripe_customer_id)
+            if user:
+                set_subscription(user["id"], stripe_customer_id, "canceled")
+
     return "", 200
 
 
