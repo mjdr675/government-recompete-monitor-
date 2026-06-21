@@ -37,7 +37,15 @@
     <a href="/ingest">Ingest</a>
     {% if g.user %}
       <span style="float:right;font-size:13px;" class="muted">
-        {{ g.user['email'] }} &middot; <a href="/logout">Sign out</a>
+        {{ g.user['email'] }} &middot;
+        {% if g.user.get('stripe_customer_id') %}
+          <form method="post" action="/billing/portal" style="display:inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" style="background:none;border:none;padding:0;cursor:pointer;font-size:13px;color:inherit;text-decoration:underline">Manage Subscription</button>
+          </form>
+          &middot;
+        {% endif %}
+        <a href="/logout">Sign out</a>
       </span>
     {% endif %}
   </div>
