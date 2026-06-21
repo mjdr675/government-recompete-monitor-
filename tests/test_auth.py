@@ -6,6 +6,8 @@ The Flask test client persists cookies between requests so session
 state flows correctly through registration → login → logout cycles.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 import db as db_module
 
@@ -31,6 +33,7 @@ def client(auth_db):
     flask_app.app.config["WTF_CSRF_ENABLED"] = False
     flask_app.app.config["RATELIMIT_ENABLED"] = False
     flask_app.app.secret_key = "test-secret-key"
+    flask_app.limiter.reset()
     with flask_app.app.test_client() as c:
         yield c
 
@@ -40,11 +43,14 @@ def client(auth_db):
 # ---------------------------------------------------------------------------
 
 def _register(client, email="user@example.com", password="password123", confirm=None):
-    return client.post("/register", data={
-        "email": email,
-        "password": password,
-        "confirm": confirm if confirm is not None else password,
-    })
+    mock_task = MagicMock()
+    mock_task.delay = MagicMock(return_value=None)
+    with patch("tasks.send_email_task", mock_task):
+        return client.post("/register", data={
+            "email": email,
+            "password": password,
+            "confirm": confirm if confirm is not None else password,
+        })
 
 
 def _login(client, email="user@example.com", password="password123"):
@@ -80,7 +86,7 @@ def test_register_page_accessible_without_login(client):
 
 
 def test_protected_route_redirects_to_login(client):
-    rv = client.get("/")
+    rv = client.get("/dashboard")
     assert rv.status_code == 302
     assert "/login" in rv.headers["Location"]
 
@@ -100,12 +106,12 @@ def test_protected_route_preserves_next_param(client):
 def test_register_success_redirects_home(client):
     rv = _register(client)
     assert rv.status_code == 302
-    assert rv.headers["Location"] == "/"
+    assert rv.headers["Location"] == "/dashboard"
 
 
 def test_register_auto_logs_in(client):
     _register(client)
-    rv = client.get("/", follow_redirects=True)
+    rv = client.get("/dashboard", follow_redirects=True)
     assert rv.status_code == 200
 
 
@@ -139,7 +145,7 @@ def test_register_email_is_case_insensitive(client):
     _register(client, email="User@Example.COM")
     rv = _login(client, email="user@example.com")
     assert rv.status_code == 302
-    assert rv.headers["Location"] == "/"
+    assert rv.headers["Location"] == "/dashboard"
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +157,7 @@ def test_login_success_redirects_home(client):
     client.get("/logout")
     rv = _login(client)
     assert rv.status_code == 302
-    assert rv.headers["Location"] == "/"
+    assert rv.headers["Location"] == "/dashboard"
 
 
 def test_login_wrong_password_shows_error(client):
@@ -183,14 +189,14 @@ def test_already_logged_in_redirected_away_from_login(client):
     _register(client)
     rv = client.get("/login")
     assert rv.status_code == 302
-    assert rv.headers["Location"] == "/"
+    assert rv.headers["Location"] == "/dashboard"
 
 
 def test_already_logged_in_redirected_away_from_register(client):
     _register(client)
     rv = client.get("/register")
     assert rv.status_code == 302
-    assert rv.headers["Location"] == "/"
+    assert rv.headers["Location"] == "/dashboard"
 
 
 # ---------------------------------------------------------------------------
@@ -202,7 +208,7 @@ def test_logout_clears_session(client):
     rv = client.get("/logout")
     assert rv.status_code == 302
     # After logout, protected route redirects to login
-    rv = client.get("/")
+    rv = client.get("/dashboard")
     assert rv.status_code == 302
     assert "/login" in rv.headers["Location"]
 
@@ -220,7 +226,7 @@ def test_logout_redirects_to_login(client):
 
 def test_protected_routes_accessible_when_logged_in(client):
     _register(client)
-    for path in ["/", "/contracts", "/views", "/ingest"]:
+    for path in ["/dashboard", "/contracts", "/views", "/ingest"]:
         rv = client.get(path)
         assert rv.status_code == 200, f"{path} returned {rv.status_code}"
 
