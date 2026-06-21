@@ -18,8 +18,14 @@ ingest.log
 # Repository memory DB (rebuilt automatically)
 .ai_agent_memory.db
 
+# Generated patch files from ae runs (timestamped artifacts, never source)
+patches/*.md
+
 # Patcher failure reports (generated at runtime)
 patches/failures/
+
+# Generated review file written by ai_reviewer after each run
+ai_agent/REVIEW.md
 
 # Runtime logs
 logs/
