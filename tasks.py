@@ -71,6 +71,8 @@ if _sentry_dsn:
 _BEAT_HEALTH_KEY = "beat:health"
 _BEAT_HEALTH_TTL = 900  # 15 minutes in seconds
 _BEAT_STALE_THRESHOLD = timedelta(minutes=15)
+_BEAT_ALERT_KEY = "beat:alert_sent"
+_BEAT_ALERT_TTL = 3600  # 1 hour dedup window in seconds
 _QUALITY_THRESHOLD = 10
 
 
@@ -102,6 +104,25 @@ def heartbeat():
         logger.error("Heartbeat failed to write beat:health to Redis: %s", exc)
 
 
+def _send_beat_alert(r, last_seen_str: str) -> None:
+    """Enqueue a beat-stale admin email, deduplicated to once per hour."""
+    admin_email = os.environ.get("ADMIN_EMAIL", "")
+    if not admin_email:
+        return
+    if r.get(_BEAT_ALERT_KEY):
+        return
+    r.set(_BEAT_ALERT_KEY, "1", ex=_BEAT_ALERT_TTL)
+    send_email_task.delay(
+        to=admin_email,
+        subject="[Gov Recompete Monitor] Beat scheduler may be down",
+        html_body=(
+            f"<p>The Celery beat scheduler has not checked in for over 20 minutes. "
+            f"Last seen: {last_seen_str}. Check Railway logs immediately.</p>"
+        ),
+        text_body=f"Beat scheduler stale. Last seen: {last_seen_str}. Check Railway logs.",
+    )
+
+
 @tasks.task(name="tasks.check_beat_health")
 def check_beat_health():
     """Log ERROR if beat:health is missing or older than 15 minutes."""
@@ -113,6 +134,7 @@ def check_beat_health():
         raw = r.get(_BEAT_HEALTH_KEY)
         if raw is None:
             logger.error("Beat health check FAILED: beat:health key is missing from Redis")
+            _send_beat_alert(r, "unknown (key missing)")
             return
         ts = datetime.fromisoformat(raw.decode())
         if ts.tzinfo is None:
@@ -122,6 +144,7 @@ def check_beat_health():
             logger.error(
                 "Beat health check FAILED: last heartbeat was %s ago (threshold: 15 min)", age
             )
+            _send_beat_alert(r, raw.decode())
         else:
             logger.debug("Beat health OK — last heartbeat %s ago", age)
     except Exception as exc:
