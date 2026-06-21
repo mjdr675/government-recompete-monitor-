@@ -61,6 +61,7 @@
         {% else %}
           <a href="/subscribe" style="color:#fbbf24;font-weight:bold">Upgrade</a>
         {% endif %}
+        <a href="/settings/account">Account</a>
         <a href="/logout">Sign out</a>
       </div>
     {% else %}
@@ -84,6 +85,16 @@
       </div>
     {% endif %}
   {% endif %}
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      {% if category == 'error' %}
+        <div style="background:#fee2e2;border-left:4px solid #ef4444;padding:10px 24px;font-size:14px;color:#991b1b;">{{ message }}</div>
+      {% else %}
+        <div style="background:#d1fae5;border-left:4px solid #10b981;padding:10px 24px;font-size:14px;color:#065f46;">{{ message }}</div>
+      {% endif %}
+    {% endfor %}
+  {% endwith %}
 
   <div class="content">
     {% block content %}{% endblock %}
