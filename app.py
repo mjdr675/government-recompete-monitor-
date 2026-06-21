@@ -561,6 +561,7 @@ def stripe_webhook():
 
 
 @app.route("/demo", methods=["GET", "POST"])
+@limiter.limit("5 per hour", per_method=True, methods=["POST"])
 def demo():
     message = None
     error = None
@@ -592,6 +593,7 @@ def demo():
 
 
 @app.route("/early-access", methods=["GET", "POST"])
+@limiter.limit("5 per hour", per_method=True, methods=["POST"])
 def early_access():
     message = None
     error = None
