@@ -27,6 +27,7 @@ def client(test_db):
     flask_app.app.config["WTF_CSRF_ENABLED"] = False
     flask_app.app.config["RATELIMIT_ENABLED"] = False
     flask_app.app.secret_key = "test-secret"
+    flask_app.limiter.reset()
     with flask_app.app.test_client() as c:
         c.post("/register", data={
             "email": "fix@example.com",
@@ -359,7 +360,7 @@ class TestIngestQualityAlert:
         with caplog.at_level(logging.ERROR, logger="tasks"):
             tasks_module.run_ingest.apply()
 
-        assert any("suspiciously low record count" in r.message for r in caplog.records if r.levelno >= logging.ERROR)
+        assert any("suspiciously low record count" in r.getMessage() for r in caplog.records if r.levelno >= logging.ERROR)
 
     def test_normal_record_count_no_quality_error(self, test_db, monkeypatch, caplog):
         import logging
@@ -371,7 +372,7 @@ class TestIngestQualityAlert:
         with caplog.at_level(logging.ERROR, logger="tasks"):
             tasks_module.run_ingest.apply()
 
-        assert not any("suspiciously low record count" in r.message for r in caplog.records)
+        assert not any("suspiciously low record count" in r.getMessage() for r in caplog.records)
 
 
 # ---------------------------------------------------------------------------

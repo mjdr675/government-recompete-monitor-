@@ -43,7 +43,10 @@ def test_db(tmp_path):
 def client(test_db):
     import app as flask_app
     flask_app.app.config["TESTING"] = True
+    flask_app.app.config["WTF_CSRF_ENABLED"] = False
+    flask_app.app.config["RATELIMIT_ENABLED"] = False
     flask_app.app.secret_key = "test-secret-key"
+    flask_app.limiter.reset()
     with flask_app.app.test_client() as c:
         c.post("/register", data={
             "email": "fixture@example.com",
@@ -147,3 +150,33 @@ class TestContractsRouteMinValue:
     def test_non_numeric_min_value_ignored(self, client):
         rv = client.get("/contracts?min_value=abc")
         assert rv.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# min_value dropdown renders correctly (P-02)
+# ---------------------------------------------------------------------------
+
+class TestMinValueDropdown:
+    def test_dropdown_select_rendered_not_text_input(self, client):
+        rv = client.get("/contracts")
+        assert b'select name="min_value"' in rv.data
+
+    def test_dropdown_shows_any_size_option(self, client):
+        rv = client.get("/contracts")
+        assert b"Any size" in rv.data
+
+    def test_dropdown_shows_1m_option(self, client):
+        rv = client.get("/contracts")
+        assert b"$1M+" in rv.data
+
+    def test_dropdown_selects_matching_threshold(self, client):
+        rv = client.get("/contracts?min_value=1000000")
+        assert b'value="1000000" selected' in rv.data or b'value="1000000"  selected' in rv.data or b"selected" in rv.data
+
+    def test_sort_link_preserves_min_value(self, client):
+        rv = client.get("/contracts?min_value=1000000&sort=value&dir=asc")
+        assert b"min_value=1000000" in rv.data
+
+    def test_sort_link_vendor_includes_min_value(self, client):
+        rv = client.get("/contracts?min_value=5000000")
+        assert b"min_value=5000000" in rv.data

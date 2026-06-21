@@ -86,7 +86,7 @@ class TestHeartbeatTask:
         with patch.dict("sys.modules", {"redis": mock_redis_mod}):
             with caplog.at_level(logging.INFO, logger="tasks"):
                 tasks_module.heartbeat()
-        assert any("heartbeat" in r.message.lower() for r in caplog.records)
+        assert any("heartbeat" in r.getMessage().lower() for r in caplog.records)
 
     def test_heartbeat_writes_beat_health_key(self):
         mock_redis_mod, mock_client = self._make_mock_redis()
@@ -149,7 +149,7 @@ class TestCheckBeatHealth:
         with patch.dict("sys.modules", {"redis": mock_redis_mod}):
             with caplog.at_level(logging.ERROR, logger="tasks"):
                 tasks_module.check_beat_health()
-        assert any("missing" in r.message.lower() for r in caplog.records
+        assert any("missing" in r.getMessage().lower() for r in caplog.records
                    if r.levelno >= logging.ERROR)
 
     def test_error_when_key_is_stale(self, caplog):

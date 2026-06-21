@@ -113,7 +113,7 @@ class TestRedisStartupPing:
             with caplog.at_level(logging.WARNING):
                 flask_app._check_redis()
 
-        assert any("Redis" in r.message or "redis" in r.message.lower() for r in caplog.records)
+        assert any("Redis" in r.getMessage() or "redis" in r.getMessage().lower() for r in caplog.records)
 
 
 # ---------------------------------------------------------------------------

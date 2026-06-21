@@ -18,7 +18,7 @@ def test_logs_warning_when_no_api_key(monkeypatch, caplog):
     from email_service import send_email
     with caplog.at_level(logging.WARNING, logger="email_service"):
         send_email("u@example.com", "Subject", "<p>Hi</p>")
-    assert any("EMAIL_API_KEY not set" in r.message for r in caplog.records)
+    assert any("EMAIL_API_KEY not set" in r.getMessage() for r in caplog.records)
 
 
 def test_calls_resend_api_when_key_set(monkeypatch):
