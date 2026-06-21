@@ -2,6 +2,7 @@
 
 import json
 import os
+import sentry_sdk
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 import pytest
@@ -371,3 +372,23 @@ class TestIngestQualityAlert:
             tasks_module.run_ingest.apply()
 
         assert not any("suspiciously low record count" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# Sentry capture_exception in run_ingest (Task 107)
+# ---------------------------------------------------------------------------
+
+def test_sentry_capture_called_on_ingest_failure(test_db, monkeypatch):
+    import tasks as tasks_module
+
+    def boom():
+        raise RuntimeError("SAM.gov unreachable")
+
+    monkeypatch.setattr("janitorial_recompete_report.main", boom, raising=False)
+    captured = []
+    monkeypatch.setattr(sentry_sdk, "capture_exception", lambda exc: captured.append(exc))
+
+    result = tasks_module.run_ingest.apply()
+    assert result.failed()
+    assert len(captured) >= 1
+    assert isinstance(captured[0], RuntimeError)

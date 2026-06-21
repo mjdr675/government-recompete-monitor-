@@ -4,6 +4,7 @@ import os
 import time
 from datetime import datetime, timedelta, timezone
 
+import sentry_sdk
 from celery import Celery
 from celery.schedules import crontab
 
@@ -56,6 +57,7 @@ def send_email_task(self, to: str, subject: str, html_body: str, text_body: str 
             logger.warning("send_email_task: EMAIL_API_KEY not set, skipping send to %s", to)
         return result
     except Exception as exc:
+        sentry_sdk.capture_exception(exc)
         logger.error("send_email_task failed (to=%s): %s", to, exc)
         raise self.retry(exc=exc)
 
@@ -97,6 +99,7 @@ def check_beat_health():
         else:
             logger.debug("Beat health OK — last heartbeat %s ago", age)
     except Exception as exc:
+        sentry_sdk.capture_exception(exc)
         logger.error("Beat health check error: %s", exc)
 
 
@@ -173,6 +176,7 @@ def run_ingest(self):
             })
         return {"status": "SUCCESS", "task_id": task_id}
     except Exception as exc:
+        sentry_sdk.capture_exception(exc)
         logger.exception("run_ingest failed (task_id=%s)", task_id)
         duration = time.monotonic() - start_time
         finished_at = datetime.now(timezone.utc).isoformat()
