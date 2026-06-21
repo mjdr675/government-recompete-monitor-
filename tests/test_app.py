@@ -5,6 +5,7 @@ contracts.db is never touched.
 
 import logging
 import sqlite3
+from unittest.mock import patch, MagicMock
 import pytest
 import db as db_module
 
@@ -48,12 +49,15 @@ def client(test_db):
     # Reset in-memory rate limit counters so registrations don't accumulate across tests.
     flask_app.limiter.reset()
     with flask_app.app.test_client() as c:
-        # Register and auto-login a fixture user so route tests bypass the auth gate
-        rv = c.post("/register", data={
-            "email": "fixture@example.com",
-            "password": "testpass123",
-            "confirm": "testpass123",
-        })
+        # Mock the Celery task to avoid 20-second Redis retry timeout during fixture setup.
+        mock_task = MagicMock()
+        mock_task.delay = MagicMock(return_value=None)
+        with patch("tasks.send_email_task", mock_task):
+            rv = c.post("/register", data={
+                "email": "fixture@example.com",
+                "password": "testpass123",
+                "confirm": "testpass123",
+            })
         assert rv.status_code in (200, 302), f"Registration failed: {rv.status_code}"
         yield c
 
@@ -454,12 +458,12 @@ def test_agency_has_responsive_table_wrapper(client):
 # ---------------------------------------------------------------------------
 
 def test_dashboard_returns_200(client):
-    rv = client.get("/")
+    rv = client.get("/dashboard")
     assert rv.status_code == 200
 
 
 def test_dashboard_shows_total_pipeline(client):
-    rv = client.get("/")
+    rv = client.get("/dashboard")
     body = rv.data.decode()
     assert "Total Pipeline" in body
     # Both contracts combined: 1M + 2M = 3M
@@ -467,55 +471,55 @@ def test_dashboard_shows_total_pipeline(client):
 
 
 def test_dashboard_shows_total_contracts(client):
-    rv = client.get("/")
+    rv = client.get("/dashboard")
     body = rv.data.decode()
     assert "Total Contracts" in body
 
 
 def test_dashboard_shows_critical_section(client):
-    rv = client.get("/")
+    rv = client.get("/dashboard")
     body = rv.data.decode()
     assert "Critical" in body
 
 
 def test_dashboard_critical_opportunities_section_present(client):
-    rv = client.get("/")
+    rv = client.get("/dashboard")
     body = rv.data.decode()
     assert "Critical Opportunities" in body
 
 
 def test_dashboard_upcoming_expirations_section_present(client):
-    rv = client.get("/")
+    rv = client.get("/dashboard")
     body = rv.data.decode()
     assert "Upcoming Expirations" in body
 
 
 def test_dashboard_recommended_opportunities_section_present(client):
-    rv = client.get("/")
+    rv = client.get("/dashboard")
     body = rv.data.decode()
     assert "Recommended Opportunities" in body
 
 
 def test_dashboard_recent_changes_section_present(client):
-    rv = client.get("/")
+    rv = client.get("/dashboard")
     body = rv.data.decode()
     assert "Recent Changes" in body
 
 
 def test_dashboard_top_agencies_section_present(client):
-    rv = client.get("/")
+    rv = client.get("/dashboard")
     body = rv.data.decode()
     assert "Top Agencies" in body
 
 
 def test_dashboard_top_vendors_section_present(client):
-    rv = client.get("/")
+    rv = client.get("/dashboard")
     body = rv.data.decode()
     assert "Top Vendors" in body
 
 
 def test_dashboard_navigation_links_present(client):
-    rv = client.get("/")
+    rv = client.get("/dashboard")
     body = rv.data.decode()
     assert "/contracts" in body
     assert "/views" in body
@@ -532,7 +536,7 @@ def test_dashboard_critical_contract_shown_in_critical_section(test_db, client):
             ("ID-CRIT", "AWARD-CRIT", "CritVendor", "NSA", 5_000_000, "2026-08-01", "CRITICAL", 99, 45),
         )
         con.commit()
-    rv = client.get("/")
+    rv = client.get("/dashboard")
     body = rv.data.decode()
     assert "CritVendor" in body
 
@@ -547,7 +551,7 @@ def test_dashboard_upcoming_contract_shown_when_expiring_soon(test_db, client):
             ("ID-UPC", "AWARD-UPC", "SoonVendor", "FBI", 800_000, "2026-07-15", "HIGH", 75, 26),
         )
         con.commit()
-    rv = client.get("/")
+    rv = client.get("/dashboard")
     body = rv.data.decode()
     assert "SoonVendor" in body
 
@@ -557,7 +561,7 @@ def test_dashboard_upcoming_contract_shown_when_expiring_soon(test_db, client):
 # ---------------------------------------------------------------------------
 
 def test_dashboard_recommendations_why_column_present(client):
-    rv = client.get("/")
+    rv = client.get("/dashboard")
     assert b"Why" in rv.data
 
 
@@ -571,7 +575,7 @@ def test_dashboard_recommendations_shows_reason_text(test_db, client):
             ("ID-REC", "AWARD-REC", "RecVendor", "DIA", 1_500_000, "2027-03-01", "HIGH", 92, 100),
         )
         con.commit()
-    rv = client.get("/")
+    rv = client.get("/dashboard")
     body = rv.data.decode()
     assert "score" in body.lower() or "value" in body.lower() or "Expiring" in body
 
@@ -586,7 +590,7 @@ def test_dashboard_recommendations_top_score_vendor_shown(test_db, client):
             ("ID-TS", "AWARD-TS", "TopScoreVendor", "CIA", 500_000, "2027-01-01", "HIGH", 99, 200),
         )
         con.commit()
-    rv = client.get("/")
+    rv = client.get("/dashboard")
     body = rv.data.decode()
     assert "TopScoreVendor" in body
 
@@ -601,7 +605,7 @@ def test_dashboard_recommendations_expiring_soon_reason(test_db, client):
             ("ID-EXP2", "AWARD-EXP2", "ExpireSoon", "FBI", 600_000, "2026-07-05", "MEDIUM", 60, 3),
         )
         con.commit()
-    rv = client.get("/")
+    rv = client.get("/dashboard")
     body = rv.data.decode()
     assert "Expiring" in body
 
@@ -628,7 +632,7 @@ def test_dashboard_recommendations_critical_reason(test_db, client):
             ("ID-CREC", "AWARD-CREC", "CritRec", "NSA", 50_000, "2027-04-01", "CRITICAL", 20, 500),
         )
         con.commit()
-    rv = client.get("/")
+    rv = client.get("/dashboard")
     body = rv.data.decode()
     assert "Critical priority" in body
 
@@ -689,7 +693,7 @@ def test_csv_export_redirects_when_not_logged_in(test_db):
 
 
 def test_dashboard_shows_unknown_when_no_ingest(client):
-    rv = client.get("/")
+    rv = client.get("/dashboard")
     assert rv.status_code == 200
     assert b"Data freshness unknown" in rv.data
 
@@ -706,7 +710,7 @@ def test_dashboard_shows_freshness_banner_when_ingest_exists(client, test_db):
     )
     con.commit()
     con.close()
-    rv = client.get("/")
+    rv = client.get("/dashboard")
     assert rv.status_code == 200
     assert b"Data last updated" in rv.data
 
