@@ -6,8 +6,8 @@ from flask import (Blueprint, flash, g, redirect, render_template,
                    request, session, url_for)
 
 from users import (clear_reset_token, create_user, get_user_by_id,
-                   get_user_by_reset_token, set_reset_token, update_password,
-                   verify_password)
+                   get_user_by_reset_token, set_reset_token, set_trial,
+                   update_password, verify_password)
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +81,7 @@ def register():
         else:
             try:
                 user = create_user(email, password)
+                set_trial(user["id"], days=14)
                 session.clear()
                 session["user_id"] = user["id"]
                 session["user_email"] = user["email"]
