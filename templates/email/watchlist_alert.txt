@@ -1,0 +1,19 @@
+{% extends "email/base.txt" %}
+{% block text_content %}
+Watchlist Expiry Alert
+
+Hi {{ user_email }},
+
+The following contract{{ 's' if contracts | length != 1 else '' }} on your watchlist
+{{ 'are' if contracts | length != 1 else 'is' }} expiring within {{ expiry_days }} days:
+
+{% for c in contracts %}
+- {{ c.vendor or '(unknown vendor)' }} | {{ c.agency or '(unknown agency)' }} | {{ c.days_remaining }} days remaining{% if c.value %} | ${{ '{:,.0f}'.format(c.value) }}{% endif %}
+{% endfor %}
+
+View your watchlist:
+{{ app_url }}/watchlist
+
+Adjust alert settings:
+{{ app_url }}/settings/alerts
+{% endblock %}
