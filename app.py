@@ -194,6 +194,8 @@ def require_login():
         return None
     if request.method == "POST" and request.path.endswith("/note"):
         return None
+    if request.path.startswith("/api/health/"):
+        return None
     if "user_id" not in session:
         return redirect(url_for("auth.login", next=request.path))
 
@@ -728,6 +730,54 @@ def data_freshness():
         "source": row[1],
         "hours_ago": hours_ago,
     })
+
+
+@app.route("/api/health/detailed")
+def health_detailed():
+    if not g.user:
+        return jsonify({"error": "unauthorized"}), 401
+
+    import redis as _redis
+    redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+
+    db_status = "ok"
+    try:
+        with get_engine().connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception as exc:
+        sentry_sdk.capture_exception(exc)
+        db_status = "error"
+
+    redis_status = "ok"
+    try:
+        _redis.from_url(redis_url, socket_connect_timeout=2).ping()
+    except Exception:
+        redis_status = "error"
+
+    last_ingest_at = None
+    last_ingest_records = None
+    try:
+        with get_engine().connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT created_at, record_count FROM ingest_log"
+                    " WHERE status = 'success' ORDER BY created_at DESC LIMIT 1"
+                )
+            ).fetchone()
+        if row:
+            last_ingest_at = row[0]
+            last_ingest_records = row[1]
+    except Exception:
+        pass
+
+    healthy = db_status == "ok" and redis_status == "ok"
+    return jsonify({
+        "db": db_status,
+        "redis": redis_status,
+        "last_ingest_at": last_ingest_at,
+        "last_ingest_records": last_ingest_records,
+        "ok": healthy,
+    }), (200 if healthy else 503)
 
 
 @app.route("/contract/<internal_id>/note", methods=["POST"])

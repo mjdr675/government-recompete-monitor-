@@ -820,3 +820,52 @@ def test_json_log_format_includes_exc_key():
     parsed = json.loads(output)
     assert "exc" in parsed
     assert "ValueError" in parsed["exc"]
+
+
+# ---------------------------------------------------------------------------
+# GET /api/health/detailed (Task 109)
+# ---------------------------------------------------------------------------
+
+def test_health_detailed_requires_auth(test_db):
+    import app as flask_app
+    flask_app.app.config["TESTING"] = True
+    flask_app.app.config["WTF_CSRF_ENABLED"] = False
+    flask_app.app.config["RATELIMIT_ENABLED"] = False
+    flask_app.app.secret_key = "test-secret-key"
+    with flask_app.app.test_client() as c:
+        rv = c.get("/api/health/detailed")
+    assert rv.status_code == 401
+
+
+def test_health_detailed_returns_ok_when_healthy(client, monkeypatch):
+    import redis as redis_module
+    mock_redis = type("R", (), {"ping": lambda self: True})()
+    monkeypatch.setattr(redis_module, "from_url", lambda *a, **kw: mock_redis)
+    rv = client.get("/api/health/detailed")
+    assert rv.status_code == 200
+    data = rv.get_json()
+    assert data["ok"] is True
+    assert data["db"] == "ok"
+    assert data["redis"] == "ok"
+
+
+def test_health_detailed_returns_503_when_redis_down(client, monkeypatch):
+    import redis as redis_module
+    def raise_conn(*a, **kw):
+        raise ConnectionError("Redis down")
+    monkeypatch.setattr(redis_module, "from_url", raise_conn)
+    rv = client.get("/api/health/detailed")
+    assert rv.status_code == 503
+    data = rv.get_json()
+    assert data["ok"] is False
+    assert data["redis"] == "error"
+
+
+def test_health_detailed_last_ingest_null_when_no_rows(client, monkeypatch):
+    import redis as redis_module
+    mock_redis = type("R", (), {"ping": lambda self: True})()
+    monkeypatch.setattr(redis_module, "from_url", lambda *a, **kw: mock_redis)
+    rv = client.get("/api/health/detailed")
+    assert rv.status_code == 200
+    data = rv.get_json()
+    assert data["last_ingest_at"] is None

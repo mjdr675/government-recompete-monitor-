@@ -64,3 +64,4 @@ Append-only log. Each row = one agent run.
 | 2026-06-21 00:00 UTC | backend | Task 106: Wire sentry_sdk.capture_exception into app.py except blocks | 106-sentry-capture-exception-app.md | completed:1-test-passing |
 | 2026-06-21 00:00 UTC | backend | Task 107: Wire sentry_sdk.capture_exception into tasks.py except blocks | 107-sentry-capture-exception-tasks.md | completed:1-test-passing |
 | 2026-06-21 00:00 UTC | backend | Task 108: Add structured JSON log format to app.py and tasks.py | 108-structured-json-logging.md | completed:2-tests-passing |
+| 2026-06-21 00:00 UTC | backend | Task 109: Add GET /api/health/detailed route with DB and Redis status | 109-health-detailed-route.md | completed:4-tests-passing |
