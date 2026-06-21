@@ -779,3 +779,44 @@ def test_sentry_capture_exception_called_on_stripe_webhook_error(client, monkeyp
     assert rv.status_code == 500
     assert len(captured) == 1
     assert str(captured[0]) == "boom"
+
+
+# ---------------------------------------------------------------------------
+# Structured JSON logging (Task 108)
+# ---------------------------------------------------------------------------
+
+def test_json_log_format_emits_valid_json():
+    import json
+    import logging
+    import app as flask_app
+    formatter = flask_app._JsonFormatter()
+    record = logging.LogRecord(
+        name="test", level=logging.INFO, pathname="", lineno=0,
+        msg="hello world", args=(), exc_info=None
+    )
+    output = formatter.format(record)
+    parsed = json.loads(output)
+    assert parsed["level"] == "INFO"
+    assert parsed["msg"] == "hello world"
+    assert "ts" in parsed
+    assert "logger" in parsed
+
+
+def test_json_log_format_includes_exc_key():
+    import json
+    import logging
+    import sys
+    import app as flask_app
+    formatter = flask_app._JsonFormatter()
+    try:
+        raise ValueError("test error")
+    except ValueError:
+        exc_info = sys.exc_info()
+    record = logging.LogRecord(
+        name="test", level=logging.ERROR, pathname="", lineno=0,
+        msg="something failed", args=(), exc_info=exc_info
+    )
+    output = formatter.format(record)
+    parsed = json.loads(output)
+    assert "exc" in parsed
+    assert "ValueError" in parsed["exc"]

@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import sys
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -9,6 +10,31 @@ from celery import Celery
 from celery.schedules import crontab
 
 logger = logging.getLogger(__name__)
+
+
+class _JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+            "level": record.levelname,
+            "logger": record.name,
+            "msg": record.getMessage(),
+        }
+        if record.exc_info:
+            payload["exc"] = self.formatException(record.exc_info)
+        return json.dumps(payload)
+
+
+def _configure_json_logging() -> None:
+    formatter = _JsonFormatter()
+    root = logging.getLogger()
+    if not root.handlers:
+        root.addHandler(logging.StreamHandler(sys.stdout))
+    for handler in root.handlers:
+        handler.setFormatter(formatter)
+
+
+_configure_json_logging()
 
 _redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 tasks = Celery(

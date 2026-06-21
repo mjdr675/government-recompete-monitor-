@@ -40,6 +40,30 @@ from report_builder import build_report
 from views import SAVED_VIEWS, build_view_query, format_filter_summary
 import hubspot_service
 
+class _JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+            "level": record.levelname,
+            "logger": record.name,
+            "msg": record.getMessage(),
+        }
+        if record.exc_info:
+            payload["exc"] = self.formatException(record.exc_info)
+        return json.dumps(payload)
+
+
+def _configure_json_logging() -> None:
+    formatter = _JsonFormatter()
+    root = logging.getLogger()
+    if not root.handlers:
+        root.addHandler(logging.StreamHandler(sys.stdout))
+    for handler in root.handlers:
+        handler.setFormatter(formatter)
+
+
+_configure_json_logging()
+
 app = Flask(__name__)
 load_dotenv()
 
