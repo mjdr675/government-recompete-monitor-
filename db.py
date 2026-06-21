@@ -192,6 +192,28 @@ def init_db():
             created_at  TEXT NOT NULL
         )
         """))
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS alert_preferences (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id         INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+            expiry_days     INTEGER NOT NULL DEFAULT 30,
+            enabled         INTEGER NOT NULL DEFAULT 1,
+            updated_at      TEXT NOT NULL
+        )
+        """))
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS alert_log (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            internal_id TEXT NOT NULL,
+            alert_type  TEXT NOT NULL DEFAULT 'expiry',
+            sent_at     TEXT NOT NULL,
+            UNIQUE(user_id, internal_id, alert_type)
+        )
+        """))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_alert_log_user ON alert_log(user_id)"
+        ))
 
 
 def upsert_contract(row):
