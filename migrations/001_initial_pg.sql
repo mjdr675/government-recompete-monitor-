@@ -74,11 +74,13 @@ CREATE TABLE IF NOT EXISTS changes (
 
 -- User accounts
 CREATE TABLE IF NOT EXISTS users (
-    id            SERIAL PRIMARY KEY,
-    email         TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    created_at    TEXT NOT NULL,
-    is_active     INTEGER NOT NULL DEFAULT 1
+    id                      SERIAL PRIMARY KEY,
+    email                   TEXT UNIQUE NOT NULL,
+    password_hash           TEXT NOT NULL,
+    created_at              TEXT NOT NULL,
+    is_active               INTEGER NOT NULL DEFAULT 1,
+    reset_token             TEXT,
+    reset_token_expires_at  TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -152,3 +154,7 @@ CREATE TABLE IF NOT EXISTS contract_notes (
     body        TEXT NOT NULL,
     created_at  TEXT NOT NULL
 );
+
+-- Idempotent column additions for existing PostgreSQL installs (Task 102)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token            TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires_at TEXT;

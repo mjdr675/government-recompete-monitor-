@@ -133,3 +133,30 @@ def test_contract_notes_table_exists(db):
     tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
     con.close()
     assert "contract_notes" in tables
+
+
+# ---------------------------------------------------------------------------
+# reset_token columns (Task 102)
+# ---------------------------------------------------------------------------
+
+def test_users_table_has_reset_token_column(db):
+    import sqlite3
+    con = sqlite3.connect(db)
+    con.execute(
+        "INSERT INTO users (email, password_hash, created_at) VALUES ('rt@x.com', 'h', '2026-01-01')"
+    )
+    con.commit()
+    row = con.execute("SELECT reset_token, reset_token_expires_at FROM users WHERE email='rt@x.com'").fetchone()
+    con.close()
+    assert row is not None
+    assert row[0] is None
+    assert row[1] is None
+
+
+def test_init_db_idempotent_with_reset_token(tmp_path, monkeypatch):
+    import db as db_module
+    db_path = str(tmp_path / "idempotent.db")
+    monkeypatch.setattr(db_module, "DB_PATH", db_path)
+    db_module._cached_engine.cache_clear()
+    db_module.init_db()
+    db_module.init_db()  # must not raise

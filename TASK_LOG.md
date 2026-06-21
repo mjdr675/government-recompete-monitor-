@@ -57,3 +57,4 @@ Append-only log. Each row = one agent run.
 | 2026-06-20 00:00 UTC | frontend | Task 099: Add welcome email template | 099-email-welcome-template.md | completed:3-tests-passing |
 | 2026-06-20 00:00 UTC | backend | Task 100: Wire welcome email into register route | 100-wire-welcome-email-to-register.md | completed:27-tests-passing |
 | 2026-06-20 00:00 UTC | backend | Task 101: Add Sentry error tracking for Flask and Celery | 101-sentry-integration.md | completed:2-tests-passing |
+| 2026-06-21 00:00 UTC | backend | Task 102: Add reset_token columns to users table | 102-reset-token-columns.md | completed:12-tests-passing |

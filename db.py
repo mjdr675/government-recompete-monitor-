@@ -119,16 +119,26 @@ def init_db():
         """))
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS users (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            email       TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            created_at  TEXT NOT NULL,
-            is_active   INTEGER NOT NULL DEFAULT 1
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            email                   TEXT UNIQUE NOT NULL,
+            password_hash           TEXT NOT NULL,
+            created_at              TEXT NOT NULL,
+            is_active               INTEGER NOT NULL DEFAULT 1,
+            reset_token             TEXT,
+            reset_token_expires_at  TEXT
         )
         """))
         conn.execute(text(
             "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)"
         ))
+        # Migrate existing SQLite DBs that predate the reset_token columns.
+        # SQLite does not support ADD COLUMN IF NOT EXISTS, so we swallow the
+        # OperationalError that fires when the column already exists.
+        for col in ("reset_token TEXT", "reset_token_expires_at TEXT"):
+            try:
+                conn.execute(text(f"ALTER TABLE users ADD COLUMN {col}"))
+            except Exception:
+                pass
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS celery_task_log (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
