@@ -43,16 +43,6 @@ def create_user(email: str, password: str) -> dict:
         raise ValueError(f"Email already registered: {email}")
 
 
-def get_user_by_id(user_id: int) -> dict | None:
-    engine = get_engine()
-    with engine.connect() as conn:
-        row = conn.execute(
-            text("SELECT id, email, created_at FROM users WHERE id = :id AND is_active = 1"),
-            {"id": user_id},
-        ).mappings().fetchone()
-        return dict(row) if row else None
-
-
 def get_user_by_email(email: str) -> dict | None:
     engine = get_engine()
     with engine.connect() as conn:
@@ -124,3 +114,55 @@ def clear_reset_token(user_id: int) -> None:
             ),
             {"id": user_id},
         )
+
+
+def set_trial(user_id: int, days: int = 14) -> str:
+    """Set trial_ends_at to now + days. Returns the ISO timestamp."""
+    ends_at = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
+    with get_engine().begin() as conn:
+        conn.execute(
+            text("UPDATE users SET trial_ends_at = :ends_at WHERE id = :id"),
+            {"ends_at": ends_at, "id": user_id},
+        )
+    return ends_at
+
+
+def set_subscription(user_id: int, stripe_customer_id: str, status: str) -> None:
+    """Update stripe_customer_id and subscription_status for a user."""
+    with get_engine().begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE users SET stripe_customer_id = :cid, subscription_status = :status"
+                " WHERE id = :id"
+            ),
+            {"cid": stripe_customer_id, "status": status, "id": user_id},
+        )
+
+
+def get_user_by_stripe_customer(stripe_customer_id: str) -> dict | None:
+    """Return user dict for a given Stripe customer ID, or None."""
+    with get_engine().connect() as conn:
+        row = conn.execute(
+            text(
+                "SELECT id, email, created_at, stripe_customer_id,"
+                " subscription_status, trial_ends_at"
+                " FROM users WHERE stripe_customer_id = :cid AND is_active = 1"
+            ),
+            {"cid": stripe_customer_id},
+        ).mappings().fetchone()
+    return dict(row) if row else None
+
+
+def get_user_by_id(user_id: int) -> dict | None:
+    """Return full user dict including subscription fields."""
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = conn.execute(
+            text(
+                "SELECT id, email, created_at, stripe_customer_id,"
+                " subscription_status, trial_ends_at"
+                " FROM users WHERE id = :id AND is_active = 1"
+            ),
+            {"id": user_id},
+        ).mappings().fetchone()
+        return dict(row) if row else None

@@ -131,10 +131,14 @@ def init_db():
         conn.execute(text(
             "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)"
         ))
-        # Migrate existing SQLite DBs that predate the reset_token columns.
-        # SQLite does not support ADD COLUMN IF NOT EXISTS, so we swallow the
-        # OperationalError that fires when the column already exists.
-        for col in ("reset_token TEXT", "reset_token_expires_at TEXT"):
+        # Additive migrations — swallow OperationalError when column exists.
+        for col in (
+            "reset_token TEXT",
+            "reset_token_expires_at TEXT",
+            "stripe_customer_id TEXT",
+            "subscription_status TEXT NOT NULL DEFAULT 'trialing'",
+            "trial_ends_at TEXT",
+        ):
             try:
                 conn.execute(text(f"ALTER TABLE users ADD COLUMN {col}"))
             except Exception:
