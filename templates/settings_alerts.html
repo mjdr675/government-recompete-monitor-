@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Alert Settings</h2>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for category, msg in messages %}
+    <div style="background:#d4edda;border:1px solid #c3e6cb;border-radius:4px;padding:10px 14px;margin-bottom:16px;">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+<form method="post" action="/settings/alerts" style="max-width:400px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div style="margin-bottom:16px;">
+    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+      <input type="checkbox" name="enabled" value="1" {% if prefs.enabled %}checked{% endif %}>
+      Enable watchlist expiry alerts
+    </label>
+    <p style="font-size:13px;color:#555;margin:4px 0 0 0;">
+      Receive email alerts when watchlisted contracts are approaching expiry.
+    </p>
+  </div>
+
+  <div style="margin-bottom:20px;">
+    <label for="expiry_days" style="display:block;margin-bottom:4px;font-weight:bold;">
+      Alert me when a contract expires within
+    </label>
+    <select name="expiry_days" id="expiry_days" style="padding:6px 10px;border:1px solid #ccc;border-radius:4px;">
+      {% for days in [7, 14, 30, 60, 90] %}
+        <option value="{{ days }}" {% if prefs.expiry_days == days %}selected{% endif %}>
+          {{ days }} days
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <button type="submit" style="background:#1a56db;color:#fff;border:none;padding:10px 24px;border-radius:4px;cursor:pointer;font-size:15px;">
+    Save Settings
+  </button>
+</form>
+{% endblock %}

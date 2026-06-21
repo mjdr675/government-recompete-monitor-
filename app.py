@@ -931,6 +931,36 @@ def compare():
                            id_a=id_a, id_b=id_b)
 
 
+@app.route("/settings/alerts", methods=["GET", "POST"])
+def settings_alerts():
+    user = g.get("user")
+    if not user:
+        return redirect(url_for("auth.login"))
+    engine = get_engine()
+    if request.method == "POST":
+        expiry_days = int(request.form.get("expiry_days") or 30)
+        enabled = 1 if request.form.get("enabled") else 0
+        now = datetime.now(timezone.utc).isoformat()
+        with engine.begin() as conn:
+            conn.execute(text("""
+            INSERT INTO alert_preferences (user_id, expiry_days, enabled, updated_at)
+            VALUES (:uid, :days, :enabled, :now)
+            ON CONFLICT(user_id) DO UPDATE SET
+                expiry_days = excluded.expiry_days,
+                enabled = excluded.enabled,
+                updated_at = excluded.updated_at
+            """), {"uid": user["id"], "days": expiry_days, "enabled": enabled, "now": now})
+        flash("Alert settings saved.", "success")
+        return redirect(url_for("settings_alerts"))
+    with engine.connect() as conn:
+        prefs = conn.execute(text(
+            "SELECT expiry_days, enabled FROM alert_preferences WHERE user_id = :uid"
+        ), {"uid": user["id"]}).mappings().fetchone()
+    defaults = {"expiry_days": 30, "enabled": 1}
+    prefs = dict(prefs) if prefs else defaults
+    return render_template("settings_alerts.html", prefs=prefs)
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     app.run(host="0.0.0.0", port=port, debug=False)
