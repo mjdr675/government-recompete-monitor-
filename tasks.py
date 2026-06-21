@@ -64,6 +64,10 @@ tasks.conf.beat_schedule = {
         "task": "tasks.check_watchlist_alerts",
         "schedule": crontab(hour=7, minute=0),
     },
+    "trial-emails-0900-utc": {
+        "task": "tasks.send_trial_emails",
+        "schedule": crontab(hour=9, minute=0),
+    },
 }
 
 _sentry_dsn = os.environ.get("SENTRY_DSN", "")
@@ -344,3 +348,95 @@ def check_watchlist_alerts():
             logger.error(
                 "check_watchlist_alerts: failed for user %d (%s): %s", user_id, user_email, exc
             )
+
+
+@tasks.task(name="tasks.send_trial_emails")
+def send_trial_emails():
+    """Send day-3, day-10, and day-14 trial cadence emails; deduplicate via alert_log."""
+    from db import get_engine
+    from sqlalchemy import text
+
+    engine = get_engine()
+    app_url = os.environ.get("APP_URL", "https://govrecompete.com")
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+
+    _STAGES = [
+        # (alert_type, days_remaining_min, days_remaining_max, template_base, subject)
+        ("trial_day3",  10, 12, "trial_day3",  "Making the most of your Gov Recompete Monitor trial"),
+        ("trial_day10",  3,  5, "trial_day10", "Your Gov Recompete Monitor trial ends in 4 days"),
+        ("trial_day14", -1,  1, "trial_day14", "Your Gov Recompete Monitor trial has ended"),
+    ]
+
+    with engine.connect() as conn:
+        users = conn.execute(text("""
+            SELECT id, email, trial_ends_at
+            FROM users
+            WHERE is_active = 1
+              AND subscription_status != 'active'
+              AND trial_ends_at IS NOT NULL
+        """)).mappings().fetchall()
+
+    for user in users:
+        user_id = user["id"]
+        user_email = user["email"]
+        trial_end_str = user["trial_ends_at"]
+        try:
+            trial_end = datetime.fromisoformat(trial_end_str)
+            if trial_end.tzinfo is None:
+                trial_end = trial_end.replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            continue
+
+        days_remaining = (trial_end - now).days
+        trial_ends_date = trial_end.strftime("%B %d, %Y")
+
+        for alert_type, min_days, max_days, template_base, subject in _STAGES:
+            if not (min_days <= days_remaining <= max_days):
+                continue
+            with engine.connect() as conn:
+                already_sent = conn.execute(text("""
+                    SELECT 1 FROM alert_log
+                    WHERE user_id = :uid AND alert_type = :at
+                """), {"uid": user_id, "at": alert_type}).fetchone()
+            if already_sent:
+                continue
+            try:
+                from flask import Flask
+                _app = Flask(__name__, template_folder="templates")
+                with _app.app_context():
+                    from flask import render_template as _render
+                    html_body = _render(
+                        f"email/{template_base}.html",
+                        user_email=user_email,
+                        trial_ends_date=trial_ends_date,
+                        app_url=app_url,
+                    )
+                    text_body = _render(
+                        f"email/{template_base}.txt",
+                        user_email=user_email,
+                        trial_ends_date=trial_ends_date,
+                        app_url=app_url,
+                    )
+                send_email_task.delay(
+                    to=user_email,
+                    subject=subject,
+                    html_body=html_body,
+                    text_body=text_body,
+                )
+                with engine.begin() as conn:
+                    try:
+                        conn.execute(text("""
+                            INSERT INTO alert_log (user_id, internal_id, alert_type, sent_at)
+                            VALUES (:uid, '', :at, :now)
+                        """), {"uid": user_id, "at": alert_type, "now": now_iso})
+                    except Exception:
+                        pass
+                logger.info(
+                    "send_trial_emails: sent %s to user %d (%s)", alert_type, user_id, user_email
+                )
+            except Exception as exc:
+                sentry_sdk.capture_exception(exc)
+                logger.error(
+                    "send_trial_emails: failed %s for user %d: %s", alert_type, user_id, exc
+                )

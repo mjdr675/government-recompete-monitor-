@@ -1,0 +1,26 @@
+{% extends "email/base.html" %}
+{% block title %}Making the most of your Gov Recompete Monitor trial{% endblock %}
+{% block preheader %}3 days in — here's how to get the most out of your free trial.{% endblock %}
+
+{% block content %}
+<h2 style="margin:0 0 16px;font-size:22px;color:#1f4f8f;">You've been tracking for 3 days 🎯</h2>
+<p style="margin:0 0 14px;">Hi {{ user_email }},</p>
+<p style="margin:0 0 14px;">
+  You're 3 days into your free trial of Gov Recompete Monitor.
+  Here are a few ways to get maximum value before your trial ends:
+</p>
+<ul style="margin:0 0 20px;padding-left:20px;line-height:2;">
+  <li><strong>Add contracts to your Watchlist</strong> to get alerts when they're expiring.</li>
+  <li><strong>Set up alert preferences</strong> so you never miss a recompete opportunity.</li>
+  <li><strong>Save searches</strong> for your target agencies and vehicles.</li>
+</ul>
+<p style="margin:0 0 20px;">
+  <a href="{{ app_url }}/contracts"
+     style="display:inline-block;background:#1f4f8f;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:6px;font-weight:bold;font-size:15px;">
+    Browse Contracts
+  </a>
+</p>
+<p style="margin:0;font-size:13px;color:#888888;">
+  Your trial runs until {{ trial_ends_date }}. After that, a subscription keeps your access going.
+</p>
+{% endblock %}

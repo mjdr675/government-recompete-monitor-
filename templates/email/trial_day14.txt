@@ -1,0 +1,17 @@
+{% extends "email/base.txt" %}
+{% block text_content %}
+Your free trial has ended
+
+Hi {{ user_email }},
+
+Your 14-day free trial of Gov Recompete Monitor expired on {{ trial_ends_date }}.
+Your watchlist, saved searches, and alert preferences are still saved —
+subscribe to restore full access immediately.
+
+Subscribe now:
+{{ app_url }}/subscribe
+
+$49/month. Cancel anytime.
+
+Questions? Reply to this email and we'll be happy to help.
+{% endblock %}

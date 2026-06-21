@@ -1,0 +1,18 @@
+{% extends "email/base.txt" %}
+{% block text_content %}
+You've been tracking for 3 days
+
+Hi {{ user_email }},
+
+You're 3 days into your free trial of Gov Recompete Monitor.
+Here are a few ways to get maximum value before your trial ends:
+
+- Add contracts to your Watchlist to get alerts when they're expiring.
+- Set up alert preferences so you never miss a recompete opportunity.
+- Save searches for your target agencies and vehicles.
+
+Browse contracts:
+{{ app_url }}/contracts
+
+Your trial runs until {{ trial_ends_date }}. After that, a subscription keeps your access going.
+{% endblock %}
