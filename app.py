@@ -39,6 +39,7 @@ from analytics import dashboard_analytics, opportunity_recommendations
 from report_builder import build_report
 from views import SAVED_VIEWS, build_view_query, format_filter_summary
 import hubspot_service
+from users import get_user_by_email, set_subscription
 
 class _JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
@@ -424,13 +425,17 @@ def stripe_webhook():
     if event["type"] == "checkout.session.completed":
         checkout = event["data"]["object"]
         details = checkout.get("customer_details") or {}
-        email = details.get("email") or ""
+        email = details.get("email") or checkout.get("customer_email") or ""
         name = details.get("name") or ""
         session_id = checkout.get("id") or ""
+        stripe_customer_id = checkout.get("customer") or ""
         if email:
             hubspot_service.handle_stripe_checkout(
                 email=email, name=name, stripe_session_id=session_id
             )
+            user = get_user_by_email(email)
+            if user and stripe_customer_id:
+                set_subscription(user["id"], stripe_customer_id, "active")
     return "", 200
 
 
