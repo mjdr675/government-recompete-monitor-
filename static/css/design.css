@@ -1513,6 +1513,24 @@ tbody tr:hover > th { background: var(--accent-light) !important; }
   /* ── Summary box readable on phone ── */
   .summary-box { font-size: 14px; line-height: 1.6; }
 
+  /* ── Pipeline detail: capture workspace stack on mobile ── */
+  .capture-workspace {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 20px;
+  }
+
+  /* ── detail-table: allow cells to wrap on phone ── */
+  .detail-table th { white-space: nowrap; min-width: 80px; }
+  .detail-table td { word-break: break-word; }
+  .detail-table { table-layout: fixed; width: 100%; }
+
+  /* ── Vendor / Agency intel pages: KPI grid 2-col ── */
+  .vendor-kpi-row { grid-template-columns: 1fr 1fr !important; }
+
+  /* ── Vendor / Agency: 2-col detail grid → single col ── */
+  .intel-col-grid { grid-template-columns: 1fr !important; }
+
   /* ── Show/hide helpers ── */
   .m-show { display: block; }
   .m-hide { display: none !important; }
