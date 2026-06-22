@@ -23,6 +23,7 @@
       <a href="/dashboard" class="{{ 'active' if p == '/dashboard' }}">Dashboard</a>
       <a href="/contracts" class="{{ 'active' if p.startswith('/contract') }}">Contracts</a>
       <a href="/watchlist" class="{{ 'active' if p == '/watchlist' }}">Watchlist{% if g.watchlist_count %}<span class="nav-badge">{{ g.watchlist_count }}</span>{% endif %}</a>
+      <a href="/company-profile" class="{{ 'active' if p == '/company-profile' }}">Company Profile</a>
       <a href="/searches" class="{{ 'active' if p == '/searches' }}">Saved Searches</a>
       <a href="/views" class="{{ 'active' if p.startswith('/views') }}">Views</a>
       <a href="/settings/alerts" class="{{ 'active' if p.startswith('/settings') }}">Alerts</a>

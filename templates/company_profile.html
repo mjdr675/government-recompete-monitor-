@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Company Profile — Recompete{% endblock %}
+
+{% block content %}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+
+<h1>Company Profile</h1>
+<div class="page-meta" style="margin-bottom:20px">
+  Tell us about your business so future recommendations can be tailored to you.
+</div>
+
+{% if error %}
+<div style="padding:10px 14px;background:#fee2e2;border-left:3px solid #ef4444;color:#991b1b;border-radius:var(--radius-sm);margin-bottom:16px">{{ error }}</div>
+{% endif %}
+{% if success %}
+<div style="padding:10px 14px;background:#d1fae5;border-left:3px solid #10b981;color:#065f46;border-radius:var(--radius-sm);margin-bottom:16px">{{ success }}</div>
+{% endif %}
+
+{% if not profile and not success %}
+<div style="padding:24px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:20px;text-align:center">
+  <div style="font-size:20px;font-weight:600;margin-bottom:8px">Set up your company profile</div>
+  <div class="muted" style="margin-bottom:16px;max-width:480px;margin-left:auto;margin-right:auto">
+    Tell us about your business — NAICS codes, preferred agencies, geographic focus, and contract size — so we can tailor recommendations to your specific capabilities and interests.
+  </div>
+</div>
+{% endif %}
+
+<form method="post" action="/company-profile">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  {# ── Company ─────────────────────────────────────────────────────────── #}
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
+    <h2 style="margin-top:0;margin-bottom:16px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)">Company</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px">Company Name</label>
+        <input name="company_name" value="{{ profile.company_name or '' if profile else '' }}"
+               style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:14px"
+               placeholder="Acme Government Solutions">
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px">Website <span class="muted">(optional)</span></label>
+        <input name="website" value="{{ profile.website or '' if profile else '' }}" type="url"
+               style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:14px"
+               placeholder="https://example.com">
+      </div>
+    </div>
+  </div>
+
+  {# ── NAICS Codes ──────────────────────────────────────────────────────── #}
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
+    <h2 style="margin-top:0;margin-bottom:4px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)">Industry (NAICS Codes)</h2>
+    <div class="muted" style="font-size:12px;margin-bottom:10px">Enter one or more NAICS codes, one per line or comma-separated.</div>
+    <textarea name="naics_codes" rows="4"
+              style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:14px;font-family:inherit;resize:vertical"
+              placeholder="561720&#10;541511&#10;541519">{% if profile and profile.naics_codes %}{{ profile.naics_codes | join('\n') }}{% endif %}</textarea>
+  </div>
+
+  {# ── Geographic Coverage ───────────────────────────────────────────────── #}
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
+    <h2 style="margin-top:0;margin-bottom:12px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)">Geographic Coverage</h2>
+    {% set geo = profile.geo_coverage if profile else 'nationwide' %}
+    <div style="display:flex;gap:24px;margin-bottom:12px">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px">
+        <input type="radio" name="geo_coverage" value="nationwide" {{ 'checked' if geo == 'nationwide' }}
+               onchange="document.getElementById('states-section').style.display='none'">
+        Nationwide
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px">
+        <input type="radio" name="geo_coverage" value="states" {{ 'checked' if geo == 'states' }}
+               onchange="document.getElementById('states-section').style.display='block'">
+        Specific states
+      </label>
+    </div>
+    <div id="states-section" style="display:{{ 'block' if geo == 'states' else 'none' }}">
+      <div class="muted" style="font-size:12px;margin-bottom:6px">Hold Ctrl / Cmd to select multiple states.</div>
+      <select name="states" multiple size="8"
+              style="width:100%;max-width:420px;padding:4px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:13px">
+        {% for code, name in us_states %}
+        <option value="{{ code }}" {{ 'selected' if profile and code in profile.states }}>{{ name }} ({{ code }})</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  {# ── Contract Size ────────────────────────────────────────────────────── #}
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
+    <h2 style="margin-top:0;margin-bottom:12px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)">Preferred Contract Size</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px">Minimum Value <span class="muted">(optional)</span></label>
+        <select name="min_contract_value"
+                style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:14px">
+          <option value="">No minimum</option>
+          {% for val, label in [(100000, "$100K"), (250000, "$250K"), (500000, "$500K"), (1000000, "$1M"), (5000000, "$5M"), (10000000, "$10M")] %}
+          <option value="{{ val }}" {{ 'selected' if profile and profile.min_contract_value == val }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px">Maximum Value <span class="muted">(optional)</span></label>
+        <select name="max_contract_value"
+                style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:14px">
+          <option value="">No maximum</option>
+          {% for val, label in [(500000, "$500K"), (1000000, "$1M"), (5000000, "$5M"), (10000000, "$10M"), (50000000, "$50M"), (100000000, "$100M")] %}
+          <option value="{{ val }}" {{ 'selected' if profile and profile.max_contract_value == val }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+
+  {# ── Preferred Agencies ───────────────────────────────────────────────── #}
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
+    <h2 style="margin-top:0;margin-bottom:4px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)">Preferred Agencies</h2>
+    {% if all_agencies %}
+    <div class="muted" style="font-size:12px;margin-bottom:8px">Hold Ctrl / Cmd to select multiple agencies.</div>
+    <select name="agencies" multiple size="8"
+            style="width:100%;padding:4px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:13px">
+      {% for a in all_agencies %}
+      <option value="{{ a }}" {{ 'selected' if profile and a in profile.agencies }}>{{ a }}</option>
+      {% endfor %}
+    </select>
+    {% else %}
+    <div class="muted" style="font-size:13px">No agencies in the database yet. <a href="/ingest">Ingest contract data</a> to populate the list.</div>
+    {% endif %}
+  </div>
+
+  {# ── Set-Aside Preferences ────────────────────────────────────────────── #}
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:20px">
+    <h2 style="margin-top:0;margin-bottom:12px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)">Set-Aside Preferences</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px">
+      {% for value, label in set_aside_options %}
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;padding:6px 0">
+        <input type="checkbox" name="set_asides" value="{{ value }}"
+               {{ 'checked' if profile and value in profile.set_asides }}>
+        {{ label }}
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div style="display:flex;gap:12px;align-items:center">
+    <button type="submit" class="btn btn-primary" style="padding:10px 24px;font-size:15px">
+      {{ "Update Profile" if profile else "Create Profile" }}
+    </button>
+    {% if profile %}
+    <a href="/dashboard" class="btn btn-ghost">Back to Dashboard</a>
+    {% endif %}
+  </div>
+</form>
+{% endblock %}

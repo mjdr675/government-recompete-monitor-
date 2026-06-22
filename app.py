@@ -25,10 +25,12 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from db import (
     connect,
+    get_company_profile,
     get_contracts,
     get_engine,
     init_db,
     list_saved_searches,
+    save_company_profile,
     save_demo_request,
     save_early_access,
     save_snapshot,
@@ -985,6 +987,107 @@ def contract_note_add(internal_id):
             )
             new_id = result.lastrowid
     return jsonify({"ok": True, "id": new_id, "created_at": now})
+
+
+_SET_ASIDE_OPTIONS = [
+    ("small_business", "Small Business"),
+    ("8a", "8(a)"),
+    ("hubzone", "HUBZone"),
+    ("wosb", "WOSB — Women-Owned Small Business"),
+    ("sdvosb", "SDVOSB — Service-Disabled Veteran-Owned"),
+    ("full_open", "Full & Open Competition"),
+]
+
+_US_STATES = [
+    ("AL", "Alabama"), ("AK", "Alaska"), ("AZ", "Arizona"), ("AR", "Arkansas"),
+    ("CA", "California"), ("CO", "Colorado"), ("CT", "Connecticut"), ("DC", "District of Columbia"),
+    ("DE", "Delaware"), ("FL", "Florida"), ("GA", "Georgia"), ("HI", "Hawaii"),
+    ("ID", "Idaho"), ("IL", "Illinois"), ("IN", "Indiana"), ("IA", "Iowa"),
+    ("KS", "Kansas"), ("KY", "Kentucky"), ("LA", "Louisiana"), ("ME", "Maine"),
+    ("MD", "Maryland"), ("MA", "Massachusetts"), ("MI", "Michigan"), ("MN", "Minnesota"),
+    ("MS", "Mississippi"), ("MO", "Missouri"), ("MT", "Montana"), ("NE", "Nebraska"),
+    ("NV", "Nevada"), ("NH", "New Hampshire"), ("NJ", "New Jersey"), ("NM", "New Mexico"),
+    ("NY", "New York"), ("NC", "North Carolina"), ("ND", "North Dakota"), ("OH", "Ohio"),
+    ("OK", "Oklahoma"), ("OR", "Oregon"), ("PA", "Pennsylvania"), ("RI", "Rhode Island"),
+    ("SC", "South Carolina"), ("SD", "South Dakota"), ("TN", "Tennessee"), ("TX", "Texas"),
+    ("UT", "Utah"), ("VT", "Vermont"), ("VA", "Virginia"), ("WA", "Washington"),
+    ("WV", "West Virginia"), ("WI", "Wisconsin"), ("WY", "Wyoming"),
+]
+
+
+@app.route("/company-profile", methods=["GET", "POST"])
+def company_profile_page():
+    user = g.get("user")
+    if not user:
+        return redirect(url_for("auth.login", next="/company-profile"))
+
+    engine = get_engine()
+    with engine.connect() as conn:
+        agency_rows = conn.execute(text(
+            "SELECT DISTINCT agency FROM contracts"
+            " WHERE agency IS NOT NULL AND agency != '' ORDER BY agency"
+        )).fetchall()
+    all_agencies = [r[0] for r in agency_rows]
+
+    profile = get_company_profile(user["id"])
+    error = None
+    success = None
+
+    if request.method == "POST":
+        company_name = request.form.get("company_name", "").strip()
+        website = request.form.get("website", "").strip()
+        geo_coverage = request.form.get("geo_coverage", "nationwide")
+        if geo_coverage not in ("nationwide", "states"):
+            geo_coverage = "nationwide"
+
+        raw_naics = request.form.get("naics_codes", "")
+        naics_codes = [c.strip() for line in raw_naics.splitlines() for c in line.split(",") if c.strip()]
+
+        states = request.form.getlist("states")
+        agencies = request.form.getlist("agencies")
+        set_asides = request.form.getlist("set_asides")
+        min_val = request.form.get("min_contract_value", "").strip()
+        max_val = request.form.get("max_contract_value", "").strip()
+
+        try:
+            min_v = float(min_val) if min_val else None
+        except ValueError:
+            min_v = None
+            error = "Minimum contract value must be a number."
+        try:
+            max_v = float(max_val) if max_val else None
+        except ValueError:
+            max_v = None
+            if not error:
+                error = "Maximum contract value must be a number."
+
+        if not error and min_v is not None and max_v is not None and min_v > max_v:
+            error = "Minimum contract value cannot exceed maximum."
+
+        if not error:
+            save_company_profile(user["id"], {
+                "company_name": company_name,
+                "website": website,
+                "geo_coverage": geo_coverage,
+                "min_contract_value": min_v,
+                "max_contract_value": max_v,
+                "naics_codes": naics_codes,
+                "states": states if geo_coverage == "states" else [],
+                "agencies": agencies,
+                "set_asides": set_asides,
+            })
+            profile = get_company_profile(user["id"])
+            success = "Profile saved."
+
+    return render_template(
+        "company_profile.html",
+        profile=profile,
+        all_agencies=all_agencies,
+        set_aside_options=_SET_ASIDE_OPTIONS,
+        us_states=_US_STATES,
+        error=error,
+        success=success,
+    )
 
 
 def _saved_searches_with_urls(user_id):

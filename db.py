@@ -259,6 +259,213 @@ def init_db():
         conn.execute(text(
             "CREATE INDEX IF NOT EXISTS idx_alert_log_user ON alert_log(user_id)"
         ))
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS company_profiles (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+            company_name TEXT,
+            website     TEXT,
+            geo_coverage TEXT NOT NULL DEFAULT 'nationwide',
+            min_contract_value REAL,
+            max_contract_value REAL,
+            created_at  TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        )
+        """))
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS company_naics (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile_id  INTEGER NOT NULL REFERENCES company_profiles(id) ON DELETE CASCADE,
+            naics_code  TEXT NOT NULL,
+            UNIQUE(profile_id, naics_code)
+        )
+        """))
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS company_states (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile_id  INTEGER NOT NULL REFERENCES company_profiles(id) ON DELETE CASCADE,
+            state_code  TEXT NOT NULL,
+            UNIQUE(profile_id, state_code)
+        )
+        """))
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS company_preferred_agencies (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile_id  INTEGER NOT NULL REFERENCES company_profiles(id) ON DELETE CASCADE,
+            agency_name TEXT NOT NULL,
+            UNIQUE(profile_id, agency_name)
+        )
+        """))
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS company_set_asides (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile_id  INTEGER NOT NULL REFERENCES company_profiles(id) ON DELETE CASCADE,
+            set_aside_type TEXT NOT NULL,
+            UNIQUE(profile_id, set_aside_type)
+        )
+        """))
+
+
+def get_company_profile(user_id):
+    """Return the full company profile for user_id, or None if none exists.
+
+    Returned dict keys: id, user_id, company_name, website, geo_coverage,
+    min_contract_value, max_contract_value, created_at, updated_at,
+    naics_codes (list), states (list), agencies (list), set_asides (list).
+    """
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT * FROM company_profiles WHERE user_id = :uid"),
+            {"uid": user_id},
+        ).mappings().fetchone()
+        if row is None:
+            return None
+        profile = dict(row)
+        pid = profile["id"]
+
+        profile["naics_codes"] = [
+            r[0] for r in conn.execute(
+                text("SELECT naics_code FROM company_naics WHERE profile_id = :pid ORDER BY naics_code"),
+                {"pid": pid},
+            ).fetchall()
+        ]
+        profile["states"] = [
+            r[0] for r in conn.execute(
+                text("SELECT state_code FROM company_states WHERE profile_id = :pid ORDER BY state_code"),
+                {"pid": pid},
+            ).fetchall()
+        ]
+        profile["agencies"] = [
+            r[0] for r in conn.execute(
+                text("SELECT agency_name FROM company_preferred_agencies WHERE profile_id = :pid ORDER BY agency_name"),
+                {"pid": pid},
+            ).fetchall()
+        ]
+        profile["set_asides"] = [
+            r[0] for r in conn.execute(
+                text("SELECT set_aside_type FROM company_set_asides WHERE profile_id = :pid ORDER BY set_aside_type"),
+                {"pid": pid},
+            ).fetchall()
+        ]
+    return profile
+
+
+def save_company_profile(user_id, data):
+    """Create or replace the company profile for user_id.
+
+    data keys: company_name, website, geo_coverage, min_contract_value,
+    max_contract_value, naics_codes (list[str]), states (list[str]),
+    agencies (list[str]), set_asides (list[str]).
+
+    Multi-value lists are replaced wholesale on every save.
+    Returns the profile id.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    engine = get_engine()
+    is_pg = engine.dialect.name == "postgresql"
+
+    naics_codes = [c.strip() for c in (data.get("naics_codes") or []) if c.strip()]
+    states = [s.strip() for s in (data.get("states") or []) if s.strip()]
+    agencies = [a.strip() for a in (data.get("agencies") or []) if a.strip()]
+    set_asides = [s.strip() for s in (data.get("set_asides") or []) if s.strip()]
+
+    min_val = data.get("min_contract_value")
+    max_val = data.get("max_contract_value")
+    try:
+        min_val = float(min_val) if min_val not in (None, "") else None
+    except (ValueError, TypeError):
+        min_val = None
+    try:
+        max_val = float(max_val) if max_val not in (None, "") else None
+    except (ValueError, TypeError):
+        max_val = None
+
+    with engine.begin() as conn:
+        existing = conn.execute(
+            text("SELECT id FROM company_profiles WHERE user_id = :uid"),
+            {"uid": user_id},
+        ).fetchone()
+
+        if existing:
+            profile_id = existing[0]
+            conn.execute(text("""
+                UPDATE company_profiles SET
+                    company_name = :company_name,
+                    website = :website,
+                    geo_coverage = :geo_coverage,
+                    min_contract_value = :min_val,
+                    max_contract_value = :max_val,
+                    updated_at = :now
+                WHERE user_id = :uid
+            """), {
+                "company_name": data.get("company_name") or None,
+                "website": data.get("website") or None,
+                "geo_coverage": data.get("geo_coverage") or "nationwide",
+                "min_val": min_val,
+                "max_val": max_val,
+                "now": now,
+                "uid": user_id,
+            })
+        else:
+            if is_pg:
+                row = conn.execute(text("""
+                    INSERT INTO company_profiles
+                        (user_id, company_name, website, geo_coverage, min_contract_value, max_contract_value, created_at, updated_at)
+                    VALUES (:uid, :company_name, :website, :geo_coverage, :min_val, :max_val, :now, :now)
+                    RETURNING id
+                """), {
+                    "uid": user_id,
+                    "company_name": data.get("company_name") or None,
+                    "website": data.get("website") or None,
+                    "geo_coverage": data.get("geo_coverage") or "nationwide",
+                    "min_val": min_val,
+                    "max_val": max_val,
+                    "now": now,
+                }).fetchone()
+                profile_id = row[0]
+            else:
+                result = conn.execute(text("""
+                    INSERT INTO company_profiles
+                        (user_id, company_name, website, geo_coverage, min_contract_value, max_contract_value, created_at, updated_at)
+                    VALUES (:uid, :company_name, :website, :geo_coverage, :min_val, :max_val, :now, :now)
+                """), {
+                    "uid": user_id,
+                    "company_name": data.get("company_name") or None,
+                    "website": data.get("website") or None,
+                    "geo_coverage": data.get("geo_coverage") or "nationwide",
+                    "min_val": min_val,
+                    "max_val": max_val,
+                    "now": now,
+                })
+                profile_id = result.lastrowid
+
+        # Replace all multi-value lists wholesale
+        for table in ("company_naics", "company_states", "company_preferred_agencies", "company_set_asides"):
+            conn.execute(text(f"DELETE FROM {table} WHERE profile_id = :pid"), {"pid": profile_id})
+
+        for code in naics_codes:
+            conn.execute(
+                text("INSERT OR IGNORE INTO company_naics (profile_id, naics_code) VALUES (:pid, :code)"),
+                {"pid": profile_id, "code": code},
+            )
+        for state in states:
+            conn.execute(
+                text("INSERT OR IGNORE INTO company_states (profile_id, state_code) VALUES (:pid, :code)"),
+                {"pid": profile_id, "code": state},
+            )
+        for agency in agencies:
+            conn.execute(
+                text("INSERT OR IGNORE INTO company_preferred_agencies (profile_id, agency_name) VALUES (:pid, :name)"),
+                {"pid": profile_id, "name": agency},
+            )
+        for sa in set_asides:
+            conn.execute(
+                text("INSERT OR IGNORE INTO company_set_asides (profile_id, set_aside_type) VALUES (:pid, :sa)"),
+                {"pid": profile_id, "sa": sa},
+            )
+
+    return profile_id
 
 
 def upsert_contract(row):
