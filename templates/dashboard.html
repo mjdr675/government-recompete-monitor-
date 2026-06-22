@@ -2,15 +2,21 @@
 {% block title %}Dashboard — Recompete{% endblock %}
 
 {% block content %}
-<h1>Dashboard</h1>
-<div class="page-meta">
-  Data as of {{ report.run_date }}
-  {% if last_ingest %}
-   &middot; Data last updated {{ hours_ago }}h ago ({{ last_ingest[:10] }})
-  {% else %}
-   &middot; Data freshness unknown &mdash; no ingest completed yet
-  {% endif %}
+<div class="page-head">
+  <div>
+    <h1>Dashboard</h1>
+    <div class="page-meta" style="margin-bottom:0">
+      Data as of {{ report.run_date }}
+      {% if last_ingest %}
+       &middot; Data last updated {{ hours_ago }}h ago ({{ last_ingest[:10] }})
+      {% else %}
+       &middot; Data freshness unknown &mdash; no ingest completed yet
+      {% endif %}
+    </div>
+  </div>
+  <a href="/ingest" class="btn btn-primary">Refresh Data</a>
 </div>
+<div style="margin-bottom:18px"></div>
 
 {% if show_onboarding %}
 <div class="onboarding-box">
