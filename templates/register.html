@@ -1,47 +1,46 @@
 {% extends "base.html" %}
-{% block title %}Create Account{% endblock %}
+{% block title %}Create Account — Recompete{% endblock %}
+{% block extra_head %}{% include 'partials/_auth_styles.html' %}{% endblock %}
 
 {% block content %}
-<h1>Create Account</h1>
-<div class="muted" style="margin-bottom:20px;">
-  Get started with the Recompete Intelligence Platform
+<div class="auth-page">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <span class="auth-logo-mark" aria-hidden="true">R</span>
+      <span class="auth-logo-name">Recompete</span>
+    </div>
+
+    <h1 class="auth-heading">Start your free trial</h1>
+    <p class="auth-sub">Government contract intelligence. No credit card required.</p>
+
+    {% if error %}
+    <div class="auth-error">{{ error }}</div>
+    {% endif %}
+
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="email">Work email</label>
+        <input type="email" id="email" name="email" required autofocus autocomplete="email" placeholder="you@company.com">
+      </div>
+      <div class="field">
+        <label for="company_name">Company name <span class="hint">(optional)</span></label>
+        <input type="text" id="company_name" name="company_name" maxlength="120" placeholder="Your company or agency" autocomplete="organization">
+      </div>
+      <div class="field">
+        <label for="password">Password <span class="hint">(8 characters minimum)</span></label>
+        <input type="password" id="password" name="password" required autocomplete="new-password" placeholder="••••••••">
+      </div>
+      <div class="field">
+        <label for="confirm">Confirm password</label>
+        <input type="password" id="confirm" name="confirm" required autocomplete="new-password" placeholder="••••••••">
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Create account</button>
+    </form>
+
+    <p class="auth-footer">
+      Already have an account? <a href="/login">Sign in</a>
+    </p>
+  </div>
 </div>
-
-{% if error %}
-<p style="color:#b00020;margin-bottom:16px;">{{ error }}</p>
-{% endif %}
-
-<form method="post" style="max-width:380px;">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <div style="margin-bottom:14px;">
-    <label style="display:block;margin-bottom:4px;font-weight:bold;">Email</label>
-    <input type="email" name="email" required autofocus
-           style="width:100%;padding:9px;box-sizing:border-box;">
-  </div>
-  <div style="margin-bottom:14px;">
-    <label style="display:block;margin-bottom:4px;font-weight:bold;">
-      Company name <span class="muted">(optional)</span>
-    </label>
-    <input type="text" name="company_name" maxlength="120"
-           placeholder="Your company or agency"
-           style="width:100%;padding:9px;box-sizing:border-box;">
-  </div>
-  <div style="margin-bottom:14px;">
-    <label style="display:block;margin-bottom:4px;font-weight:bold;">
-      Password <span class="muted">(8 characters minimum)</span>
-    </label>
-    <input type="password" name="password" required
-           style="width:100%;padding:9px;box-sizing:border-box;">
-  </div>
-  <div style="margin-bottom:18px;">
-    <label style="display:block;margin-bottom:4px;font-weight:bold;">Confirm Password</label>
-    <input type="password" name="confirm" required
-           style="width:100%;padding:9px;box-sizing:border-box;">
-  </div>
-  <button type="submit" style="width:100%;padding:10px;">Create Account</button>
-</form>
-
-<p style="margin-top:18px;">
-  Already have an account? <a href="/login">Sign in</a>
-</p>
 {% endblock %}

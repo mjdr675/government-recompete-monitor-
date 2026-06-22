@@ -34,7 +34,17 @@
   </table>
 </div>
 {% else %}
-<p class="muted">No saved searches yet. Use the <a href="/contracts">contracts</a> filter and click &ldquo;Save this search&rdquo;.</p>
+<div class="empty-state-rich">
+  <div class="empty-icon">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="8"/>
+      <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </svg>
+  </div>
+  <p class="empty-title">No saved searches yet</p>
+  <p class="empty-desc">Filter contracts by agency, priority, or value, then click "Save this search" to pin it here.</p>
+  <a href="/contracts" class="btn btn-primary">Go to Contracts</a>
+</div>
 {% endif %}
 
 <script>

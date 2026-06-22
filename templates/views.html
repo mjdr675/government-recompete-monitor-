@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Intelligence Views{% endblock %}
+{% block title %}Intelligence Views — Recompete{% endblock %}
 
 {% block content %}
 <h1>Intelligence Views</h1>
@@ -7,8 +7,13 @@
 
 <div class="cards" style="margin-top:16px">
   {% for key, v in views.items() %}
-    <a class="card" href="/views/{{ key }}">
-      <div style="font-weight:600;font-size:14px;margin-bottom:4px">{{ v.label }}</div>
+    <a class="card" href="/views/{{ key }}" style="display:flex;flex-direction:column;gap:6px;min-width:200px;max-width:280px;cursor:pointer">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <span style="font-weight:600;font-size:14px">{{ v.label }}</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-faint);flex-shrink:0">
+          <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+        </svg>
+      </div>
       <div class="muted" style="font-size:12px">{{ format_filter_summary(v.filters) }}</div>
     </a>
   {% endfor %}

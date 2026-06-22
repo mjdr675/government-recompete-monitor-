@@ -1,35 +1,43 @@
 {% extends "base.html" %}
-{% block title %}Sign In{% endblock %}
+{% block title %}Sign In — Recompete{% endblock %}
+
+{% block extra_head %}{% include 'partials/_auth_styles.html' %}{% endblock %}
 
 {% block content %}
-<h1>Sign In</h1>
-<div class="muted" style="margin-bottom:20px;">
-  Sign in to your Recompete account
+<div class="auth-page">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <span class="auth-logo-mark" aria-hidden="true">R</span>
+      <span class="auth-logo-name">Recompete</span>
+    </div>
+
+    <h1 class="auth-heading">Welcome back</h1>
+    <p class="auth-sub">Sign in to your Recompete account</p>
+
+    {% if error %}
+    <div class="auth-error">{{ error }}</div>
+    {% endif %}
+
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" required autofocus autocomplete="email" placeholder="you@company.com">
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="••••••••">
+      </div>
+      <div class="field-row">
+        <span></span>
+        <a href="/forgot-password" style="font-size:12.5px;color:var(--text-muted);">Forgot password?</a>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Sign in</button>
+    </form>
+
+    <p class="auth-footer">
+      Don't have an account? <a href="/register">Start free trial</a>
+    </p>
+  </div>
 </div>
-
-{% if error %}
-<p style="color:#b00020;margin-bottom:16px;">{{ error }}</p>
-{% endif %}
-
-<form method="post" style="max-width:380px;">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <div style="margin-bottom:14px;">
-    <label style="display:block;margin-bottom:4px;font-weight:bold;">Email</label>
-    <input type="email" name="email" required autofocus
-           style="width:100%;padding:9px;box-sizing:border-box;">
-  </div>
-  <div style="margin-bottom:6px;">
-    <label style="display:block;margin-bottom:4px;font-weight:bold;">Password</label>
-    <input type="password" name="password" required
-           style="width:100%;padding:9px;box-sizing:border-box;">
-  </div>
-  <div style="margin-bottom:18px;text-align:right;">
-    <a href="/forgot-password" style="font-size:13px;color:#666;">Forgot password?</a>
-  </div>
-  <button type="submit" style="width:100%;padding:10px;">Sign In</button>
-</form>
-
-<p style="margin-top:18px;">
-  Don't have an account? <a href="/register">Create one</a>
-</p>
 {% endblock %}

@@ -41,7 +41,16 @@
   </table>
 </div>
 {% else %}
-<p class="muted">No bookmarks yet. Browse <a href="/contracts">contracts</a> and click &#9734; to add them.</p>
+<div class="empty-state-rich">
+  <div class="empty-icon">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+    </svg>
+  </div>
+  <p class="empty-title">No bookmarked contracts yet</p>
+  <p class="empty-desc">Star any contract to track it here. Use the ☆ button on the Contracts page.</p>
+  <a href="/contracts" class="btn btn-primary">Browse contracts</a>
+</div>
 {% endif %}
 
 <script>
