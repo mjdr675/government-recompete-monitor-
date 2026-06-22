@@ -47,7 +47,9 @@
 </div>
 
 {% else %}
-<div class="table-wrapper">
+
+{# ── Desktop table (hidden on mobile) ── #}
+<div class="table-wrapper m-hide">
   <table>
     <thead>
       <tr>
@@ -102,5 +104,48 @@
     </tbody>
   </table>
 </div>
+
+{# ── Mobile pipeline cards (hidden on desktop) ── #}
+<div class="pipeline-mobile-cards m-show">
+  {% for opp in opportunities %}
+  <div class="mobile-card">
+    <div class="mobile-card-head">
+      <a href="/pipeline/{{ opp['id'] }}" class="mobile-card-title">{{ opp['award_id'] or opp['internal_id'] }}</a>
+      <span style="font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:var(--radius-sm);background:var(--accent-light);color:var(--accent)">{{ stage_labels.get(opp['stage'], opp['stage']) }}</span>
+    </div>
+    <div class="mobile-card-agency">
+      {{ opp['vendor'] or '—' }}
+      {% if opp['agency'] %} &middot; {{ opp['agency'] }}{% endif %}
+    </div>
+    <div class="mobile-card-meta">
+      {% if opp['value'] %}<span class="mobile-card-value">${{ "{:,.0f}".format(opp['value']) }}</span><span class="sep">·</span>{% endif %}
+      {% if opp['days_remaining'] is not none %}<span>{{ opp['days_remaining'] }}d left</span><span class="sep">·</span>{% endif %}
+      <span class="muted">Score {{ opp['recompete_score'] or '—' }}</span>
+    </div>
+    {% if opp['next_action'] %}
+    <div class="mobile-card-next-action">→ {{ opp['next_action'] }}{% if opp['next_action_due'] %} &middot; due {{ opp['next_action_due'] }}{% endif %}</div>
+    {% endif %}
+    <div class="mobile-card-actions" style="flex-direction:column;gap:8px">
+      <form method="post" action="/pipeline/{{ opp['id'] }}/status" style="margin:0;width:100%">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <select name="stage" onchange="this.form.submit()" class="mobile-stage-select">
+          {% for val, label in pipeline_stages %}
+          <option value="{{ val }}" {{ 'selected' if opp['stage'] == val }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      <div style="display:flex;gap:8px;width:100%">
+        <a href="/pipeline/{{ opp['id'] }}" class="btn btn-ghost" style="flex:1;justify-content:center;font-size:13px;min-height:40px">Detail</a>
+        <form method="post" action="/pipeline/remove/{{ opp['internal_id'] }}" style="margin:0;flex:1">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" onclick="return confirm('Remove from pipeline?')"
+                  class="btn btn-ghost" style="width:100%;font-size:13px;min-height:40px;color:var(--text-muted)">Remove</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
 {% endif %}
 {% endblock %}

@@ -215,8 +215,30 @@
 
 {% if g.user %}
     </main>
-  </div>
-</div>
+  </div>{# /main-wrapper #}
+  <nav class="bottom-nav" aria-label="Main navigation">
+    <a href="/dashboard" class="bottom-nav-item {{ 'active' if p == '/dashboard' }}">
+      <span class="bottom-nav-icon">{{ icon_dashboard() }}</span>
+      <span class="bottom-nav-label">Home</span>
+    </a>
+    <a href="/contracts" class="bottom-nav-item {{ 'active' if p.startswith('/contract') }}">
+      <span class="bottom-nav-icon">{{ icon_search() }}</span>
+      <span class="bottom-nav-label">Search</span>
+    </a>
+    <a href="/pipeline" class="bottom-nav-item {{ 'active' if p.startswith('/pipeline') }}">
+      <span class="bottom-nav-icon">{{ icon_pipeline() }}</span>
+      <span class="bottom-nav-label">Pipeline</span>
+    </a>
+    <a href="/watchlist" class="bottom-nav-item {{ 'active' if p == '/watchlist' }}">
+      <span class="bottom-nav-icon">{{ icon_watchlist() }}</span>
+      <span class="bottom-nav-label">Watchlist</span>
+    </a>
+    <a href="/company-profile" class="bottom-nav-item {{ 'active' if p == '/company-profile' }}">
+      <span class="bottom-nav-icon">{{ icon_company() }}</span>
+      <span class="bottom-nav-label">Profile</span>
+    </a>
+  </nav>
+</div>{# /app-layout #}
 {% else %}
 </div>
 {% endif %}
@@ -257,5 +279,15 @@
 })();
 </script>
 {% block scripts %}{% endblock %}
+<script>
+// Mobile greeting — runs on every page but only the greeting element listens
+(function() {
+  var el = document.getElementById('mobile-greeting-text');
+  if (!el) return;
+  var h = new Date().getHours();
+  var g = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  el.textContent = g;
+})();
+</script>
 </body>
 </html>

@@ -11,22 +11,22 @@
   </div>
   {% if g.user %}
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-    <button id="watch-btn" data-id="{{ row['internal_id'] }}" onclick="watchToggle(this)"
+    <button id="watch-btn" data-id="{{ row['internal_id'] }}" onclick="watchToggle(this)" class="btn"
             style="font-size:14px;padding:8px 18px;border:2px solid var(--accent);border-radius:var(--radius-sm);background:{{ 'var(--accent)' if is_bookmarked else 'transparent' }};color:{{ 'var(--bg)' if is_bookmarked else 'var(--accent)' }};font-weight:600;cursor:pointer" title="Watch this contract">
       {{ "★ Watching" if is_bookmarked else "☆ Watch" }}
     </button>
     {% if pipeline_opp %}
-    <a href="/pipeline/{{ pipeline_opp['id'] }}" style="font-size:13px;padding:6px 12px;border-radius:var(--radius-sm);background:#d1fae5;color:#065f46;font-weight:600;text-decoration:none">&#10003; In Pipeline</a>
+    <a href="/pipeline/{{ pipeline_opp['id'] }}" class="btn" style="padding:8px 14px;font-size:13px;background:#d1fae5;color:#065f46;font-weight:600;text-decoration:none;border:none">&#10003; In Pipeline</a>
     <form method="post" action="/pipeline/remove/{{ row['internal_id'] }}" style="margin:0">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" onclick="return confirm('Remove from pipeline?')"
-              style="font-size:13px;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:transparent;color:var(--text-muted);cursor:pointer">Remove</button>
+      <button type="submit" onclick="return confirm('Remove from pipeline?')" class="btn btn-ghost"
+              style="font-size:13px">Remove</button>
     </form>
     {% else %}
     <form method="post" action="/pipeline/add/{{ row['internal_id'] }}" style="margin:0">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit"
-              style="font-size:14px;padding:8px 18px;border:2px solid #10b981;border-radius:var(--radius-sm);background:transparent;color:#059669;font-weight:600;cursor:pointer">+ Add to Pipeline</button>
+      <button type="submit" class="btn"
+              style="font-size:14px;padding:8px 18px;border:2px solid #10b981;background:transparent;color:#059669;font-weight:600">+ Add to Pipeline</button>
     </form>
     {% endif %}
   </div>

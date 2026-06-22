@@ -1412,3 +1412,211 @@ tbody tr:hover > th { background: var(--accent-light) !important; }
   .kpi-value { font-size: 20px; }
   .header-search { display: none; }
 }
+
+/* ─────────────────────────────────────────────────
+   MOBILE-FIRST EXPERIENCE
+   All mobile additions below — never modify desktop
+───────────────────────────────────────────────── */
+
+/* Show/hide helpers */
+.m-show { display: none; }
+.m-hide { display: block; }
+
+/* Mobile greeting hidden on desktop */
+.mobile-greeting { display: none; }
+
+/* ── Bottom navigation bar ─────────────────────── */
+.bottom-nav { display: none; }
+
+@media (max-width: 768px) {
+  /* ── Bottom nav ── */
+  .bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
+    z-index: 300;
+    /* honour iPhone home indicator */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .bottom-nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    text-decoration: none;
+    color: var(--text-faint);
+    font-size: 10px;
+    font-weight: 500;
+    padding: 6px 0 4px;
+    -webkit-tap-highlight-color: transparent;
+    transition: color 0.15s;
+  }
+  .bottom-nav-item.active { color: var(--accent); }
+  .bottom-nav-item:hover  { text-decoration: none; color: var(--accent); }
+  .bottom-nav-icon { display: flex; align-items: center; justify-content: center; }
+  .bottom-nav-icon svg { width: 20px; height: 20px; }
+  .bottom-nav-label { line-height: 1; white-space: nowrap; }
+
+  /* ── Content padding — don't hide under bottom nav ── */
+  .content { padding-bottom: 76px; }
+
+  /* ── Show/hide helpers ── */
+  .m-show { display: block; }
+  .m-hide { display: none !important; }
+
+  /* ── Touch targets ── */
+  button, .btn {
+    min-height: 44px;
+  }
+  /* Small utility buttons that should stay compact */
+  .bm-btn, .onboarding-notice-dismiss, .theme-toggle, .sidebar-toggle {
+    min-height: unset;
+  }
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="search"],
+  input[type="number"],
+  select {
+    min-height: 44px;
+    font-size: 16px; /* prevents iOS zoom on focus */
+  }
+  textarea { font-size: 16px; }
+
+  /* ── Dashboard: flex ordering so greeting + content come before KPIs ── */
+  .dash-wrap {
+    display: flex;
+    flex-direction: column;
+  }
+  .dash-wrap > .mobile-greeting    { order: 1; }
+  .dash-wrap > .page-head          { order: 2; }
+  .dash-wrap > .onboarding-notice  { order: 3; }
+  .dash-wrap > .dashboard-body     { order: 4; }
+  .dash-wrap > .kpi-row            { order: 10; margin-top: 6px; }
+  .mobile-greeting {
+    display: block;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    margin-bottom: 14px;
+  }
+  .mobile-greeting-text {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 2px;
+  }
+  .mobile-greeting-sub {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin: 0;
+  }
+
+  /* ── Mobile card base ── */
+  .mobile-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 10px;
+  }
+  .mobile-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 5px;
+  }
+  .mobile-card-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-primary);
+    text-decoration: none;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.4;
+  }
+  .mobile-card-title:hover { text-decoration: underline; }
+  .mobile-card-agency {
+    font-size: 12.5px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 12.5px;
+    margin-bottom: 12px;
+  }
+  .mobile-card-value {
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+  .mobile-card-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+  .mobile-card-actions .btn {
+    font-size: 13px;
+    padding: 8px 14px;
+    min-height: 40px;
+    flex: 1;
+    justify-content: center;
+  }
+  .mobile-bm-btn {
+    min-height: 40px;
+    min-width: 40px;
+    font-size: 20px;
+    padding: 0 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    cursor: pointer;
+    color: var(--text-muted);
+    line-height: 1;
+  }
+
+  /* ── Pipeline mobile card extras ── */
+  .mobile-stage-select {
+    width: 100%;
+    padding: 8px 10px;
+    min-height: 44px;
+    font-size: 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+  }
+  .mobile-card-next-action {
+    font-size: 13px;
+    color: var(--text-muted);
+    padding: 6px 0 8px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 6px;
+  }
+  .pipeline-mobile-cards { padding: 4px 0; }
+}
