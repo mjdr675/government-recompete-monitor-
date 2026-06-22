@@ -77,7 +77,7 @@ def set_reset_token(email: str) -> str | None:
     if not user:
         return None
     token = secrets.token_hex(32)
-    expires_at = (datetime.utcnow() + timedelta(hours=1)).isoformat()
+    expires_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
     with get_engine().begin() as conn:
         conn.execute(
             text(
@@ -91,7 +91,7 @@ def set_reset_token(email: str) -> str | None:
 
 def get_user_by_reset_token(token: str) -> dict | None:
     """Return the user row for a valid, unexpired reset token, or None."""
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     with get_engine().connect() as conn:
         row = conn.execute(
             text(
