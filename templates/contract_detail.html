@@ -10,10 +10,26 @@
     <div class="page-meta" style="margin-bottom:6px">{{ row["internal_id"] }}</div>
   </div>
   {% if g.user %}
-  <button id="watch-btn" data-id="{{ row['internal_id'] }}" onclick="watchToggle(this)"
-          style="font-size:14px;padding:8px 18px;border:2px solid var(--accent);border-radius:var(--radius-sm);background:{{ 'var(--accent)' if is_bookmarked else 'transparent' }};color:{{ 'var(--bg)' if is_bookmarked else 'var(--accent)' }};font-weight:600;cursor:pointer" title="Watch this contract">
-    {{ "★ Watching" if is_bookmarked else "☆ Watch" }}
-  </button>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <button id="watch-btn" data-id="{{ row['internal_id'] }}" onclick="watchToggle(this)"
+            style="font-size:14px;padding:8px 18px;border:2px solid var(--accent);border-radius:var(--radius-sm);background:{{ 'var(--accent)' if is_bookmarked else 'transparent' }};color:{{ 'var(--bg)' if is_bookmarked else 'var(--accent)' }};font-weight:600;cursor:pointer" title="Watch this contract">
+      {{ "★ Watching" if is_bookmarked else "☆ Watch" }}
+    </button>
+    {% if pipeline_opp %}
+    <span style="font-size:13px;padding:6px 12px;border-radius:var(--radius-sm);background:#d1fae5;color:#065f46;font-weight:600">&#10003; In Pipeline</span>
+    <form method="post" action="/pipeline/remove/{{ row['internal_id'] }}" style="margin:0">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" onclick="return confirm('Remove from pipeline?')"
+              style="font-size:13px;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:transparent;color:var(--text-muted);cursor:pointer">Remove</button>
+    </form>
+    {% else %}
+    <form method="post" action="/pipeline/add/{{ row['internal_id'] }}" style="margin:0">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit"
+              style="font-size:14px;padding:8px 18px;border:2px solid #10b981;border-radius:var(--radius-sm);background:transparent;color:#059669;font-weight:600;cursor:pointer">+ Add to Pipeline</button>
+    </form>
+    {% endif %}
+  </div>
   {% endif %}
 </div>
 

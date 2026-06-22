@@ -68,6 +68,13 @@
 </svg>
 {%- endmacro -%}
 
+{%- macro icon_pipeline() -%}
+<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="1.5 11.5 5.5 7 9 10 14.5 4"/>
+  <circle cx="14.5" cy="4" r="1.2" fill="currentColor" stroke="none"/>
+</svg>
+{%- endmacro -%}
+
 {%- macro icon_company() -%}
 <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
   <rect x="2" y="5" width="8" height="10" rx="0.8"/>
@@ -101,6 +108,9 @@
       </a>
       <a href="/watchlist" class="{{ 'active' if p == '/watchlist' }}">
         <span class="nav-icon">{{ icon_watchlist() }}</span>Watchlist{% if g.watchlist_count %}<span class="nav-badge">{{ g.watchlist_count }}</span>{% endif %}
+      </a>
+      <a href="/pipeline" class="{{ 'active' if p.startswith('/pipeline') }}">
+        <span class="nav-icon">{{ icon_pipeline() }}</span>Pipeline
       </a>
       <a href="/company-profile" class="{{ 'active' if p == '/company-profile' }}">
         <span class="nav-icon">{{ icon_company() }}</span>Company Profile

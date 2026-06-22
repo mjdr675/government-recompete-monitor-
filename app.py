@@ -36,6 +36,13 @@ from db import (
     save_early_access,
     save_snapshot,
     upsert_contract,
+    PIPELINE_STAGES,
+    add_opportunity,
+    remove_opportunity,
+    get_opportunity,
+    get_opportunity_by_contract,
+    list_opportunities,
+    update_opportunity,
 )
 from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
@@ -948,19 +955,22 @@ def contract_detail(internal_id):
     biz_match_score = None
     biz_match_reasons_list = []
     biz_mismatch_reasons_list = []
+    pipeline_opp = None
     if g.user:
         biz_profile = get_company_profile(g.user["id"])
         if biz_profile:
             biz_match_score = business_match_score(row, biz_profile)
             biz_match_reasons_list = business_match_reasons(row, biz_profile)
             biz_mismatch_reasons_list = business_mismatch_reasons(row, biz_profile)
+        pipeline_opp = get_opportunity_by_contract(g.user["id"], internal_id)
 
     return render_template("contract_detail.html", row=row, is_bookmarked=is_bookmarked,
                            notes=notes, next_step=guidance, action=action,
                            why_matters=matters, timeline=timeline,
                            biz_match_score=biz_match_score,
                            biz_match_reasons=biz_match_reasons_list,
-                           biz_mismatch_reasons=biz_mismatch_reasons_list)
+                           biz_mismatch_reasons=biz_mismatch_reasons_list,
+                           pipeline_opp=pipeline_opp)
 
 
 @app.route("/watchlist/add", methods=["POST"])
@@ -1016,6 +1026,60 @@ def watchlist():
         ).mappings().fetchall()
     contracts = [dict(r) for r in rows]
     return render_template("watchlist.html", contracts=contracts, count=len(contracts))
+
+
+# ---------------------------------------------------------------------------
+# Pipeline helpers
+# ---------------------------------------------------------------------------
+
+def _safe_redirect(fallback="/pipeline"):
+    ref = request.referrer or ""
+    if ref.startswith(request.host_url):
+        return ref
+    return fallback
+
+
+# ---------------------------------------------------------------------------
+# Pipeline routes
+# ---------------------------------------------------------------------------
+
+@app.route("/pipeline")
+def pipeline():
+    opps = list_opportunities(g.user["id"])
+    stage_labels = dict(PIPELINE_STAGES)
+    return render_template("pipeline.html", opportunities=opps,
+                           stage_labels=stage_labels, pipeline_stages=PIPELINE_STAGES,
+                           count=len(opps))
+
+
+@app.route("/pipeline/add/<internal_id>", methods=["POST"])
+def pipeline_add(internal_id):
+    _opp_id, created = add_opportunity(g.user["id"], internal_id)
+    flash("Added to your pipeline." if created else "Already in your pipeline.", "success")
+    return redirect(_safe_redirect(f"/contract/{internal_id}"))
+
+
+@app.route("/pipeline/remove/<internal_id>", methods=["POST"])
+def pipeline_remove(internal_id):
+    remove_opportunity(g.user["id"], internal_id)
+    flash("Removed from your pipeline.", "success")
+    return redirect(_safe_redirect())
+
+
+@app.route("/pipeline/update/<int:opp_id>", methods=["POST"])
+def pipeline_update(opp_id):
+    opp = get_opportunity(g.user["id"], opp_id)
+    if not opp:
+        flash("Opportunity not found.", "error")
+        return redirect("/pipeline")
+    data = {k: request.form.get(k, "") for k in
+            ("stage", "notes", "next_action", "next_action_due", "probability")}
+    try:
+        update_opportunity(g.user["id"], opp_id, data)
+        flash("Pipeline updated.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+    return redirect(_safe_redirect("/pipeline"))
 
 
 @app.route("/searches/save", methods=["POST"])
