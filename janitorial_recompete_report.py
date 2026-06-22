@@ -1,6 +1,8 @@
 import csv
 import time
 from sam_lookup import lookup_solicitation
+from change_detector import detect_changes
+from db import save_snapshot
 import requests
 from datetime import date, datetime, timedelta
 
@@ -264,7 +266,18 @@ def main():
         writer.writeheader()
         writer.writerows(rows)
 
+    # Persist to the database so the scheduled run_ingest task actually updates
+    # the contracts the app serves — previously this script only wrote a CSV, so
+    # the nightly ingest fetched data but never touched the DB. save_snapshot()
+    # is idempotent (upsert by internal_id + UNIQUE(run_date, internal_id)) and
+    # calls init_db() itself, so the job is safe to rerun. detect_changes() is
+    # likewise idempotent for the run_date (it clears that date's changes first).
+    run_date = str(TODAY)
+    save_snapshot(run_date, rows)
+    detect_changes(run_date)
+
     print("Saved", len(rows), "upcoming recompete opportunities.")
+    print(f"Persisted {len(rows)} rows to the contracts database (snapshot {run_date}).")
     print("Enriched", enrich_count, "Tier A opportunities.")
     print("SAM.gov matches", sam_count, "solicitations.")
 

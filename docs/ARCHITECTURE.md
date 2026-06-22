@@ -147,6 +147,20 @@ use method+prefix checks in `require_login` and handle their own auth (return 40
 | `demo_requests` | Demo form submissions with optional HubSpot IDs |
 | `early_access` | Early access sign-ups. `email UNIQUE` |
 
+### Indexes (`contracts`)
+
+| Index | Columns | Serves |
+|---|---|---|
+| `idx_contracts_vendor` | `vendor` | Vendor profile lookups, `agency LIKE` is separate |
+| `idx_contracts_agency` | `agency` | Agency profile lookups |
+| `idx_contracts_priority` | `priority` | Priority filter, dashboard critical list |
+| `idx_contracts_score` | `recompete_score DESC` | Default sort, top-opportunity lists |
+| `idx_contracts_days_remaining` | `days_remaining` | Dashboard "upcoming" range scan, open/expired status filter, watchlist expiry alerts, vendor/agency `ORDER BY days_remaining` |
+
+SQLite indexes are created in `db.init_db()`; PostgreSQL mirrors them in `migrations/`
+(`001_initial_pg.sql` plus per-feature migrations such as
+`004_contracts_days_remaining_index.sql`). Keep the two in sync when adding an index.
+
 ### SQLAlchemy Core patterns
 
 All queries use named parameters (`:param`), `text()`, and `.mappings().fetchone()/fetchall()`.
@@ -205,7 +219,7 @@ with get_engine().begin() as conn:  # auto-commit on exit
 
 | Task | Schedule | Purpose |
 |---|---|---|
-| `tasks.run_ingest` | Daily 02:00 UTC | SAM.gov ingest pipeline; writes to `ingest_log`; logs ERROR if `record_count < 10` |
+| `tasks.run_ingest` | Daily 02:00 UTC | Runs `janitorial_recompete_report.main()`: fetches from USAspending, writes the CSV, then **persists to the DB** via `save_snapshot()` (contracts upsert + `contract_snapshots`) and `detect_changes()`. Writes to `ingest_log`; logs ERROR if `record_count < 10`. Idempotent — safe to rerun. |
 | `tasks.heartbeat` | Every 5 min | Writes timestamp to `beat:health` Redis key (TTL 15 min) |
 | `tasks.check_beat_health` | Every 10 min | Logs ERROR if `beat:health` key is missing or stale |
 | `tasks.send_email_task` | On-demand | Wraps `email_service.send_email()`; retries up to 3× on failure |

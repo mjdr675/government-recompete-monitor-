@@ -187,3 +187,34 @@ ranks each task: complexity base score (XS=5→XL=1) + 3×direct-unblocks bonus 
 Review section to company/ROADMAP.md. Module is advisory only — never implements.
 Live report recommends Task 061 (PostgreSQL, score=10) as highest ROI because it
 directly unblocks tasks 062 and 063 (which cascade to 064 and 065).
+
+## 2026-06-22 — [DATA] Ingest persistence fix + days_remaining index
+**Status:** completed (local commit only)
+**Files changed:** janitorial_recompete_report.py, db.py, migrations/004_contracts_days_remaining_index.sql, tests/test_ingest_persistence.py, docs/ARCHITECTURE.md
+
+**What & why:**
+- **Reliability:** the scheduled `tasks.run_ingest` job calls
+  `janitorial_recompete_report.main()`, which previously only wrote a CSV and
+  never persisted to the database — so the nightly ingest fetched data but the
+  contracts the app serves were never updated (the task even counts `contracts`
+  afterward, confirming the intent). Added `save_snapshot()` + `detect_changes()`
+  to the pipeline, reusing the proven path from `recompete_report.py`.
+  `save_snapshot()` is idempotent (upsert by `internal_id`, UNIQUE on
+  `(run_date, internal_id)`, FTS rebuild) and calls `init_db()`, so the job is
+  safe to rerun and recovers from partial failures.
+- **Scalability:** added `idx_contracts_days_remaining` (SQLite `init_db()` +
+  PostgreSQL migration 004). `days_remaining` is filtered/sorted by the dashboard
+  upcoming list, the open/expired status filter, watchlist expiry alerts, and
+  every vendor/agency profile, but had no index. Verified the planner now uses it
+  for the dashboard range scan (also satisfies the ORDER BY, avoiding a sort).
+
+**Tests:** 3 new tests in test_ingest_persistence.py (persistence, idempotent
+rerun, FTS searchable). 149/149 data-layer tests pass. Full-suite template
+failures are from a concurrent frontend session's in-progress base.html edit
+(`block 'content' defined twice`), not this change.
+
+**Follow-up:** `should_enrich()` gates on `row["internal_id"]`, but the ingest only
+populates `generated_internal_id` (the API field) — so Tier-A award enrichment
+never runs and scoring uses un-enriched data. Affects both report scripts equally.
+Also: `janitorial_recompete_report.py` and `recompete_report.py` are ~250 lines of
+duplicated logic; worth extracting a shared module.

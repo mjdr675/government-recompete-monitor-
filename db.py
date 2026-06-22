@@ -128,6 +128,12 @@ def init_db():
         conn.execute(text(
             "CREATE INDEX IF NOT EXISTS idx_contracts_score ON contracts(recompete_score DESC)"
         ))
+        # days_remaining drives the dashboard "upcoming" range scan, the open/expired
+        # status filter, watchlist expiry alerts, and every vendor/agency profile
+        # "ORDER BY days_remaining" — none of which had a supporting index.
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_contracts_days_remaining ON contracts(days_remaining)"
+        ))
         conn.execute(text("""
         CREATE VIRTUAL TABLE IF NOT EXISTS contracts_fts USING fts5(
             internal_id UNINDEXED,
