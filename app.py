@@ -761,7 +761,11 @@ def contract_detail(internal_id):
             ).mappings().fetchall()
             notes = [dict(r) for r in note_rows]
 
-    return render_template("contract_detail.html", row=row, is_bookmarked=is_bookmarked, notes=notes)
+    from contract_summary import next_step
+    guidance = next_step(row.get("days_remaining"), row.get("priority"))
+
+    return render_template("contract_detail.html", row=row, is_bookmarked=is_bookmarked,
+                           notes=notes, next_step=guidance)
 
 
 @app.route("/watchlist/add", methods=["POST"])
