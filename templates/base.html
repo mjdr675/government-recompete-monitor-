@@ -230,7 +230,10 @@
       <span class="bottom-nav-label">Pipeline</span>
     </a>
     <a href="/watchlist" class="bottom-nav-item {{ 'active' if p == '/watchlist' }}">
-      <span class="bottom-nav-icon">{{ icon_watchlist() }}</span>
+      <span class="bottom-nav-icon" style="position:relative">
+        {{ icon_watchlist() }}
+        {% if g.watchlist_count %}<span class="bottom-nav-badge">{{ g.watchlist_count }}</span>{% endif %}
+      </span>
       <span class="bottom-nav-label">Watchlist</span>
     </a>
     <a href="/company-profile" class="bottom-nav-item {{ 'active' if p == '/company-profile' }}">

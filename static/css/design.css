@@ -1464,9 +1464,54 @@ tbody tr:hover > th { background: var(--accent-light) !important; }
   .bottom-nav-icon { display: flex; align-items: center; justify-content: center; }
   .bottom-nav-icon svg { width: 20px; height: 20px; }
   .bottom-nav-label { line-height: 1; white-space: nowrap; }
+  .bottom-nav-badge {
+    position: absolute;
+    top: -4px;
+    right: -7px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    font-size: 9.5px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    pointer-events: none;
+  }
 
   /* ── Content padding — don't hide under bottom nav ── */
   .content { padding-bottom: 76px; }
+
+  /* ── No horizontal overflow ── */
+  .content, main { overflow-x: hidden; }
+
+  /* ── Pipeline stage filter: horizontal scroll on phones ── */
+  .pipeline-stage-tabs {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+    margin-bottom: 14px;
+  }
+  .pipeline-stage-tabs::-webkit-scrollbar { display: none; }
+  .pipeline-stage-tab {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  /* ── Mobile card: improve score/days meta legibility ── */
+  .mobile-card-meta { gap: 6px; }
+  .mobile-card-meta .sep { color: var(--text-faint); }
+
+  /* ── Contracts filter: collapse search label on small phones ── */
+  .filter-field label { font-size: 11px; }
+
+  /* ── Summary box readable on phone ── */
+  .summary-box { font-size: 14px; line-height: 1.6; }
 
   /* ── Show/hide helpers ── */
   .m-show { display: block; }
