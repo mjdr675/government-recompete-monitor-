@@ -336,9 +336,13 @@ def contracts():
     priority = request.args.get("priority", "")
     days = request.args.get("days", None)
     min_value = request.args.get("min_value", type=float)
+    status = request.args.get("status", "")
     sort = request.args.get("sort", "recompete_score")
     direction = request.args.get("dir", "desc")
     page = int(request.args.get("page", 1))
+
+    if status not in ("", "open", "expired"):
+        status = ""
 
     days_int = int(days) if days else None
     if days_int is not None and days_int < 0:
@@ -353,6 +357,7 @@ def contracts():
         priority=priority,
         days=days_int,
         min_value=min_value,
+        status=status,
         sort=sort,
         direction=direction,
         page=page,
@@ -397,6 +402,7 @@ def contracts():
         priority=priority,
         days=days or "",
         min_value=min_value or "",
+        status=status,
         sort=sort,
         direction=direction,
         watchlist_ids=watchlist_ids,
@@ -410,13 +416,16 @@ def contracts_export():
     priority = request.args.get("priority", "")
     days = request.args.get("days", None)
     min_value = request.args.get("min_value", type=float)
+    status = request.args.get("status", "")
+    if status not in ("", "open", "expired"):
+        status = ""
     sort = request.args.get("sort", "recompete_score")
     direction = request.args.get("dir", "desc")
 
     days_int = int(days) if days else None
     result = get_contracts(
         q=q, agency=agency, priority=priority,
-        days=days_int, min_value=min_value,
+        days=days_int, min_value=min_value, status=status,
         sort=sort, direction=direction,
         page=1, limit=10000,
     )

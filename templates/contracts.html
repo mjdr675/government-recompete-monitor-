@@ -48,6 +48,14 @@
         {% endfor %}
       </select>
     </div>
+    <div>
+      <label style="display:block;font-size:12px;color:#555;margin-bottom:3px;">Status</label>
+      <select name="status" style="width:100%;padding:8px;box-sizing:border-box;">
+        {% for val, label in [("", "All"), ("open", "Open only"), ("expired", "Expired")] %}
+          <option value="{{ val }}" {% if status == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
     <input type="hidden" name="sort" value="{{ sort }}">
     <input type="hidden" name="dir" value="{{ direction }}">
     <div style="display:flex;gap:8px;align-items:center;padding-top:18px;">
@@ -67,7 +75,7 @@
 {% macro sort_link(col, label) %}
   {% set next_dir = "asc" if (sort == col and direction == "desc") else "desc" %}
   {% set arrow = " ↓" if (sort == col and direction == "desc") else (" ↑" if sort == col else "") %}
-  <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&sort={{ col }}&dir={{ next_dir }}">{{ label }}{{ arrow }}</a>
+  <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&sort={{ col }}&dir={{ next_dir }}">{{ label }}{{ arrow }}</a>
 {% endmacro %}
 <div style="margin-bottom:8px;">
   <button id="compare-btn" disabled onclick="compareSelected()">Compare selected</button>
@@ -156,7 +164,7 @@ function bookmarkToggle(btn) {
 </script>
 
 <div style="margin-top:18px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-  {% set base_qs %}q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&sort={{ sort }}&dir={{ direction }}{% endset %}
+  {% set base_qs %}q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&sort={{ sort }}&dir={{ direction }}{% endset %}
 
   {% if has_prev %}
     <a href="/contracts?{{ base_qs }}&page=1">First</a>

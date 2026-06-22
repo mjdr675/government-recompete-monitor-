@@ -1,6 +1,7 @@
 import glob
 import json
 import os
+import re
 import sqlite3
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -594,23 +595,40 @@ def save_early_access(email: str, hubspot_contact_id: str | None = None) -> None
 _SORTABLE = {"recompete_score", "value", "days_remaining", "end_date", "priority", "vendor", "agency"}
 
 
-def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort="recompete_score", direction="desc", page=1, limit=25):
+def search_tokens(q, limit=8):
+    """Split a user search string into safe, lowercased word tokens.
+
+    Strips punctuation/FTS operators (&, commas, quotes, parens, …) so real-world
+    queries like "AT&T" or "Booz, Allen" don't break the full-text query. Returns up
+    to ``limit`` tokens; an all-punctuation query yields an empty list.
+    """
+    return re.findall(r"[a-z0-9]+", (q or "").lower())[:limit]
+
+
+def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort="recompete_score", direction="desc", page=1, limit=25, status=""):
     engine = get_engine()
     is_pg = engine.dialect.name == "postgresql"
 
     params: dict = {}
 
     if q:
-        if is_pg:
-            base = "FROM contracts c WHERE c.search_vector @@ websearch_to_tsquery('english', :q)"
-            params["q"] = q
+        tokens = search_tokens(q)
+        if not tokens:
+            # a query with no usable terms (only punctuation) matches nothing — never
+            # error, and never fall through to "show everything"
+            base = "FROM contracts c WHERE 1=0"
+        elif is_pg:
+            # prefix match each term so partial words work ("lockhe" → "Lockheed");
+            # tokens are alphanumeric only, so the tsquery is always valid + injection-safe
+            base = "FROM contracts c WHERE c.search_vector @@ to_tsquery('english', :q)"
+            params["q"] = " & ".join(f"{t}:*" for t in tokens)
         else:
             base = """
                 FROM contracts c
                 JOIN contracts_fts f ON c.rowid = f.rowid
                 WHERE contracts_fts MATCH :q
             """
-            params["q"] = q + "*"
+            params["q"] = " ".join(f"{t}*" for t in tokens)
     else:
         base = "FROM contracts c WHERE 1=1"
 
@@ -629,6 +647,14 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
     if min_value is not None:
         base += " AND c.value >= :min_value"
         params["min_value"] = float(min_value)
+
+    # Open/active status: "open" = still running (days_remaining > 0), "expired" =
+    # ended (days_remaining <= 0). Unknown (NULL) days_remaining only appears under
+    # the default "all". Lets contractors hide dead opportunities and focus on live ones.
+    if status == "open":
+        base += " AND c.days_remaining > 0"
+    elif status == "expired":
+        base += " AND c.days_remaining <= 0"
 
     col = sort if sort in _SORTABLE else "recompete_score"
     order = "ASC" if direction == "asc" else "DESC"
