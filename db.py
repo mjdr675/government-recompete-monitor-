@@ -89,6 +89,10 @@ _MIGRATION_PROBES: dict = {
         "SELECT COUNT(*) FROM information_schema.tables "
         "WHERE table_schema = 'public' AND table_name = 'company_profiles'"
     ),
+    "007_opportunities.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'opportunities'"
+    ),
 }
 
 
@@ -525,6 +529,35 @@ def init_db():
             UNIQUE(profile_id, set_aside_type)
         )
         """))
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS opportunities (
+            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id               INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            internal_id           TEXT NOT NULL,
+            stage                 TEXT NOT NULL DEFAULT 'new',
+            probability           INTEGER,
+            next_action           TEXT,
+            next_action_due       TEXT,
+            notes                 TEXT,
+            created_by_user_id    INTEGER NOT NULL REFERENCES users(id),
+            last_updated_by_user_id INTEGER NOT NULL REFERENCES users(id),
+            created_at            TEXT NOT NULL,
+            updated_at            TEXT NOT NULL,
+            UNIQUE(user_id, internal_id)
+        )
+        """))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_opportunities_user"
+            " ON opportunities(user_id)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_opportunities_user_stage"
+            " ON opportunities(user_id, stage)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_opportunities_user_due"
+            " ON opportunities(user_id, next_action_due)"
+        ))
 
 
 def get_company_profile(user_id):
@@ -673,6 +706,215 @@ def save_company_profile(user_id, data):
             )
 
     return profile_id
+
+
+# ---------------------------------------------------------------------------
+# Opportunity Pipeline
+# ---------------------------------------------------------------------------
+
+PIPELINE_STAGES = [
+    ("new",         "New"),
+    ("interested",  "Interested"),
+    ("researching", "Researching"),
+    ("capturing",   "Capturing"),
+    ("proposal",    "Proposal"),
+    ("submitted",   "Submitted"),
+    ("awarded",     "Awarded"),
+    ("lost",        "Lost"),
+]
+_VALID_PIPELINE_STAGES = frozenset(v for v, _ in PIPELINE_STAGES)
+# Stages where active pursuit has ended — excluded from active-pipeline counts.
+PIPELINE_TERMINAL_STAGES = frozenset({"awarded", "lost"})
+
+
+def add_opportunity(user_id, internal_id, stage="new"):
+    """Add a contract to the user's pipeline.
+
+    If the contract is already in the pipeline the existing row is returned
+    unchanged (idempotent).  Returns (opportunity_id, created: bool).
+
+    Raises ValueError for an invalid stage value.
+    """
+    if stage not in _VALID_PIPELINE_STAGES:
+        raise ValueError(f"Invalid pipeline stage: {stage!r}")
+    now = datetime.now(timezone.utc).isoformat()
+    engine = get_engine()
+    with engine.begin() as conn:
+        try:
+            row = conn.execute(
+                text(
+                    "INSERT INTO opportunities"
+                    " (user_id, internal_id, stage,"
+                    "  created_by_user_id, last_updated_by_user_id,"
+                    "  created_at, updated_at)"
+                    " VALUES (:uid, :iid, :stage, :uid, :uid, :now, :now)"
+                    " RETURNING id"
+                ),
+                {"uid": user_id, "iid": internal_id, "stage": stage, "now": now},
+            ).fetchone()
+            return row[0], True
+        except Exception as exc:
+            # UNIQUE(user_id, internal_id) violation — already in pipeline
+            if "UNIQUE" in str(exc).upper() or "unique" in str(exc).lower():
+                existing = conn.execute(
+                    text(
+                        "SELECT id FROM opportunities"
+                        " WHERE user_id = :uid AND internal_id = :iid"
+                    ),
+                    {"uid": user_id, "iid": internal_id},
+                ).fetchone()
+                if existing:
+                    return existing[0], False
+            raise
+
+
+def remove_opportunity(user_id, internal_id):
+    """Remove a contract from the user's pipeline.  No-op if not present."""
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "DELETE FROM opportunities"
+                " WHERE user_id = :uid AND internal_id = :iid"
+            ),
+            {"uid": user_id, "iid": internal_id},
+        )
+
+
+def get_opportunity(user_id, opp_id):
+    """Return a single opportunity dict, or None if not found / wrong owner."""
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = conn.execute(
+            text(
+                "SELECT id, user_id, internal_id, stage, probability,"
+                " next_action, next_action_due, notes,"
+                " created_by_user_id, last_updated_by_user_id,"
+                " created_at, updated_at"
+                " FROM opportunities WHERE id = :oid AND user_id = :uid"
+            ),
+            {"oid": opp_id, "uid": user_id},
+        ).mappings().fetchone()
+    return dict(row) if row else None
+
+
+def get_opportunity_by_contract(user_id, internal_id):
+    """Return the opportunity dict for this contract, or None."""
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = conn.execute(
+            text(
+                "SELECT id, user_id, internal_id, stage, probability,"
+                " next_action, next_action_due, notes,"
+                " created_by_user_id, last_updated_by_user_id,"
+                " created_at, updated_at"
+                " FROM opportunities WHERE user_id = :uid AND internal_id = :iid"
+            ),
+            {"uid": user_id, "iid": internal_id},
+        ).mappings().fetchone()
+    return dict(row) if row else None
+
+
+def list_opportunities(user_id, stage=None):
+    """Return all opportunities for user_id, optionally filtered by stage.
+
+    Each dict is the opportunity row joined with the matching contract row via
+    LEFT JOIN so orphaned opportunities (contract aged out) are still returned
+    with contract columns as None.
+
+    Results ordered by next_action_due ASC NULLS LAST, then created_at ASC.
+    """
+    engine = get_engine()
+    is_pg = engine.dialect.name == "postgresql"
+    nulls_last = "NULLS LAST" if is_pg else ""
+    params: dict = {"uid": user_id}
+    stage_clause = ""
+    if stage is not None:
+        if stage not in _VALID_PIPELINE_STAGES:
+            raise ValueError(f"Invalid pipeline stage: {stage!r}")
+        stage_clause = " AND o.stage = :stage"
+        params["stage"] = stage
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                "SELECT o.id, o.user_id, o.internal_id, o.stage, o.probability,"
+                " o.next_action, o.next_action_due, o.notes,"
+                " o.created_by_user_id, o.last_updated_by_user_id,"
+                " o.created_at, o.updated_at,"
+                " c.award_id, c.vendor, c.agency, c.value, c.end_date,"
+                " c.days_remaining, c.priority, c.recompete_score,"
+                " c.competition_type, c.raw_json"
+                " FROM opportunities o"
+                " LEFT JOIN contracts c ON c.internal_id = o.internal_id"
+                f" WHERE o.user_id = :uid{stage_clause}"
+                f" ORDER BY o.next_action_due ASC {nulls_last}, o.created_at ASC"
+            ),
+            params,
+        ).mappings().fetchall()
+    return [dict(r) for r in rows]
+
+
+def update_opportunity(user_id, opp_id, data, updated_by_user_id=None):
+    """Update mutable fields on an opportunity.
+
+    data keys (all optional):
+      stage, probability, next_action, next_action_due, notes
+
+    Raises ValueError for an invalid stage.
+    Raises LookupError if opp_id does not exist or belongs to a different user.
+    Returns the updated opportunity dict.
+    """
+    if updated_by_user_id is None:
+        updated_by_user_id = user_id
+
+    stage = data.get("stage")
+    if stage is not None and stage not in _VALID_PIPELINE_STAGES:
+        raise ValueError(f"Invalid pipeline stage: {stage!r}")
+
+    try:
+        probability = int(data["probability"]) if data.get("probability") not in (None, "") else None
+        if probability is not None and not (0 <= probability <= 100):
+            probability = max(0, min(100, probability))
+    except (ValueError, TypeError):
+        probability = None
+
+    now = datetime.now(timezone.utc).isoformat()
+    engine = get_engine()
+    with engine.begin() as conn:
+        existing = conn.execute(
+            text("SELECT id FROM opportunities WHERE id = :oid AND user_id = :uid"),
+            {"oid": opp_id, "uid": user_id},
+        ).fetchone()
+        if not existing:
+            raise LookupError(f"Opportunity {opp_id} not found for user {user_id}")
+
+        sets = ["last_updated_by_user_id = :luu", "updated_at = :now"]
+        params: dict = {"oid": opp_id, "uid": user_id, "luu": updated_by_user_id, "now": now}
+
+        if stage is not None:
+            sets.append("stage = :stage")
+            params["stage"] = stage
+        if "probability" in data:
+            sets.append("probability = :prob")
+            params["prob"] = probability
+        if "next_action" in data:
+            sets.append("next_action = :next_action")
+            params["next_action"] = data["next_action"] or None
+        if "next_action_due" in data:
+            sets.append("next_action_due = :next_action_due")
+            params["next_action_due"] = data["next_action_due"] or None
+        if "notes" in data:
+            sets.append("notes = :notes")
+            params["notes"] = data["notes"] or None
+
+        conn.execute(
+            text(
+                f"UPDATE opportunities SET {', '.join(sets)}"
+                " WHERE id = :oid AND user_id = :uid"
+            ),
+            params,
+        )
+    return get_opportunity(user_id, opp_id)
 
 
 def upsert_contract(row):
