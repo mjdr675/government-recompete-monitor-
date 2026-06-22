@@ -302,6 +302,16 @@ class TestPostRoute:
         assert "hubzone" in p["set_asides"]
 
     def test_create_stores_agencies(self, authed_client, profile_db):
+        # Agencies are validated against the contracts table.  Seed a contract
+        # so "Dept of Defense" appears in the allowlist; "VA" is absent and
+        # should be silently dropped by the server-side validation.
+        con = sqlite3.connect(profile_db)
+        con.execute(
+            "INSERT INTO contracts (internal_id, agency) VALUES (?, ?)",
+            ("test-agency-seed", "Dept of Defense"),
+        )
+        con.commit()
+        con.close()
         authed_client.post("/company-profile", data={
             "geo_coverage": "nationwide",
             "agencies": ["Dept of Defense", "VA"],
@@ -309,6 +319,7 @@ class TestPostRoute:
         uid = _user_id(profile_db)
         p = get_company_profile(uid)
         assert "Dept of Defense" in p["agencies"]
+        assert "VA" not in p["agencies"]  # not in contracts table → filtered
 
     def test_create_stores_states_when_geo_is_states(self, authed_client, profile_db):
         authed_client.post("/company-profile", data={
