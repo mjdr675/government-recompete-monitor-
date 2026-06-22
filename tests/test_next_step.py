@@ -93,7 +93,7 @@ class TestDetailPage:
         body = client.get("/contract/DET-1").get_data(as_text=True)
         assert "Recompete timing:" in body
         assert "Expiring within ~6 months" in body
-        assert "Recommended next step:" in body
+        assert "Suggested approach:" in body
         # CRITICAL + future-dated → urgency nudge surfaces
         assert "High-priority opportunity" in body
 
