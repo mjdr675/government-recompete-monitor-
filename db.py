@@ -53,40 +53,212 @@ def connect():
     return get_connection()
 
 
-def _apply_pg_migrations() -> None:
-    """Apply all *.sql files in migrations/ against the PostgreSQL database.
+# ---------------------------------------------------------------------------
+# Migration version tracking
+# ---------------------------------------------------------------------------
 
-    All statements use IF NOT EXISTS / ADD COLUMN IF NOT EXISTS guards so this
-    is safe to call repeatedly at every release (idempotent).
+# Detection queries for migrations that existed before version tracking was
+# introduced (001–005).  Used exactly once: when _apply_migrations() finds
+# schema_migrations empty on a non-empty database (i.e. an existing install
+# that predates tracking).  Each query returns a count > 0 when the migration
+# artefact already exists on the live database, meaning we can stamp it as
+# applied without re-executing — most critically, avoiding the unnecessary
+# search_vector rebuild from 005 on every subsequent startup.
+_MIGRATION_PROBES: dict = {
+    "001_initial_pg.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'contracts'"
+    ),
+    "002_subscription_and_alerts.sql": (
+        "SELECT COUNT(*) FROM information_schema.columns "
+        "WHERE table_name = 'users' AND column_name = 'stripe_customer_id'"
+    ),
+    "003_company_name.sql": (
+        "SELECT COUNT(*) FROM information_schema.columns "
+        "WHERE table_name = 'users' AND column_name = 'company_name'"
+    ),
+    "004_contracts_days_remaining_index.sql": (
+        "SELECT COUNT(*) FROM pg_indexes "
+        "WHERE indexname = 'idx_contracts_days_remaining'"
+    ),
+    "005_contracts_description_search.sql": (
+        "SELECT COUNT(*) FROM information_schema.columns "
+        "WHERE table_name = 'contracts' AND column_name = 'description'"
+    ),
+}
+
+
+def _stamp_pre_existing(engine, applied: set) -> None:
+    """Stamp migrations that predate version tracking by probing the live schema.
+
+    Called once when schema_migrations is empty on a non-empty database.
+    PG-only: SQLite never runs the migration files, so nothing to stamp there.
+
+    For each migration in _MIGRATION_PROBES, runs the detection query. If the
+    artefact already exists the migration is recorded as applied (with a sentinel
+    timestamp prefixed 'detected:') without re-executing its SQL.  The applied
+    set is updated in-place so the caller skips those files.
     """
-    migrations_dir = Path(__file__).parent / "migrations"
-    if not migrations_dir.is_dir():
-        return
-    sql_files = sorted(migrations_dir.glob("*.sql"))
     import logging as _log
-    # The database may be unreachable or the driver (psycopg2) absent — e.g. in
-    # local/dev/test environments where DATABASE_URL points at a server we can't
-    # reach. Migrations are best-effort and idempotent, so a connection failure
-    # must not crash app startup; log and continue (real releases ship psycopg2
-    # and a reachable PostgreSQL and apply the migrations normally).
+
+    if engine.dialect.name != "postgresql":
+        return
+
+    now = "detected:" + datetime.now(timezone.utc).isoformat()
+    stamped = []
+
+    try:
+        with engine.begin() as conn:
+            for filename, probe_sql in _MIGRATION_PROBES.items():
+                try:
+                    count = conn.execute(text(probe_sql)).scalar() or 0
+                except Exception:
+                    count = 0
+                if count > 0:
+                    conn.execute(
+                        text(
+                            "INSERT INTO schema_migrations(filename, applied_at) "
+                            "VALUES (:f, :a) ON CONFLICT(filename) DO NOTHING"
+                        ),
+                        {"f": filename, "a": now},
+                    )
+                    applied.add(filename)
+                    stamped.append(filename)
+    except Exception as exc:
+        _log.warning("Migration auto-stamp failed (non-fatal): %s", exc)
+        return
+
+    if stamped:
+        _log.info(
+            "schema_migrations: stamped %d pre-existing migration(s): %s",
+            len(stamped),
+            ", ".join(stamped),
+        )
+
+
+def _apply_migrations(migrations_dir: "Path | None" = None) -> None:
+    """Apply pending SQL migrations tracked by the schema_migrations table.
+
+    Each migration executes atomically: its SQL statements and the
+    schema_migrations INSERT run in a single transaction.  A migration is
+    recorded as applied only when it succeeds.  On failure the transaction
+    rolls back, an error is logged, and processing stops immediately — leaving
+    all previously applied migrations untouched.
+
+    On first use against an existing database (schema_migrations empty but
+    contracts table already present), _stamp_pre_existing() detects which
+    migrations have already been applied and stamps them without re-executing,
+    preventing the unnecessary search_vector rebuild from migration 005.
+
+    Args:
+        migrations_dir: directory containing *.sql files.  Defaults to the
+            project's own migrations/ directory.  Exposed for testing.
+    """
+    import logging as _log
+
+    if migrations_dir is None:
+        migrations_dir = Path(__file__).parent / "migrations"
+
+    if not Path(migrations_dir).is_dir():
+        return
+
     try:
         engine = get_engine()
     except Exception as exc:
         _log.warning("Skipping migrations — database engine unavailable: %s", exc)
         return
+
+    # Bootstrap: ensure the history table exists.  This is the only operation
+    # that runs unconditionally on every startup; it is a genuine no-op once
+    # the table exists.
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                filename   TEXT PRIMARY KEY,
+                applied_at TEXT NOT NULL
+            )
+            """))
+    except Exception as exc:
+        _log.warning("Skipping migrations — cannot create schema_migrations: %s", exc)
+        return
+
+    # Read the current applied set.
+    try:
+        with engine.connect() as conn:
+            applied = {
+                row[0]
+                for row in conn.execute(text("SELECT filename FROM schema_migrations"))
+            }
+    except Exception as exc:
+        _log.warning("Skipping migrations — cannot read schema_migrations: %s", exc)
+        return
+
+    # First-use bootstrap: stamp pre-existing migrations so they are not
+    # re-executed against a database that already has them applied.
+    if not applied:
+        with engine.connect() as conn:
+            try:
+                db_has_tables = bool(
+                    conn.execute(
+                        text(
+                            "SELECT COUNT(*) FROM information_schema.tables "
+                            "WHERE table_schema = 'public' AND table_name = 'contracts'"
+                        )
+                    ).scalar()
+                )
+            except Exception:
+                db_has_tables = False
+        if db_has_tables:
+            _stamp_pre_existing(engine, applied)
+
+    # Apply pending migrations in filename order.
+    sql_files = sorted(Path(migrations_dir).glob("*.sql"))
     for sql_file in sql_files:
-        statements = [s.strip() for s in sql_file.read_text().split(";") if s.strip()]
+        if sql_file.name in applied:
+            _log.debug("Migration already applied, skipping: %s", sql_file.name)
+            continue
+
+        _log.info("Applying migration: %s", sql_file.name)
+        statements = [
+            s.strip()
+            for s in sql_file.read_text().split(";")
+            if s.strip() and not s.strip().startswith("--")
+        ]
+
         try:
             with engine.begin() as conn:
                 for stmt in statements:
-                    if stmt.lstrip().startswith("--"):
-                        continue
-                    try:
-                        conn.execute(text(stmt))
-                    except Exception as exc:
-                        _log.warning("Migration %s: %s", sql_file.name, exc)
+                    conn.execute(text(stmt))
+                # Record success within the same transaction — atomically.
+                conn.execute(
+                    text(
+                        "INSERT INTO schema_migrations(filename, applied_at) "
+                        "VALUES (:f, :a)"
+                    ),
+                    {
+                        "f": sql_file.name,
+                        "a": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
+            _log.info("Migration applied: %s", sql_file.name)
         except Exception as exc:
-            _log.warning("Skipping migration %s — database unavailable: %s", sql_file.name, exc)
+            _log.error(
+                "Migration %s FAILED: %s — stopping. "
+                "Fix the migration file and restart.",
+                sql_file.name,
+                exc,
+            )
+            raise
+
+
+def _apply_pg_migrations() -> None:
+    """Backward-compatible alias for _apply_migrations().
+
+    Pre-versioning callers (and the test that monkeypatches this name) continue
+    to work.  New code should call _apply_migrations() directly.
+    """
+    _apply_migrations()
 
 
 def _ensure_description_column():
@@ -116,7 +288,7 @@ def _ensure_description_column():
 def init_db():
     database_url = os.environ.get("DATABASE_URL", "")
     if database_url:
-        _apply_pg_migrations()
+        _apply_migrations()
         return
 
     needs_fts_rebuild = _ensure_description_column()
@@ -288,6 +460,14 @@ def init_db():
         conn.execute(text(
             "CREATE INDEX IF NOT EXISTS idx_alert_log_user ON alert_log(user_id)"
         ))
+        # Migration history table — present on both SQLite and PostgreSQL so
+        # schema state is always inspectable regardless of backend.
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            filename   TEXT PRIMARY KEY,
+            applied_at TEXT NOT NULL
+        )
+        """))
 
 
 def upsert_contract(row):

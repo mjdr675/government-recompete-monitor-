@@ -127,7 +127,7 @@ use method+prefix checks in `require_login` and handle their own auth (return 40
 **Engine:** SQLAlchemy Core ≥ 2.0 (`get_engine()` in `db.py`)  
 **Production:** PostgreSQL via `DATABASE_URL` env var  
 **Development/test:** SQLite (`contracts.db`, or `tmp_path` fixture override)  
-**Initialization:** `db.init_db()` — SQLite only; PostgreSQL uses `migrations/001_initial_pg.sql`  
+**Initialization:** `db.init_db()` — see *Migration lifecycle* below  
 **Dialect branching:** `is_pg = engine.dialect.name == "postgresql"` — used for `RETURNING id` vs `lastrowid`  
 **Engine caching:** `_cached_engine(url)` is LRU-cached by URL string for connection reuse  
 
@@ -175,6 +175,76 @@ with get_engine().connect() as conn:
 with get_engine().begin() as conn:  # auto-commit on exit
     conn.execute(text("INSERT INTO ... VALUES (:a, :b)"), {"a": ..., "b": ...})
 ```
+
+### Migration lifecycle
+
+**Function:** `db._apply_migrations(migrations_dir=None)` — called from `init_db()` on the PostgreSQL path  
+**History table:** `schema_migrations(filename TEXT PRIMARY KEY, applied_at TEXT NOT NULL)`  
+**Present on:** both SQLite and PostgreSQL (SQLite table is created in `init_db()` alongside the rest of the schema)
+
+#### Startup algorithm
+
+```
+init_db() called
+  ↓
+PostgreSQL path: _apply_migrations()
+  1. CREATE TABLE IF NOT EXISTS schema_migrations  ← bootstrap: runs every time, no-ops if exists
+  2. SELECT filename FROM schema_migrations        ← read applied set
+  3. applied empty AND contracts table exists?
+       → _stamp_pre_existing()                     ← one-time auto-stamp for existing DBs
+  4. glob migrations/*.sql, sort lexicographically
+  5. for each file:
+       filename in applied? → skip (DEBUG log)
+       else:
+         BEGIN transaction
+           execute each SQL statement in the file
+           INSERT INTO schema_migrations(filename, applied_at) VALUES (...)
+         COMMIT                                     ← atomically records completion
+         INFO log: "Migration applied: <file>"
+         on failure: ROLLBACK, log ERROR, raise     ← stops immediately; not recorded
+```
+
+#### `schema_migrations` table
+
+| Column | Type | Notes |
+|---|---|---|
+| `filename` | `TEXT PRIMARY KEY` | e.g. `001_initial_pg.sql` |
+| `applied_at` | `TEXT NOT NULL` | ISO 8601 UTC timestamp, or `detected:<timestamp>` for auto-stamped entries |
+
+`ON CONFLICT(filename) DO NOTHING` is used by the auto-stamp path to make re-runs safe.
+
+#### Auto-stamp for existing databases
+
+When `schema_migrations` is empty and the `contracts` table already exists, the database
+predates migration tracking. `_stamp_pre_existing()` runs `_MIGRATION_PROBES` — one
+`information_schema` or `pg_indexes` query per known migration — and stamps any migration
+whose artifacts are present. This runs exactly once: after stamping, `applied` is non-empty
+so the bootstrap branch is never entered again.
+
+| Migration | Probe |
+|---|---|
+| `001_initial_pg.sql` | `information_schema.tables` WHERE `table_name = 'contracts'` |
+| `002_subscription_and_alerts.sql` | `information_schema.columns` WHERE `column_name = 'stripe_customer_id'` |
+| `003_company_name.sql` | `information_schema.columns` WHERE `column_name = 'company_name'` |
+| `004_contracts_days_remaining_index.sql` | `pg_indexes` WHERE `indexname = 'idx_contracts_days_remaining'` |
+| `005_contracts_description_search.sql` | `information_schema.columns` WHERE `column_name = 'description'` |
+
+#### Failure recovery
+
+If a migration fails:
+1. The transaction is rolled back — the migration's SQL changes are not applied.
+2. `schema_migrations` is **not** updated — the migration is not recorded.
+3. `_apply_migrations()` raises immediately — subsequent migrations do not run.
+4. `init_db()` propagates the exception — the Flask application fails to start.
+5. **Recovery:** fix the migration file and restart. The runner will retry the failed migration.
+
+#### Adding a new migration
+
+1. Create `migrations/NNN_description.sql` — name must sort after the last applied migration.
+2. All statements must be idempotent (`IF NOT EXISTS`, `IF EXISTS`) — Railway reruns the
+   release step on rollbacks; the history table prevents re-execution but idempotency is a safety net.
+3. Add an entry to `_MIGRATION_PROBES` in `db.py` so new production clones can auto-stamp it.
+4. Test locally by deleting the `schema_migrations` row for the new file and restarting.
 
 ---
 
@@ -335,7 +405,11 @@ beat: celery -A tasks beat --loglevel=info
 ├── Procfile                 # Railway startup
 ├── requirements.txt         # Pinned Python dependencies
 ├── migrations/
-│   └── 001_initial_pg.sql   # Idempotent PostgreSQL schema
+│   ├── 001_initial_pg.sql   # Idempotent PostgreSQL schema
+│   ├── 002_subscription_and_alerts.sql
+│   ├── 003_company_name.sql
+│   ├── 004_contracts_days_remaining_index.sql
+│   └── 005_contracts_description_search.sql  # description column + tsvector rebuild
 │
 ├── templates/
 │   ├── base.html            # Layout, nav (Dashboard/Contracts/Watchlist/Saved Searches/Views/Ingest)
@@ -359,7 +433,7 @@ beat: celery -A tasks beat --loglevel=info
 │       ├── welcome.html     # Welcome email (sent on registration)
 │       └── welcome.txt
 │
-├── tests/                   # pytest suite (941 tests)
+├── tests/                   # pytest suite (1293 tests)
 │   ├── test_app.py
 │   ├── test_auth.py
 │   ├── test_analytics.py
@@ -369,6 +443,9 @@ beat: celery -A tasks beat --loglevel=info
 │   ├── test_notes.py
 │   ├── test_data_freshness.py
 │   ├── test_celery_ingest.py
+│   ├── test_pg_migration.py  # migration file content + _apply_pg_migrations alias
+│   ├── test_migrations.py    # migration version tracking (27 tests)
+│   ├── test_search_robustness.py  # FTS edge cases + description search
 │   ├── test_memory.py
 │   └── test_patcher.py
 │

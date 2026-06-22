@@ -49,12 +49,15 @@ class TestApplyPgMigrationsFunction:
         assert callable(db_module._apply_pg_migrations)
 
     def test_init_db_calls_migrations_for_pg(self, monkeypatch, tmp_path):
-        """Simulate DATABASE_URL set: init_db should call _apply_pg_migrations."""
+        """Simulate DATABASE_URL set: init_db should invoke the migration runner."""
         called = []
 
         import db as db_module
         monkeypatch.setenv("DATABASE_URL", "postgresql://fake/testdb")
-        monkeypatch.setattr(db_module, "_apply_pg_migrations", lambda: called.append(True))
+        # init_db() now calls _apply_migrations() directly; _apply_pg_migrations is
+        # kept as a backward-compat alias that also delegates to _apply_migrations().
+        monkeypatch.setattr(db_module, "_apply_migrations",
+                            lambda migrations_dir=None: called.append(True))
         db_module._cached_engine.cache_clear()
 
         db_module.init_db()
