@@ -36,7 +36,7 @@ from db import (
 )
 from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
-from analytics import dashboard_analytics, opportunity_recommendations
+from analytics import dashboard_analytics, opportunity_recommendations, dashboard_recommended_actions
 from report_builder import build_report
 from views import SAVED_VIEWS, build_view_query, format_filter_summary
 import hubspot_service
@@ -313,11 +313,13 @@ def dashboard():
         g.get("watchlist_count", 0) == 0
         and not session.get("onboarding_dismissed")
     )
+    dash_actions = dashboard_recommended_actions(g.user["id"] if g.user else None)
     return render_template(
         "dashboard.html",
         report=build_report(date.today().isoformat()),
         analytics=analytics,
         recommendations=recommendations,
+        dash_actions=dash_actions,
         last_ingest=last_ingest,
         hours_ago=hours_ago,
         show_onboarding=show_onboarding,
@@ -761,11 +763,15 @@ def contract_detail(internal_id):
             ).mappings().fetchall()
             notes = [dict(r) for r in note_rows]
 
-    from contract_summary import next_step
+    from contract_summary import next_step, recommended_action, why_it_matters, contract_timeline
     guidance = next_step(row.get("days_remaining"), row.get("priority"))
+    action = recommended_action(row)
+    matters = why_it_matters(row)
+    timeline = contract_timeline(row)
 
     return render_template("contract_detail.html", row=row, is_bookmarked=is_bookmarked,
-                           notes=notes, next_step=guidance)
+                           notes=notes, next_step=guidance, action=action,
+                           why_matters=matters, timeline=timeline)
 
 
 @app.route("/watchlist/add", methods=["POST"])

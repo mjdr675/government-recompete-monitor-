@@ -137,6 +137,59 @@ def opportunity_recommendations():
     return recs
 
 
+def dashboard_recommended_actions(user_id):
+    """Watched contracts + top high-priority contracts, each annotated with a next action.
+
+    Watched contracts for the user come first; high-priority active contracts fill
+    remaining slots up to 5 total. Deduped by internal_id.
+    """
+    from contract_summary import recommended_action as _rec
+
+    engine = get_engine()
+    results = []
+    seen = set()
+
+    def _add(rows, source):
+        for r in rows:
+            r = dict(r)
+            iid = r.get("internal_id")
+            if iid in seen:
+                continue
+            seen.add(iid)
+            act = _rec(r)
+            r["next_action"] = act["action"]
+            r["action_source"] = source
+            results.append(r)
+
+    with engine.connect() as conn:
+        if user_id is not None:
+            watched = conn.execute(text("""
+                SELECT c.internal_id, c.award_id, c.vendor, c.agency, c.value,
+                       c.days_remaining, c.priority, c.recompete_score,
+                       c.solicitation_id, c.competition_type
+                FROM contracts c
+                JOIN user_watchlist w ON w.internal_id = c.internal_id
+                WHERE w.user_id = :uid AND COALESCE(c.days_remaining, 0) > 0
+                ORDER BY c.days_remaining ASC
+                LIMIT 5
+            """), {"uid": user_id}).mappings().fetchall()
+            _add(watched, "watched")
+
+        if len(results) < 5:
+            top = conn.execute(text("""
+                SELECT internal_id, award_id, vendor, agency, value,
+                       days_remaining, priority, recompete_score,
+                       solicitation_id, competition_type
+                FROM contracts
+                WHERE priority IN ('CRITICAL', 'HIGH') AND COALESCE(days_remaining, 0) > 0
+                ORDER BY recompete_score DESC
+                LIMIT 10
+            """)).mappings().fetchall()
+            _add(top[:5 - len(results)], "high_priority")
+
+    return results
+
+
 def agency_summary(run_date, limit=10):
     engine = get_engine()
     with engine.connect() as conn:
