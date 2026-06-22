@@ -123,6 +123,28 @@ class TestNaicsFromContract:
 
 
 # ---------------------------------------------------------------------------
+# _naics_matches (prefix hierarchy)
+# ---------------------------------------------------------------------------
+
+class TestNaicsMatches:
+    def test_2digit_prefix_matches_6digit_contract(self):
+        from business_match import _naics_matches
+        assert _naics_matches("561720", ["56"])
+
+    def test_4digit_prefix_matches_6digit_contract(self):
+        from business_match import _naics_matches
+        assert _naics_matches("561720", ["5617"])
+
+    def test_exact_6digit_match(self):
+        from business_match import _naics_matches
+        assert _naics_matches("561720", ["561720"])
+
+    def test_unrelated_prefix_does_not_match(self):
+        from business_match import _naics_matches
+        assert not _naics_matches("561720", ["54", "33"])
+
+
+# ---------------------------------------------------------------------------
 # _comp_type_matches_set_aside
 # ---------------------------------------------------------------------------
 

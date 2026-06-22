@@ -42,13 +42,18 @@ def _naics_from_contract(contract) -> str | None:
 
 
 def _naics_matches(contract_naics: str, profile_codes: list[str]) -> bool:
-    """True when contract_naics shares a 6-digit prefix with any profile code."""
+    """True when contract_naics starts with any profile code (prefix hierarchy).
+
+    A profile code of "56" matches "561720"; "5617" matches "561720"; "561720"
+    matches "561720" exactly.  The profile code must be 2–6 digits; shorter
+    profile codes are more permissive (broader industry match).
+    """
     if not contract_naics or not profile_codes:
         return False
-    cn = contract_naics.strip()[:6]
+    cn = contract_naics.strip()
     for code in profile_codes:
-        pc = code.strip()[:6]
-        if cn and pc and cn == pc:
+        pc = code.strip()
+        if pc and cn.startswith(pc):
             return True
     return False
 
