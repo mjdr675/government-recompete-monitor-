@@ -5,9 +5,28 @@
 <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px">
   <div>
     <h1>Pipeline</h1>
-    <div class="page-meta">{{ count }} opportunit{{ 'y' if count == 1 else 'ies' }}</div>
+    <div class="page-meta">
+      {{ count }} opportunit{{ 'y' if count == 1 else 'ies' }}
+      {% if current_stage %} &middot; filtered: {{ stage_labels.get(current_stage, current_stage) }}{% endif %}
+    </div>
   </div>
   <a href="/contracts" class="btn btn-secondary" style="font-size:13px">Browse contracts</a>
+</div>
+
+{# Stage filter tabs #}
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
+  <a href="/pipeline"
+     style="font-size:12.5px;padding:4px 10px;border-radius:var(--radius-sm);border:1px solid var(--border);text-decoration:none;
+            {% if not current_stage %}background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600{% else %}background:var(--surface);color:var(--text-muted){% endif %}">
+    All
+  </a>
+  {% for val, label in pipeline_stages %}
+  <a href="/pipeline?stage={{ val }}"
+     style="font-size:12.5px;padding:4px 10px;border-radius:var(--radius-sm);border:1px solid var(--border);text-decoration:none;
+            {% if current_stage == val %}background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600{% else %}background:var(--surface);color:var(--text-muted){% endif %}">
+    {{ label }}
+  </a>
+  {% endfor %}
 </div>
 
 {% if not opportunities %}
@@ -16,9 +35,15 @@
     <polyline points="1.5 11.5 5.5 7 9 10 14.5 4"/>
     <circle cx="14.5" cy="4" r="1.2" fill="var(--text-muted)" stroke="none"/>
   </svg>
+  {% if current_stage %}
+  <div style="font-size:16px;font-weight:600;margin-bottom:6px">No {{ stage_labels.get(current_stage, current_stage) | lower }} opportunities</div>
+  <div class="muted" style="margin-bottom:18px">No pipeline opportunities match this stage filter.</div>
+  <a href="/pipeline" class="btn btn-secondary">Clear filter</a>
+  {% else %}
   <div style="font-size:16px;font-weight:600;margin-bottom:6px">No opportunities in your pipeline yet</div>
-  <div class="muted" style="margin-bottom:18px">Add contracts you&rsquo;re actively pursuing to track them here.</div>
+  <div class="muted" style="margin-bottom:18px">Add contracts you&rsquo;re actively pursuing to track them here. Open any contract and click <strong>Add to Pipeline</strong>.</div>
   <a href="/contracts" class="btn btn-primary">Browse contracts</a>
+  {% endif %}
 </div>
 
 {% else %}
@@ -43,7 +68,7 @@
     <tbody>
     {% for opp in opportunities %}
     <tr>
-      <td><a href="/pipeline/{{ opp['id'] }}">{{ opp['internal_id'] }}</a></td>
+      <td><a href="/pipeline/{{ opp['id'] }}">{{ opp['award_id'] or opp['internal_id'] }}</a></td>
       <td class="muted" style="font-size:13px">{{ opp['vendor'] or '—' }}</td>
       <td class="muted" style="font-size:13px">{{ opp['agency'] or '—' }}</td>
       <td style="text-align:right;font-size:13px">{% if opp['value'] %}${{ "{:,.0f}".format(opp['value']) }}{% else %}—{% endif %}</td>
@@ -51,7 +76,7 @@
       <td style="text-align:right;font-size:13px">{{ opp['days_remaining'] if opp['days_remaining'] is not none else '—' }}</td>
       <td style="text-align:right;font-size:13px">{{ opp['recompete_score'] or '—' }}</td>
       <td>
-        <form method="post" action="/pipeline/update/{{ opp['id'] }}" style="margin:0">
+        <form method="post" action="/pipeline/{{ opp['id'] }}/status" style="margin:0">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <select name="stage" onchange="this.form.submit()"
                   style="font-size:13px;padding:3px 6px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text)">

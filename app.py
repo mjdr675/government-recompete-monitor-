@@ -37,6 +37,7 @@ from db import (
     save_snapshot,
     upsert_contract,
     PIPELINE_STAGES,
+    PIPELINE_TERMINAL_STAGES,
     add_opportunity,
     remove_opportunity,
     get_opportunity,
@@ -347,6 +348,29 @@ def dashboard():
     biz_opps = business_opportunities(user_id)
     p_completion = profile_completeness(profile) if profile else 0
     p_hints = profile_completion_hints(profile) if profile and p_completion < 100 else []
+
+    pipeline_summary = {"total": 0, "active": 0, "by_stage": {}, "top": []}
+    if user_id:
+        all_opps = list_opportunities(user_id)
+        active_opps = [o for o in all_opps if o["stage"] not in PIPELINE_TERMINAL_STAGES]
+        by_stage: dict = {}
+        for o in all_opps:
+            by_stage[o["stage"]] = by_stage.get(o["stage"], 0) + 1
+        top_opps = sorted(
+            active_opps,
+            key=lambda o: (
+                o["next_action_due"] or "9999-99-99",
+                -(o["recompete_score"] or 0),
+                o["updated_at"] or "",
+            ),
+        )[:5]
+        pipeline_summary = {
+            "total": len(all_opps),
+            "active": len(active_opps),
+            "by_stage": by_stage,
+            "top": top_opps,
+        }
+
     return render_template(
         "dashboard.html",
         report=build_report(date.today().isoformat()),
@@ -360,6 +384,8 @@ def dashboard():
         last_ingest=last_ingest,
         hours_ago=hours_ago,
         show_onboarding=show_onboarding,
+        pipeline_summary=pipeline_summary,
+        pipeline_stages=PIPELINE_STAGES,
     )
 
 
@@ -518,6 +544,7 @@ def contracts():
         return "min_value must be a non-negative number", 400
 
     for_my_business = request.args.get("for_my_business", "")
+    in_pipeline = request.args.get("in_pipeline", "")
     profile = None
     pf = None
     if for_my_business and g.user:
@@ -525,19 +552,37 @@ def contracts():
         if profile:
             pf = profile_filter_for_sql(profile)
 
-    result = get_contracts(
-        q=q,
-        agency=agency,
-        priority=priority,
-        days=days_int,
-        min_value=min_value,
-        status=status,
-        sort=sort,
-        direction=direction,
-        page=page,
-        limit=25,
-        profile_filter=pf,
-    )
+    # Build pipeline_map {internal_id: opp_id} for the current user (empty for anon).
+    pipeline_map: dict = {}
+    if g.user:
+        for opp in list_opportunities(g.user["id"]):
+            pipeline_map[opp["internal_id"]] = opp["id"]
+
+    # When ?in_pipeline=1, restrict to the user's own pipeline contracts.
+    pipeline_ids: list | None = None
+    if in_pipeline and g.user and pipeline_map:
+        pipeline_ids = list(pipeline_map.keys())
+    elif in_pipeline and g.user:
+        # User has no pipeline — return empty results without hitting get_contracts.
+        pipeline_ids = []
+
+    if pipeline_ids is not None and len(pipeline_ids) == 0:
+        result = {"contracts": [], "total": 0, "count": 0, "start": 0, "page": page}
+    else:
+        result = get_contracts(
+            q=q,
+            agency=agency,
+            priority=priority,
+            days=days_int,
+            min_value=min_value,
+            status=status,
+            sort=sort,
+            direction=direction,
+            page=page,
+            limit=25,
+            profile_filter=pf,
+            internal_ids=pipeline_ids,
+        )
 
     _total = result["total"]
     _page_size = 25
@@ -593,8 +638,10 @@ def contracts():
         sort=sort,
         direction=direction,
         watchlist_ids=watchlist_ids,
+        pipeline_map=pipeline_map,
         saved_searches=saved_searches,
         for_my_business=for_my_business,
+        in_pipeline=in_pipeline,
         has_profile=profile is not None,
     )
 
@@ -1045,11 +1092,16 @@ def _safe_redirect(fallback="/pipeline"):
 
 @app.route("/pipeline")
 def pipeline():
-    opps = list_opportunities(g.user["id"])
+    stage_filter = request.args.get("stage", "").strip().lower() or None
+    try:
+        opps = list_opportunities(g.user["id"], stage=stage_filter)
+    except ValueError:
+        stage_filter = None
+        opps = list_opportunities(g.user["id"])
     stage_labels = dict(PIPELINE_STAGES)
     return render_template("pipeline.html", opportunities=opps,
                            stage_labels=stage_labels, pipeline_stages=PIPELINE_STAGES,
-                           count=len(opps))
+                           count=len(opps), current_stage=stage_filter)
 
 
 @app.route("/pipeline/<int:opp_id>")
@@ -1084,6 +1136,22 @@ def opportunity_detail(opp_id):
         biz_mismatch_reasons=biz_mismatch_reasons_list,
         has_profile=biz_profile is not None,
     )
+
+
+@app.route("/pipeline/<int:opp_id>/status", methods=["POST"])
+def pipeline_status(opp_id):
+    """Quick stage-only update — used by the inline select on the pipeline list."""
+    opp = get_opportunity(g.user["id"], opp_id)
+    if not opp:
+        flash("Opportunity not found.", "error")
+        return redirect("/pipeline")
+    stage = request.form.get("stage", "").strip()
+    try:
+        update_opportunity(g.user["id"], opp_id, {"stage": stage})
+    except ValueError as exc:
+        flash(str(exc), "error")
+        return redirect(f"/pipeline/{opp_id}")
+    return redirect(_safe_redirect("/pipeline"))
 
 
 @app.route("/pipeline/add/<internal_id>", methods=["POST"])

@@ -1298,7 +1298,7 @@ def search_tokens(q, limit=8):
     return re.findall(r"[a-z0-9]+", (q or "").lower())[:limit]
 
 
-def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort="recompete_score", direction="desc", page=1, limit=25, status="", profile_filter=None):
+def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort="recompete_score", direction="desc", page=1, limit=25, status="", profile_filter=None, internal_ids=None):
     engine = get_engine()
     is_pg = engine.dialect.name == "postgresql"
 
@@ -1377,6 +1377,15 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
                 clauses.append(f"c.competition_type LIKE :{key}")
                 params[key] = f"%{kw}%"
             base += " AND (" + " OR ".join(clauses) + ")"
+
+    if internal_ids is not None:
+        if not internal_ids:
+            base += " AND 1=0"
+        else:
+            placeholders = ", ".join(f":iid_{i}" for i in range(len(internal_ids)))
+            base += f" AND c.internal_id IN ({placeholders})"
+            for i, iid in enumerate(internal_ids):
+                params[f"iid_{i}"] = iid
 
     col = sort if sort in _SORTABLE else "recompete_score"
     order = "ASC" if direction == "asc" else "DESC"

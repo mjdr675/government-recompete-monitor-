@@ -277,3 +277,115 @@ class TestContractDetailPipeline:
         add_opportunity(_uid(pipe_db, "alice@example.com"), "CTR-001")
         r = alice.get("/contract/CTR-001")
         assert b"/pipeline/remove/CTR-001" in r.data
+
+
+# ---------------------------------------------------------------------------
+# Stage filter on /pipeline
+# ---------------------------------------------------------------------------
+
+class TestStageFilter:
+    def test_filter_by_valid_stage_shows_only_that_stage(self, alice, pipe_db):
+        uid = _uid(pipe_db, "alice@example.com")
+        add_opportunity(uid, "CTR-001", stage="new")
+        # Add a second contract at a different stage
+        con = __import__("sqlite3").connect(pipe_db)
+        con.execute(
+            "INSERT OR IGNORE INTO contracts"
+            " (internal_id, agency, vendor, value, recompete_score, end_date, days_remaining)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("CTR-002", "DoD", "Bravo Corp", 1_000_000.0, 60, "2027-01-01", 365),
+        )
+        con.commit(); con.close()
+        add_opportunity(uid, "CTR-002", stage="capturing")
+        r = alice.get("/pipeline?stage=new")
+        assert r.status_code == 200
+        assert b"CTR-001" in r.data
+        assert b"CTR-002" not in r.data
+
+    def test_filter_by_other_stage_excludes_new(self, alice, pipe_db):
+        uid = _uid(pipe_db, "alice@example.com")
+        add_opportunity(uid, "CTR-001", stage="new")
+        r = alice.get("/pipeline?stage=capturing")
+        assert r.status_code == 200
+        assert b"CTR-001" not in r.data
+
+    def test_filter_invalid_stage_does_not_crash(self, alice, pipe_db):
+        """Invalid ?stage= falls back to all — no 500."""
+        add_opportunity(_uid(pipe_db, "alice@example.com"), "CTR-001")
+        r = alice.get("/pipeline?stage=BOGUS_STAGE")
+        assert r.status_code == 200
+        assert b"CTR-001" in r.data
+
+    def test_filter_all_returns_all(self, alice, pipe_db):
+        uid = _uid(pipe_db, "alice@example.com")
+        add_opportunity(uid, "CTR-001", stage="new")
+        r = alice.get("/pipeline")
+        assert r.status_code == 200
+        assert b"CTR-001" in r.data
+
+    def test_filter_tabs_present_in_html(self, alice, pipe_db):
+        add_opportunity(_uid(pipe_db, "alice@example.com"), "CTR-001")
+        r = alice.get("/pipeline")
+        assert b"?stage=new" in r.data
+        assert b"?stage=capturing" in r.data
+
+    def test_empty_state_shows_clear_filter_link(self, alice, pipe_db):
+        add_opportunity(_uid(pipe_db, "alice@example.com"), "CTR-001", stage="new")
+        r = alice.get("/pipeline?stage=capturing")
+        assert r.status_code == 200
+        assert b"Clear filter" in r.data
+
+    def test_filter_meta_shows_stage_name(self, alice, pipe_db):
+        add_opportunity(_uid(pipe_db, "alice@example.com"), "CTR-001", stage="new")
+        r = alice.get("/pipeline?stage=new")
+        assert b"filtered" in r.data.lower() or b"New" in r.data
+
+
+# ---------------------------------------------------------------------------
+# Quick status route /pipeline/<id>/status
+# ---------------------------------------------------------------------------
+
+class TestStatusRoute:
+    def test_status_update_redirects(self, alice, pipe_db):
+        opp_id, _ = add_opportunity(_uid(pipe_db, "alice@example.com"), "CTR-001")
+        r = alice.post(f"/pipeline/{opp_id}/status", data={"stage": "capturing"})
+        assert r.status_code in (301, 302)
+
+    def test_status_update_persists(self, alice, pipe_db):
+        uid = _uid(pipe_db, "alice@example.com")
+        opp_id, _ = add_opportunity(uid, "CTR-001")
+        alice.post(f"/pipeline/{opp_id}/status", data={"stage": "proposal"})
+        opp = get_opportunity(uid, opp_id)
+        assert opp["stage"] == "proposal"
+
+    def test_status_update_does_not_clear_notes(self, alice, pipe_db):
+        """Stage-only update must not erase notes saved via detail form."""
+        uid = _uid(pipe_db, "alice@example.com")
+        opp_id, _ = add_opportunity(uid, "CTR-001")
+        update_opportunity(uid, opp_id, {"notes": "Important intel"})
+        alice.post(f"/pipeline/{opp_id}/status", data={"stage": "capturing"})
+        opp = get_opportunity(uid, opp_id)
+        assert opp["notes"] == "Important intel"
+
+    def test_status_update_invalid_stage_does_not_crash(self, alice, pipe_db):
+        opp_id, _ = add_opportunity(_uid(pipe_db, "alice@example.com"), "CTR-001")
+        r = alice.post(f"/pipeline/{opp_id}/status",
+                       data={"stage": "INVALID_STAGE"}, follow_redirects=True)
+        assert r.status_code == 200
+        assert b"Invalid pipeline stage" in r.data
+
+    def test_status_anon_redirects(self, anon, pipe_db):
+        opp_id, _ = add_opportunity(_uid(pipe_db, "alice@example.com"), "CTR-001")
+        r = anon.post(f"/pipeline/{opp_id}/status", data={"stage": "capturing"})
+        assert r.status_code in (301, 302)
+
+    def test_status_wrong_owner_redirects_safely(self, pipe_db):
+        bob_uid = _uid(pipe_db, "bob@example.com")
+        bob_opp_id, _ = add_opportunity(bob_uid, "CTR-001")
+        alice_client = _make_client(pipe_db, "alice@example.com")
+        r = alice_client.post(f"/pipeline/{bob_opp_id}/status", data={"stage": "capturing"})
+        # alice cannot update bob's opp — should redirect without crash
+        assert r.status_code in (301, 302, 400)
+        # stage unchanged
+        opp = get_opportunity(bob_uid, bob_opp_id)
+        assert opp["stage"] == "new"
