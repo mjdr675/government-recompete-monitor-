@@ -70,10 +70,10 @@
         <th>Contract</th>
         <th>Vendor</th>
         <th>Agency</th>
-        <th>Value</th>
+        <th class="col-r">Value</th>
         <th>End Date</th>
-        <th>Days</th>
-        <th>Score</th>
+        <th class="col-r">Days</th>
+        <th class="col-r">Score</th>
       </tr>
     </thead>
     <tbody>
@@ -83,21 +83,21 @@
         <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
         <td><a href="/vendor/{{ r.vendor|urlencode }}">{{ r.vendor }}</a></td>
         <td><a href="/agency/{{ r.agency|urlencode }}">{{ r.agency }}</a></td>
-        <td>${{ "{:,.0f}".format(r.value or 0) }}</td>
+        <td class="col-r">${{ "{:,.0f}".format(r.value or 0) }}</td>
         <td>{{ r.end_date or '&mdash;' }}</td>
-        <td>
+        <td class="col-r">
           {% if days is none %}&mdash;
           {% elif days <= 30 %}<span class="days-critical">{{ days }}</span>
           {% elif days <= 90 %}<span class="days-warning">{{ days }}</span>
           {% else %}{{ days }}{% endif %}
         </td>
-        <td>{{ r.recompete_score or '&mdash;' }}</td>
+        <td class="col-r">{{ r.recompete_score or '&mdash;' }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}
-  <div style="padding:16px;font-size:13px;color:var(--text-muted)">No active critical contracts at this time.</div>
+  <div class="empty-state">No active critical contracts at this time.</div>
   {% endif %}
 </div>
 
@@ -114,10 +114,10 @@
         <th>Contract</th>
         <th>Vendor</th>
         <th>Agency</th>
-        <th>Value</th>
+        <th class="col-r">Value</th>
         <th>End Date</th>
-        <th>Days</th>
-        <th>Score</th>
+        <th class="col-r">Days</th>
+        <th class="col-r">Score</th>
       </tr>
     </thead>
     <tbody>
@@ -128,20 +128,20 @@
         <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
         <td><a href="/vendor/{{ r.vendor|urlencode }}">{{ r.vendor }}</a></td>
         <td><a href="/agency/{{ r.agency|urlencode }}">{{ r.agency }}</a></td>
-        <td>${{ "{:,.0f}".format(r.value or 0) }}</td>
+        <td class="col-r">${{ "{:,.0f}".format(r.value or 0) }}</td>
         <td>{{ r.end_date or '&mdash;' }}</td>
-        <td>
+        <td class="col-r">
           {% if days is none %}&mdash;
           {% elif days <= 30 %}<span class="days-critical">{{ days }}</span>
           {% else %}<span class="days-warning">{{ days }}</span>{% endif %}
         </td>
-        <td>{{ r.recompete_score or '&mdash;' }}</td>
+        <td class="col-r">{{ r.recompete_score or '&mdash;' }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}
-  <div style="padding:16px;font-size:13px;color:var(--text-muted)">No contracts expiring within 90 days.</div>
+  <div class="empty-state">No contracts expiring within 90 days.</div>
   {% endif %}
 </div>
 
@@ -157,25 +157,25 @@
         <th>Contract</th>
         <th>Vendor</th>
         <th>Agency</th>
-        <th>Value</th>
-        <th>Days</th>
-        <th>Score</th>
+        <th class="col-r">Value</th>
+        <th class="col-r">Days</th>
+        <th class="col-r">Score</th>
       </tr>
     </thead>
     <tbody>
       {% for r in recommendations %}
       <tr>
-        <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">{{ r.reason }}</td>
+        <td class="col-muted" style="white-space:nowrap">{{ r.reason }}</td>
         <td><span class="priority-badge priority-{{ (r.priority or 'unknown').lower().replace(' ','-').replace('_','-') }}">{{ r.priority or '&mdash;' }}</span></td>
         <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
         <td><a href="/vendor/{{ r.vendor|urlencode }}">{{ r.vendor }}</a></td>
         <td><a href="/agency/{{ r.agency|urlencode }}">{{ r.agency }}</a></td>
-        <td>${{ "{:,.0f}".format(r.value or 0) }}</td>
-        <td>{{ r.days_remaining if r.days_remaining is not none else '&mdash;' }}</td>
-        <td>{{ r.recompete_score or '&mdash;' }}</td>
+        <td class="col-r">${{ "{:,.0f}".format(r.value or 0) }}</td>
+        <td class="col-r">{{ r.days_remaining if r.days_remaining is not none else '&mdash;' }}</td>
+        <td class="col-r">{{ r.recompete_score or '&mdash;' }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="8" style="color:var(--text-muted)">No contracts loaded yet. <a href="/ingest">Ingest data</a> to get started.</td></tr>
+      <tr><td colspan="8" class="muted">No contracts loaded yet. <a href="/ingest">Ingest data</a> to get started.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -187,7 +187,7 @@
   </div>
   {% set total_changes = report.summary.values() | sum %}
   {% if total_changes == 0 %}
-  <div style="padding:16px;font-size:13px;color:var(--text-muted)">No changes detected for {{ report.run_date }}. Run a second ingest to compare snapshots.</div>
+  <div class="empty-state">No changes detected for {{ report.run_date }}. Run a second ingest to compare snapshots.</div>
   {% else %}
   <table>
     <thead>
@@ -195,9 +195,9 @@
         <th>Priority</th>
         <th>Vendor</th>
         <th>Agency</th>
-        <th>Value</th>
-        <th>Days</th>
-        <th>Score</th>
+        <th class="col-r">Value</th>
+        <th class="col-r">Days</th>
+        <th class="col-r">Score</th>
         <th>Change</th>
       </tr>
     </thead>
@@ -207,9 +207,9 @@
         <td><span class="priority-badge priority-{{ (row[0] or 'unknown').lower() }}">{{ row[0] }}</span></td>
         <td><a href="/vendor/{{ row[1]|urlencode }}">{{ row[1] }}</a></td>
         <td><a href="/agency/{{ row[2]|urlencode }}">{{ row[2] }}</a></td>
-        <td>${{ "{:,.0f}".format(row[3] or 0) }}</td>
-        <td>{{ row[4] }}</td>
-        <td>{{ row[5] }}</td>
+        <td class="col-r">${{ "{:,.0f}".format(row[3] or 0) }}</td>
+        <td class="col-r">{{ row[4] }}</td>
+        <td class="col-r">{{ row[5] }}</td>
         <td>{{ row[6] }}</td>
       </tr>
       {% endfor %}
@@ -222,16 +222,16 @@
   <div class="table-wrapper" style="margin-bottom:0">
     <div class="table-header"><h2>Top Agencies</h2></div>
     <table>
-      <thead><tr><th>Agency</th><th>Contracts</th><th>Pipeline</th></tr></thead>
+      <thead><tr><th>Agency</th><th class="col-r">Contracts</th><th class="col-r">Pipeline</th></tr></thead>
       <tbody>
         {% for r in analytics.top_agencies %}
         <tr>
           <td><a href="/agency/{{ r.agency|urlencode }}">{{ r.agency }}</a></td>
-          <td>{{ r.contracts }}</td>
-          <td>${{ "{:,.0f}".format(r.pipeline_value or 0) }}</td>
+          <td class="col-r">{{ r.contracts }}</td>
+          <td class="col-r">${{ "{:,.0f}".format(r.pipeline_value or 0) }}</td>
         </tr>
         {% else %}
-        <tr><td colspan="3" style="color:var(--text-muted)">None</td></tr>
+        <tr><td colspan="3" class="muted">None</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -239,16 +239,16 @@
   <div class="table-wrapper" style="margin-bottom:0">
     <div class="table-header"><h2>Top Vendors</h2></div>
     <table>
-      <thead><tr><th>Vendor</th><th>Contracts</th><th>Pipeline</th></tr></thead>
+      <thead><tr><th>Vendor</th><th class="col-r">Contracts</th><th class="col-r">Pipeline</th></tr></thead>
       <tbody>
         {% for r in analytics.top_vendors %}
         <tr>
           <td><a href="/vendor/{{ r.vendor|urlencode }}">{{ r.vendor }}</a></td>
-          <td>{{ r.contracts }}</td>
-          <td>${{ "{:,.0f}".format(r.pipeline_value or 0) }}</td>
+          <td class="col-r">{{ r.contracts }}</td>
+          <td class="col-r">${{ "{:,.0f}".format(r.pipeline_value or 0) }}</td>
         </tr>
         {% else %}
-        <tr><td colspan="3" style="color:var(--text-muted)">None</td></tr>
+        <tr><td colspan="3" class="muted">None</td></tr>
         {% endfor %}
       </tbody>
     </table>

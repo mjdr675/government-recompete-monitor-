@@ -14,6 +14,7 @@
 {% if g.user %}
 {% set p = request.path %}
 <div class="app-layout">
+  <div class="sidebar-backdrop" onclick="document.body.classList.remove('sidebar-open')" aria-hidden="true"></div>
   <aside class="sidebar">
     <a class="sidebar-brand" href="/dashboard">
       <span class="brand-mark" aria-hidden="true">R</span>

@@ -24,9 +24,9 @@
 </div>
 
 {% if next_step %}
-<div style="margin-top:14px;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--radius-sm);line-height:1.6">
-  <div style="font-weight:600;color:var(--accent);margin-bottom:4px">Recompete timing: {{ next_step.timing }}</div>
-  <div class="muted" style="margin-bottom:8px">{{ next_step.detail }}</div>
+<div class="next-step-box">
+  <div class="next-step-box-timing">Recompete timing: {{ next_step.timing }}</div>
+  <div class="next-step-box-detail">{{ next_step.detail }}</div>
   <div><strong>Recommended next step:</strong> {{ next_step.action }}</div>
 </div>
 {% endif %}

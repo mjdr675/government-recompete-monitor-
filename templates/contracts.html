@@ -88,12 +88,13 @@
   <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&sort={{ col }}&dir={{ next_dir }}">{{ label }}{{ arrow }}</a>
 {% endmacro %}
 
-<div style="margin-bottom:8px;display:flex;align-items:center;gap:10px">
-  <button id="compare-btn" disabled onclick="compareSelected()" class="btn btn-secondary">Compare selected</button>
-  <span id="compare-hint" class="muted" style="font-size:12px">Select exactly 2 contracts</span>
-</div>
-
 <div class="table-wrapper">
+  <div class="table-header">
+    <div class="table-header-actions">
+      <button id="compare-btn" disabled onclick="compareSelected()" class="btn btn-ghost" style="padding:3px 9px;font-size:11.5px">Compare selected</button>
+      <span id="compare-hint" class="faint" style="font-size:11.5px">Select 2</span>
+    </div>
+  </div>
   <table>
     <thead>
       <tr>
@@ -102,10 +103,10 @@
         <th>{{ sort_link("priority", "Priority") }}</th>
         <th>{{ sort_link("vendor", "Vendor") }}</th>
         <th>{{ sort_link("agency", "Agency") }}</th>
-        <th>{{ sort_link("value", "Value") }}</th>
+        <th class="col-r">{{ sort_link("value", "Value") }}</th>
         <th>{{ sort_link("end_date", "End Date") }}</th>
-        <th>{{ sort_link("days_remaining", "Days") }}</th>
-        <th>{{ sort_link("recompete_score", "Score") }} <span title="Recompete Score (0–100): competition type (≤40) + contract value (≤35) + time remaining (≤25) + agency/sourcing bonuses. Higher = more attractive to pursue. Open any contract for the full breakdown." style="cursor:help;color:var(--text-faint);font-weight:normal">&#9432;</span></th>
+        <th class="col-r">{{ sort_link("days_remaining", "Days") }}</th>
+        <th class="col-r">{{ sort_link("recompete_score", "Score") }} <span title="Recompete Score (0–100): competition type (≤40) + contract value (≤35) + time remaining (≤25) + agency/sourcing bonuses. Higher = more attractive to pursue. Open any contract for the full breakdown." style="cursor:help;color:var(--text-faint);font-weight:normal">&#9432;</span></th>
       </tr>
     </thead>
     <tbody>
@@ -119,13 +120,13 @@
         </td>
         <td><a href="/vendor/{{ r["vendor"]|urlencode }}">{{ r["vendor"] }}</a></td>
         <td><a href="/agency/{{ r["agency"]|urlencode }}">{{ r["agency"] }}</a></td>
-        <td>${{ "{:,.0f}".format(r["value"] or 0) }}</td>
+        <td class="col-r">${{ "{:,.0f}".format(r["value"] or 0) }}</td>
         <td>{{ r["end_date"] }}</td>
-        <td>{{ r["days_remaining"] }}</td>
-        <td>{{ r["recompete_score"] }}</td>
+        <td class="col-r">{{ r["days_remaining"] }}</td>
+        <td class="col-r">{{ r["recompete_score"] }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="9" style="color:var(--text-muted)">No contracts found.</td></tr>
+      <tr><td colspan="9" class="muted">No contracts found.</td></tr>
       {% endfor %}
     </tbody>
   </table>
