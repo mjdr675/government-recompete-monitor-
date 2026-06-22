@@ -64,6 +64,52 @@
   <a href="/ingest" class="btn btn-secondary">Ingest Data</a>
 </div>
 
+{% if biz_opps %}
+<div class="table-wrapper" style="margin-bottom:16px">
+  <div class="table-header">
+    <h2>Opportunities For Your Business</h2>
+    <span style="font-size:12px;color:var(--text-muted);font-weight:400">Matched to your <a href="/company-profile">Company Profile</a></span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Contract</th>
+        <th>Vendor</th>
+        <th>Agency</th>
+        <th class="col-r">Value</th>
+        <th class="col-r">Days</th>
+        <th class="col-r" title="Business Match score based on your Company Profile">Match</th>
+        <th>Why it matches</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in biz_opps %}
+      <tr>
+        <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
+        <td>{{ r.vendor or '&mdash;' }}</td>
+        <td>{{ r.agency or '&mdash;' }}</td>
+        <td class="col-r">${{ "{:,.0f}".format(r.value or 0) }}</td>
+        <td class="col-r">{{ r.days_remaining if r.days_remaining is not none else '&mdash;' }}</td>
+        <td class="col-r" style="font-weight:600;color:var(--accent)">{{ r.match_score }}%</td>
+        <td style="font-size:12px;color:var(--text-muted)">{{ r.match_reasons | join(' · ') if r.match_reasons else '&mdash;' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div style="padding:8px 12px;font-size:12px;color:var(--text-muted)">
+    <a href="/contracts?for_my_business=1">See all matching contracts →</a>
+  </div>
+</div>
+{% elif g.user and not has_profile %}
+<div style="padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+  <div>
+    <div style="font-weight:600;margin-bottom:4px">Opportunities For Your Business</div>
+    <div class="muted" style="font-size:13px">Create your Company Profile to see contracts matched to your NAICS codes, preferred agencies, and contract size.</div>
+  </div>
+  <a href="/company-profile" class="btn btn-primary" style="white-space:nowrap">Create Company Profile</a>
+</div>
+{% endif %}
+
 {% if dash_actions %}
 <div class="table-wrapper" style="margin-bottom:16px">
   <div class="table-header">

@@ -85,6 +85,10 @@ _MIGRATION_PROBES: dict = {
         "SELECT COUNT(*) FROM information_schema.columns "
         "WHERE table_name = 'contracts' AND column_name = 'description'"
     ),
+    "006_company_profile.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'company_profiles'"
+    ),
 }
 
 
@@ -489,6 +493,10 @@ def init_db():
             UNIQUE(profile_id, naics_code)
         )
         """))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_company_naics_code"
+            " ON company_naics(naics_code)"
+        ))
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS company_states (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -505,6 +513,10 @@ def init_db():
             UNIQUE(profile_id, agency_name)
         )
         """))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_company_agencies_name"
+            " ON company_preferred_agencies(agency_name)"
+        ))
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS company_set_asides (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -525,7 +537,11 @@ def get_company_profile(user_id):
     engine = get_engine()
     with engine.connect() as conn:
         row = conn.execute(
-            text("SELECT * FROM company_profiles WHERE user_id = :uid"),
+            text(
+                "SELECT id, user_id, company_name, website, geo_coverage,"
+                " min_contract_value, max_contract_value, created_at, updated_at"
+                " FROM company_profiles WHERE user_id = :uid"
+            ),
             {"uid": user_id},
         ).mappings().fetchone()
         if row is None:
@@ -561,18 +577,18 @@ def get_company_profile(user_id):
 
 
 def save_company_profile(user_id, data):
-    """Create or replace the company profile for user_id.
+    """Create or update the company profile for user_id atomically.
 
-    data keys: company_name, website, geo_coverage, min_contract_value,
-    max_contract_value, naics_codes (list[str]), states (list[str]),
-    agencies (list[str]), set_asides (list[str]).
-
-    Multi-value lists are replaced wholesale on every save.
+    Uses an upsert on the UNIQUE(user_id) constraint so create and update
+    are a single round-trip with no race condition.  Multi-value lists
+    (naics_codes, states, agencies, set_asides) are replaced wholesale.
     Returns the profile id.
+
+    Compatible with both SQLite (≥ 3.24 for ON CONFLICT DO UPDATE,
+    ≥ 3.35 for RETURNING) and PostgreSQL.
     """
     now = datetime.now(timezone.utc).isoformat()
     engine = get_engine()
-    is_pg = engine.dialect.name == "postgresql"
 
     naics_codes = [c.strip() for c in (data.get("naics_codes") or []) if c.strip()]
     states = [s.strip() for s in (data.get("states") or []) if s.strip()]
@@ -590,87 +606,69 @@ def save_company_profile(user_id, data):
     except (ValueError, TypeError):
         max_val = None
 
+    params = {
+        "uid": user_id,
+        "company_name": data.get("company_name") or None,
+        "website": data.get("website") or None,
+        "geo_coverage": data.get("geo_coverage") or "nationwide",
+        "min_val": min_val,
+        "max_val": max_val,
+        "now": now,
+    }
+
     with engine.begin() as conn:
-        existing = conn.execute(
-            text("SELECT id FROM company_profiles WHERE user_id = :uid"),
-            {"uid": user_id},
-        ).fetchone()
+        row = conn.execute(text("""
+            INSERT INTO company_profiles
+                (user_id, company_name, website, geo_coverage,
+                 min_contract_value, max_contract_value, created_at, updated_at)
+            VALUES (:uid, :company_name, :website, :geo_coverage,
+                    :min_val, :max_val, :now, :now)
+            ON CONFLICT(user_id) DO UPDATE SET
+                company_name       = excluded.company_name,
+                website            = excluded.website,
+                geo_coverage       = excluded.geo_coverage,
+                min_contract_value = excluded.min_contract_value,
+                max_contract_value = excluded.max_contract_value,
+                updated_at         = excluded.updated_at
+            RETURNING id
+        """), params).fetchone()
+        profile_id = row[0]
 
-        if existing:
-            profile_id = existing[0]
-            conn.execute(text("""
-                UPDATE company_profiles SET
-                    company_name = :company_name,
-                    website = :website,
-                    geo_coverage = :geo_coverage,
-                    min_contract_value = :min_val,
-                    max_contract_value = :max_val,
-                    updated_at = :now
-                WHERE user_id = :uid
-            """), {
-                "company_name": data.get("company_name") or None,
-                "website": data.get("website") or None,
-                "geo_coverage": data.get("geo_coverage") or "nationwide",
-                "min_val": min_val,
-                "max_val": max_val,
-                "now": now,
-                "uid": user_id,
-            })
-        else:
-            if is_pg:
-                row = conn.execute(text("""
-                    INSERT INTO company_profiles
-                        (user_id, company_name, website, geo_coverage, min_contract_value, max_contract_value, created_at, updated_at)
-                    VALUES (:uid, :company_name, :website, :geo_coverage, :min_val, :max_val, :now, :now)
-                    RETURNING id
-                """), {
-                    "uid": user_id,
-                    "company_name": data.get("company_name") or None,
-                    "website": data.get("website") or None,
-                    "geo_coverage": data.get("geo_coverage") or "nationwide",
-                    "min_val": min_val,
-                    "max_val": max_val,
-                    "now": now,
-                }).fetchone()
-                profile_id = row[0]
-            else:
-                result = conn.execute(text("""
-                    INSERT INTO company_profiles
-                        (user_id, company_name, website, geo_coverage, min_contract_value, max_contract_value, created_at, updated_at)
-                    VALUES (:uid, :company_name, :website, :geo_coverage, :min_val, :max_val, :now, :now)
-                """), {
-                    "uid": user_id,
-                    "company_name": data.get("company_name") or None,
-                    "website": data.get("website") or None,
-                    "geo_coverage": data.get("geo_coverage") or "nationwide",
-                    "min_val": min_val,
-                    "max_val": max_val,
-                    "now": now,
-                })
-                profile_id = result.lastrowid
-
-        # Replace all multi-value lists wholesale
-        for table in ("company_naics", "company_states", "company_preferred_agencies", "company_set_asides"):
-            conn.execute(text(f"DELETE FROM {table} WHERE profile_id = :pid"), {"pid": profile_id})
+        # Replace all multi-value lists wholesale.  ON CONFLICT DO NOTHING
+        # is defensive against duplicate values in the submitted lists.
+        for table in ("company_naics", "company_states",
+                      "company_preferred_agencies", "company_set_asides"):
+            conn.execute(
+                text(f"DELETE FROM {table} WHERE profile_id = :pid"),
+                {"pid": profile_id},
+            )
 
         for code in naics_codes:
             conn.execute(
-                text("INSERT OR IGNORE INTO company_naics (profile_id, naics_code) VALUES (:pid, :code)"),
+                text("INSERT INTO company_naics (profile_id, naics_code)"
+                     " VALUES (:pid, :code)"
+                     " ON CONFLICT(profile_id, naics_code) DO NOTHING"),
                 {"pid": profile_id, "code": code},
             )
         for state in states:
             conn.execute(
-                text("INSERT OR IGNORE INTO company_states (profile_id, state_code) VALUES (:pid, :code)"),
+                text("INSERT INTO company_states (profile_id, state_code)"
+                     " VALUES (:pid, :code)"
+                     " ON CONFLICT(profile_id, state_code) DO NOTHING"),
                 {"pid": profile_id, "code": state},
             )
         for agency in agencies:
             conn.execute(
-                text("INSERT OR IGNORE INTO company_preferred_agencies (profile_id, agency_name) VALUES (:pid, :name)"),
+                text("INSERT INTO company_preferred_agencies (profile_id, agency_name)"
+                     " VALUES (:pid, :name)"
+                     " ON CONFLICT(profile_id, agency_name) DO NOTHING"),
                 {"pid": profile_id, "name": agency},
             )
         for sa in set_asides:
             conn.execute(
-                text("INSERT OR IGNORE INTO company_set_asides (profile_id, set_aside_type) VALUES (:pid, :sa)"),
+                text("INSERT INTO company_set_asides (profile_id, set_aside_type)"
+                     " VALUES (:pid, :sa)"
+                     " ON CONFLICT(profile_id, set_aside_type) DO NOTHING"),
                 {"pid": profile_id, "sa": sa},
             )
 
@@ -1058,7 +1056,7 @@ def search_tokens(q, limit=8):
     return re.findall(r"[a-z0-9]+", (q or "").lower())[:limit]
 
 
-def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort="recompete_score", direction="desc", page=1, limit=25, status=""):
+def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort="recompete_score", direction="desc", page=1, limit=25, status="", profile_filter=None):
     engine = get_engine()
     is_pg = engine.dialect.name == "postgresql"
 
@@ -1108,6 +1106,35 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
         base += " AND c.days_remaining > 0"
     elif status == "expired":
         base += " AND c.days_remaining <= 0"
+
+    if profile_filter:
+        pf_agencies = profile_filter.get("agencies") or []
+        if pf_agencies:
+            clauses = []
+            for i, ag in enumerate(pf_agencies):
+                key = f"pf_agency_{i}"
+                clauses.append(f"c.agency LIKE :{key}")
+                params[key] = f"%{ag}%"
+            base += " AND (" + " OR ".join(clauses) + ")"
+
+        pf_min = profile_filter.get("min_value")
+        if pf_min is not None and min_value is None:
+            base += " AND c.value >= :pf_min_value"
+            params["pf_min_value"] = float(pf_min)
+
+        pf_max = profile_filter.get("max_value")
+        if pf_max is not None:
+            base += " AND c.value <= :pf_max_value"
+            params["pf_max_value"] = float(pf_max)
+
+        pf_sa_keywords = profile_filter.get("set_aside_keywords") or []
+        if pf_sa_keywords:
+            clauses = []
+            for i, kw in enumerate(pf_sa_keywords):
+                key = f"pf_sa_{i}"
+                clauses.append(f"c.competition_type LIKE :{key}")
+                params[key] = f"%{kw}%"
+            base += " AND (" + " OR ".join(clauses) + ")"
 
     col = sort if sort in _SORTABLE else "recompete_score"
     order = "ASC" if direction == "asc" else "DESC"

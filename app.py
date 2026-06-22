@@ -2,6 +2,7 @@ import csv
 import io
 import json
 import logging
+import re
 import urllib.parse
 import os
 import subprocess
@@ -38,7 +39,8 @@ from db import (
 )
 from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
-from analytics import dashboard_analytics, opportunity_recommendations, dashboard_recommended_actions
+from analytics import dashboard_analytics, opportunity_recommendations, dashboard_recommended_actions, business_opportunities
+from business_match import business_match_score, business_match_reasons, business_mismatch_reasons, profile_filter_for_sql
 from report_builder import build_report
 from views import SAVED_VIEWS, build_view_query, format_filter_summary
 import hubspot_service
@@ -316,12 +318,17 @@ def dashboard():
         and not session.get("onboarding_dismissed")
     )
     dash_actions = dashboard_recommended_actions(g.user["id"] if g.user else None)
+    user_id = g.user["id"] if g.user else None
+    biz_opps = business_opportunities(user_id)
+    has_profile = bool(get_company_profile(user_id)) if user_id else False
     return render_template(
         "dashboard.html",
         report=build_report(date.today().isoformat()),
         analytics=analytics,
         recommendations=recommendations,
         dash_actions=dash_actions,
+        biz_opps=biz_opps,
+        has_profile=has_profile,
         last_ingest=last_ingest,
         hours_ago=hours_ago,
         show_onboarding=show_onboarding,
@@ -356,6 +363,14 @@ def contracts():
     if min_value is not None and min_value < 0:
         return "min_value must be a non-negative number", 400
 
+    for_my_business = request.args.get("for_my_business", "")
+    profile = None
+    pf = None
+    if for_my_business and g.user:
+        profile = get_company_profile(g.user["id"])
+        if profile:
+            pf = profile_filter_for_sql(profile)
+
     result = get_contracts(
         q=q,
         agency=agency,
@@ -367,6 +382,7 @@ def contracts():
         direction=direction,
         page=page,
         limit=25,
+        profile_filter=pf,
     )
 
     _total = result["total"]
@@ -393,9 +409,18 @@ def contracts():
         )).fetchall()
     all_agencies = [r[0] for r in agency_rows]
 
+    rows = result["contracts"]
+    if pf and profile:
+        rows_with_scores = []
+        for r in rows:
+            rd = dict(r)
+            rd["match_score"] = business_match_score(rd, profile)
+            rows_with_scores.append(rd)
+        rows = rows_with_scores
+
     return render_template(
         "contracts.html",
-        rows=result["contracts"],
+        rows=rows,
         total=_total,
         total_pages=_total_pages,
         start=result["start"] + 1 if result["count"] else 0,
@@ -415,6 +440,8 @@ def contracts():
         direction=direction,
         watchlist_ids=watchlist_ids,
         saved_searches=saved_searches,
+        for_my_business=for_my_business,
+        has_profile=profile is not None,
     )
 
 
@@ -771,9 +798,22 @@ def contract_detail(internal_id):
     matters = why_it_matters(row)
     timeline = contract_timeline(row)
 
+    biz_match_score = None
+    biz_match_reasons_list = []
+    biz_mismatch_reasons_list = []
+    if g.user:
+        biz_profile = get_company_profile(g.user["id"])
+        if biz_profile:
+            biz_match_score = business_match_score(row, biz_profile)
+            biz_match_reasons_list = business_match_reasons(row, biz_profile)
+            biz_mismatch_reasons_list = business_mismatch_reasons(row, biz_profile)
+
     return render_template("contract_detail.html", row=row, is_bookmarked=is_bookmarked,
                            notes=notes, next_step=guidance, action=action,
-                           why_matters=matters, timeline=timeline)
+                           why_matters=matters, timeline=timeline,
+                           biz_match_score=biz_match_score,
+                           biz_match_reasons=biz_match_reasons_list,
+                           biz_mismatch_reasons=biz_mismatch_reasons_list)
 
 
 @app.route("/watchlist/add", methods=["POST"])
@@ -1014,6 +1054,10 @@ _US_STATES = [
     ("WV", "West Virginia"), ("WI", "Wisconsin"), ("WY", "Wyoming"),
 ]
 
+# Derived allowlists — used for server-side validation of company-profile POSTs.
+_VALID_SET_ASIDES = frozenset(v for v, _ in _SET_ASIDE_OPTIONS)
+_VALID_STATE_CODES = frozenset(code for code, _ in _US_STATES)
+
 
 @app.route("/company-profile", methods=["GET", "POST"])
 def company_profile_page():
@@ -1029,7 +1073,6 @@ def company_profile_page():
         )).fetchall()
     all_agencies = [r[0] for r in agency_rows]
 
-    profile = get_company_profile(user["id"])
     error = None
     success = None
 
@@ -1040,12 +1083,24 @@ def company_profile_page():
         if geo_coverage not in ("nationwide", "states"):
             geo_coverage = "nationwide"
 
+        # NAICS codes: accept 2–6 digit numbers only; silently skip anything else
+        # so a user who types descriptions or annotations cannot store garbage.
         raw_naics = request.form.get("naics_codes", "")
-        naics_codes = [c.strip() for line in raw_naics.splitlines() for c in line.split(",") if c.strip()]
+        _raw_codes = [
+            c.strip()
+            for line in raw_naics.splitlines()
+            for c in line.split(",")
+            if c.strip()
+        ]
+        naics_codes = [c for c in _raw_codes if re.fullmatch(r"\d{2,6}", c)]
 
-        states = request.form.getlist("states")
-        agencies = request.form.getlist("agencies")
-        set_asides = request.form.getlist("set_asides")
+        # Validate states, agencies, and set-asides against their respective
+        # allowlists.  Values not in the allowlist are silently dropped — a
+        # crafted POST cannot store arbitrary strings in these columns.
+        states = [s for s in request.form.getlist("states") if s in _VALID_STATE_CODES]
+        agencies = [a for a in request.form.getlist("agencies") if a in frozenset(all_agencies)]
+        set_asides = [s for s in request.form.getlist("set_asides") if s in _VALID_SET_ASIDES]
+
         min_val = request.form.get("min_contract_value", "").strip()
         max_val = request.form.get("max_contract_value", "").strip()
 
@@ -1076,8 +1131,10 @@ def company_profile_page():
                 "agencies": agencies,
                 "set_asides": set_asides,
             })
-            profile = get_company_profile(user["id"])
             success = "Profile saved."
+
+    # Single read covers both GET and the re-render after a successful POST.
+    profile = get_company_profile(user["id"])
 
     return render_template(
         "company_profile.html",

@@ -72,6 +72,28 @@
   {% endif %}
 </form>
 
+{% if g.user %}
+<div style="margin:-8px 0 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+  {% if for_my_business %}
+    <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&sort={{ sort }}&dir={{ direction }}"
+       class="btn btn-primary" style="padding:5px 14px;font-size:13px">&#10003; For My Business</a>
+    <a href="/contracts" class="muted" style="font-size:12px;text-decoration:underline">Show all contracts</a>
+    {% if not has_profile %}
+    <span class="muted" style="font-size:12px">— <a href="/company-profile">Set up your Company Profile</a> to enable personalised filtering.</span>
+    {% endif %}
+  {% else %}
+    {% if not has_profile %}
+    <a href="/contracts?for_my_business=1&q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&sort={{ sort }}&dir={{ direction }}"
+       class="btn btn-ghost" style="padding:5px 14px;font-size:13px" title="Filter using your Company Profile">For My Business</a>
+    <span class="muted" style="font-size:12px">— <a href="/company-profile">Set up your Company Profile</a> first</span>
+    {% else %}
+    <a href="/contracts?for_my_business=1&q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&sort={{ sort }}&dir={{ direction }}"
+       class="btn btn-ghost" style="padding:5px 14px;font-size:13px" title="Filter using your Company Profile">For My Business</a>
+    {% endif %}
+  {% endif %}
+</div>
+{% endif %}
+
 {% if g.user and saved_searches %}
 <div class="saved-searches">
   <span class="saved-searches-label">Saved searches:</span>
@@ -85,7 +107,7 @@
 {% macro sort_link(col, label) %}
   {% set next_dir = "asc" if (sort == col and direction == "desc") else "desc" %}
   {% set arrow = " ↓" if (sort == col and direction == "desc") else (" ↑" if sort == col else "") %}
-  <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&sort={{ col }}&dir={{ next_dir }}">{{ label }}{{ arrow }}</a>
+  <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&sort={{ col }}&dir={{ next_dir }}{% if for_my_business %}&for_my_business=1{% endif %}">{{ label }}{{ arrow }}</a>
 {% endmacro %}
 
 <div class="table-wrapper">
@@ -107,6 +129,7 @@
         <th>{{ sort_link("end_date", "End Date") }}</th>
         <th class="col-r">{{ sort_link("days_remaining", "Days") }}</th>
         <th class="col-r">{{ sort_link("recompete_score", "Score") }} <span title="Recompete Score (0–100): competition type (≤40) + contract value (≤35) + time remaining (≤25) + agency/sourcing bonuses. Higher = more attractive to pursue. Open any contract for the full breakdown." style="cursor:help;color:var(--text-faint);font-weight:normal">&#9432;</span></th>
+        {% if for_my_business %}<th class="col-r" title="How well this contract matches your Company Profile">Match</th>{% endif %}
       </tr>
     </thead>
     <tbody>
@@ -130,16 +153,17 @@
           {%- else -%}{{ days }}{%- endif -%}
         </td>
         <td class="col-r">{{ r["recompete_score"] }}</td>
+        {% if for_my_business %}<td class="col-r" style="font-weight:600;color:var(--accent)">{% if r.get("match_score") is not none %}{{ r.get("match_score") }}%{% endif %}</td>{% endif %}
       </tr>
       {% else %}
-      <tr><td colspan="9" class="muted">No contracts found.</td></tr>
+      <tr><td colspan="{{ 10 if for_my_business else 9 }}" class="muted">No contracts found.</td></tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
 
 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px">
-  {% set base_qs %}q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&sort={{ sort }}&dir={{ direction }}{% endset %}
+  {% set base_qs %}q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}{% endset %}
 
   {% if has_prev %}
     <a href="/contracts?{{ base_qs }}&page=1" class="btn btn-ghost" style="padding:5px 10px">First</a>

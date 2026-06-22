@@ -73,6 +73,36 @@
   </div>
 </div>
 
+{% if biz_match_score is not none %}
+<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:var(--radius-sm);padding:16px 20px;margin-bottom:16px">
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:10px">
+    <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.05em">Why this matches your business</div>
+    <div style="font-size:22px;font-weight:700;color:var(--accent)">{{ biz_match_score }}% match</div>
+  </div>
+  {% if biz_match_reasons %}
+  <ul style="margin:0;padding-left:18px;list-style:disc">
+    {% for r in biz_match_reasons %}
+    <li style="font-size:14px;margin-bottom:3px">{{ r }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if biz_mismatch_reasons %}
+  <div style="margin-top:10px;font-size:13px;color:var(--text-muted)">
+    This contract is outside parts of your company profile:
+    <ul style="margin:4px 0 0;padding-left:18px;list-style:disc">
+      {% for r in biz_mismatch_reasons %}
+      <li>{{ r }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  {% if not biz_match_reasons and not biz_mismatch_reasons %}
+  <div class="muted" style="font-size:13px">This contract is outside parts of your company profile.</div>
+  {% endif %}
+  <div style="margin-top:10px;font-size:12px;color:var(--text-muted)"><a href="/company-profile">Edit your Company Profile</a></div>
+</div>
+{% endif %}
+
 <details class="score-explainer">
   <summary>How is the Recompete Score calculated?</summary>
   <div class="explainer-body">

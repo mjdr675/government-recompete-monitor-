@@ -190,6 +190,47 @@ def dashboard_recommended_actions(user_id):
     return results
 
 
+def business_opportunities(user_id, limit=5):
+    """Return top active contracts matched against the user's company profile.
+
+    Scores each contract with business_match_score() and returns the top
+    `limit` results with match_score and match_reasons attached.
+    Returns [] if user_id is None or the user has no company profile.
+    """
+    if not user_id:
+        return []
+
+    from db import get_company_profile
+    from business_match import business_match_score as _bms, business_match_reasons as _bmr
+
+    profile = get_company_profile(user_id)
+    if not profile:
+        return []
+
+    engine = get_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT internal_id, award_id, vendor, agency, value, end_date,
+                   days_remaining, priority, recompete_score, competition_type, raw_json
+            FROM contracts
+            WHERE COALESCE(days_remaining, 0) > 0
+            ORDER BY recompete_score DESC
+            LIMIT 200
+        """)).mappings().fetchall()
+
+    scored = []
+    for row in rows:
+        r = dict(row)
+        score = _bms(r, profile)
+        if score > 0:
+            r["match_score"] = score
+            r["match_reasons"] = _bmr(r, profile)
+            scored.append(r)
+
+    scored.sort(key=lambda r: (-r["match_score"], -(r.get("recompete_score") or 0)))
+    return scored[:limit]
+
+
 def agency_summary(run_date, limit=10):
     engine = get_engine()
     with engine.connect() as conn:
