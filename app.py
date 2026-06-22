@@ -1052,6 +1052,40 @@ def pipeline():
                            count=len(opps))
 
 
+@app.route("/pipeline/<int:opp_id>")
+def opportunity_detail(opp_id):
+    opp = get_opportunity(g.user["id"], opp_id)
+    if not opp:
+        return redirect("/pipeline")
+
+    con = connect()
+    con.row_factory = lambda cur, row: {col[0]: row[i] for i, col in enumerate(cur.description)}
+    contract = con.execute(
+        "SELECT * FROM contracts WHERE internal_id=?", (opp["internal_id"],)
+    ).fetchone()
+    con.close()
+
+    biz_match_score = None
+    biz_match_reasons_list = []
+    biz_mismatch_reasons_list = []
+    biz_profile = get_company_profile(g.user["id"])
+    if biz_profile and contract:
+        biz_match_score = business_match_score(contract, biz_profile)
+        biz_match_reasons_list = business_match_reasons(contract, biz_profile)
+        biz_mismatch_reasons_list = business_mismatch_reasons(contract, biz_profile)
+
+    return render_template(
+        "opportunity_detail.html",
+        opp=opp,
+        contract=contract,
+        pipeline_stages=PIPELINE_STAGES,
+        biz_match_score=biz_match_score,
+        biz_match_reasons=biz_match_reasons_list,
+        biz_mismatch_reasons=biz_mismatch_reasons_list,
+        has_profile=biz_profile is not None,
+    )
+
+
 @app.route("/pipeline/add/<internal_id>", methods=["POST"])
 def pipeline_add(internal_id):
     _opp_id, created = add_opportunity(g.user["id"], internal_id)

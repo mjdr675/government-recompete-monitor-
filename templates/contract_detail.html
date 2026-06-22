@@ -16,7 +16,7 @@
       {{ "★ Watching" if is_bookmarked else "☆ Watch" }}
     </button>
     {% if pipeline_opp %}
-    <span style="font-size:13px;padding:6px 12px;border-radius:var(--radius-sm);background:#d1fae5;color:#065f46;font-weight:600">&#10003; In Pipeline</span>
+    <a href="/pipeline/{{ pipeline_opp['id'] }}" style="font-size:13px;padding:6px 12px;border-radius:var(--radius-sm);background:#d1fae5;color:#065f46;font-weight:600;text-decoration:none">&#10003; In Pipeline</a>
     <form method="post" action="/pipeline/remove/{{ row['internal_id'] }}" style="margin:0">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" onclick="return confirm('Remove from pipeline?')"

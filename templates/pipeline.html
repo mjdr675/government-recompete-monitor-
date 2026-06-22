@@ -43,7 +43,7 @@
     <tbody>
     {% for opp in opportunities %}
     <tr>
-      <td><a href="/contract/{{ opp['internal_id'] }}">{{ opp['internal_id'] }}</a></td>
+      <td><a href="/pipeline/{{ opp['id'] }}">{{ opp['internal_id'] }}</a></td>
       <td class="muted" style="font-size:13px">{{ opp['vendor'] or '—' }}</td>
       <td class="muted" style="font-size:13px">{{ opp['agency'] or '—' }}</td>
       <td style="text-align:right;font-size:13px">{% if opp['value'] %}${{ "{:,.0f}".format(opp['value']) }}{% else %}—{% endif %}</td>
@@ -65,7 +65,7 @@
       <td style="font-size:13px">{{ opp['next_action_due'] or '—' }}</td>
       <td class="muted" style="font-size:12px">{{ opp['updated_at'][:10] if opp['updated_at'] else '—' }}</td>
       <td style="white-space:nowrap">
-        <a href="/contract/{{ opp['internal_id'] }}" style="font-size:12px;margin-right:8px">Detail</a>
+        <a href="/pipeline/{{ opp['id'] }}" style="font-size:12px;margin-right:8px">Detail</a>
         <form method="post" action="/pipeline/remove/{{ opp['internal_id'] }}" style="display:inline;margin:0">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" onclick="return confirm('Remove from pipeline?')"
