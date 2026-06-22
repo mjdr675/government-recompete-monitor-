@@ -29,6 +29,13 @@ def test_db(tmp_path):
 def client(test_db):
     import app as flask_app
     flask_app.app.config["TESTING"] = True
+    # CSRF/rate-limit must be disabled for the test client to register+login in
+    # isolation. The app is a module-level singleton, so in the full suite an
+    # earlier test happens to disable these and registration succeeds; running
+    # this file alone exposed the gap (register 400 → /contracts 302 to /login).
+    # Match the sibling fixtures so these tests are order-independent.
+    flask_app.app.config["WTF_CSRF_ENABLED"] = False
+    flask_app.app.config["RATELIMIT_ENABLED"] = False
     flask_app.app.secret_key = "test-secret-key"
     with flask_app.app.test_client() as c:
         c.post("/register", data={
