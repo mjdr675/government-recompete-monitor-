@@ -1,0 +1,62 @@
+{% extends "base_email.html" %}
+{% block title %}Your Pipeline Digest — Recompete.us{% endblock %}
+{% block heading %}Pipeline Digest{% endblock %}
+{% block body %}
+<p style="color:#374151;line-height:1.6">
+  You have <strong>{{ active_count }}</strong> active pipeline
+  {{ "opportunity" if active_count == 1 else "opportunities" }}
+  ({{ total_count }} total).
+</p>
+
+{% if due_soon %}
+<h3 style="font-size:14px;color:#111827;margin:20px 0 8px">Actions Due Soon</h3>
+<table class="data">
+  <thead>
+    <tr>
+      <th>Contract</th>
+      <th>Stage</th>
+      <th>Due</th>
+      <th>Next Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for opp in due_soon %}
+    <tr>
+      <td><a href="https://govrecompete.com/pipeline/{{ opp['id'] }}" style="color:#10b981;text-decoration:none;font-weight:500">{{ opp['award_id'] or opp['internal_id'] }}</a></td>
+      <td><span class="tag">{{ opp['stage'] }}</span></td>
+      <td style="white-space:nowrap">{{ opp['next_action_due'] }}</td>
+      <td style="color:#6b7280">{{ opp['next_action'] or "—" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if top_opportunities %}
+<h3 style="font-size:14px;color:#111827;margin:20px 0 8px">Top Active Opportunities</h3>
+<table class="data">
+  <thead>
+    <tr>
+      <th>Contract</th>
+      <th>Stage</th>
+      <th>Score</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for opp in top_opportunities %}
+    <tr>
+      <td><a href="https://govrecompete.com/pipeline/{{ opp['id'] }}" style="color:#10b981;text-decoration:none;font-weight:500">{{ opp['award_id'] or opp['internal_id'] }}</a></td>
+      <td><span class="tag">{{ opp['stage'] }}</span></td>
+      <td>{{ opp['recompete_score'] or "—" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if not due_soon and not top_opportunities %}
+<p style="color:#6b7280;font-size:14px">Your pipeline is empty.
+  <a href="https://govrecompete.com/contracts" style="color:#10b981">Browse contracts</a>
+  to find opportunities to track.</p>
+{% endif %}
+{% endblock %}

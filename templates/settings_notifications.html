@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Notification Settings — Recompete{% endblock %}
+{% block content %}
+<h1>Notification Settings</h1>
+<div class="page-meta" style="margin-bottom:20px">Configure which email notifications you receive.</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for category, msg in messages %}
+    <div class="auth-success" style="margin-bottom:16px">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+<div class="settings-page">
+  <div class="settings-card">
+    <h2>Email Notifications</h2>
+    <form method="post" action="/settings/notifications">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="field" style="margin-bottom:20px">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:500">
+          <input type="checkbox" name="email_notifications_enabled" value="1"
+                 {% if prefs.email_notifications_enabled %}checked{% endif %}
+                 style="width:auto;accent-color:var(--accent)">
+          Enable all email notifications
+        </label>
+        <p style="font-size:12.5px;color:var(--text-muted);margin:6px 0 0 26px">
+          Master switch. When off, no notification emails will be sent.
+        </p>
+      </div>
+
+      <div class="field" style="margin-bottom:20px">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:500">
+          <input type="checkbox" name="pipeline_digest_enabled" value="1"
+                 {% if prefs.pipeline_digest_enabled %}checked{% endif %}
+                 style="width:auto;accent-color:var(--accent)">
+          Pipeline digest
+        </label>
+        <p style="font-size:12.5px;color:var(--text-muted);margin:6px 0 0 26px">
+          Periodic summary of your active pipeline opportunities and upcoming actions.
+        </p>
+      </div>
+
+      <div class="field" style="margin-bottom:20px">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:500">
+          <input type="checkbox" name="next_action_reminders_enabled" value="1"
+                 {% if prefs.next_action_reminders_enabled %}checked{% endif %}
+                 style="width:auto;accent-color:var(--accent)">
+          Next action reminders
+        </label>
+        <p style="font-size:12.5px;color:var(--text-muted);margin:6px 0 0 26px">
+          Reminders when pipeline opportunity actions are due.
+        </p>
+      </div>
+
+      <div class="field" style="margin-bottom:20px">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:500">
+          <input type="checkbox" name="opportunity_alerts_enabled" value="1"
+                 {% if prefs.opportunity_alerts_enabled %}checked{% endif %}
+                 style="width:auto;accent-color:var(--accent)">
+          Opportunity alerts
+        </label>
+        <p style="font-size:12.5px;color:var(--text-muted);margin:6px 0 0 26px">
+          Alerts when tracked contracts reach key milestones.
+        </p>
+      </div>
+
+      <div class="field" style="margin-bottom:24px">
+        <label for="digest_frequency">Digest frequency</label>
+        <select name="digest_frequency" id="digest_frequency" style="width:auto;min-width:140px">
+          {% for freq, label in [("daily","Daily"),("weekly","Weekly"),("monthly","Monthly")] %}
+            <option value="{{ freq }}" {% if prefs.digest_frequency == freq %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <button type="submit" class="btn btn-primary" style="margin-top:4px">Save settings</button>
+    </form>
+  </div>
+
+  <p style="font-size:13px;color:var(--text-muted)"><a href="/settings/alerts">&larr; Alert settings</a></p>
+</div>
+{% endblock %}

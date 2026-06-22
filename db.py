@@ -93,6 +93,10 @@ _MIGRATION_PROBES: dict = {
         "SELECT COUNT(*) FROM information_schema.tables "
         "WHERE table_schema = 'public' AND table_name = 'opportunities'"
     ),
+    "008_notification_preferences.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'user_notification_preferences'"
+    ),
 }
 
 
@@ -558,6 +562,86 @@ def init_db():
             "CREATE INDEX IF NOT EXISTS idx_opportunities_user_due"
             " ON opportunities(user_id, next_action_due)"
         ))
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS user_notification_preferences (
+            id                              INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id                         INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+            email_notifications_enabled     INTEGER NOT NULL DEFAULT 1,
+            pipeline_digest_enabled         INTEGER NOT NULL DEFAULT 1,
+            next_action_reminders_enabled   INTEGER NOT NULL DEFAULT 1,
+            opportunity_alerts_enabled      INTEGER NOT NULL DEFAULT 1,
+            digest_frequency                TEXT NOT NULL DEFAULT 'weekly',
+            updated_at                      TEXT NOT NULL
+        )
+        """))
+
+
+_NOTIFICATION_DEFAULTS: dict = {
+    "email_notifications_enabled": 1,
+    "pipeline_digest_enabled": 1,
+    "next_action_reminders_enabled": 1,
+    "opportunity_alerts_enabled": 1,
+    "digest_frequency": "weekly",
+}
+_VALID_NOTIFICATION_FIELDS = frozenset(_NOTIFICATION_DEFAULTS.keys())
+_VALID_DIGEST_FREQUENCIES = frozenset({"daily", "weekly", "monthly"})
+
+
+def get_notification_preferences(user_id: int) -> dict:
+    """Return notification preferences for user_id, or defaults if none saved yet."""
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = conn.execute(
+            text(
+                "SELECT email_notifications_enabled, pipeline_digest_enabled,"
+                " next_action_reminders_enabled, opportunity_alerts_enabled,"
+                " digest_frequency"
+                " FROM user_notification_preferences WHERE user_id = :uid"
+            ),
+            {"uid": user_id},
+        ).mappings().fetchone()
+    return dict(row) if row else dict(_NOTIFICATION_DEFAULTS)
+
+
+def update_notification_preferences(user_id: int, **fields) -> dict:
+    """Upsert notification preferences for user_id with the given field overrides.
+
+    Unknown fields are silently ignored. Returns the persisted prefs dict.
+    Raises ValueError for invalid digest_frequency.
+    """
+    valid = {k: v for k, v in fields.items() if k in _VALID_NOTIFICATION_FIELDS}
+    if not valid:
+        return get_notification_preferences(user_id)
+    if "digest_frequency" in valid and valid["digest_frequency"] not in _VALID_DIGEST_FREQUENCIES:
+        raise ValueError(f"Invalid digest_frequency: {valid['digest_frequency']!r}")
+    for bf in (
+        "email_notifications_enabled", "pipeline_digest_enabled",
+        "next_action_reminders_enabled", "opportunity_alerts_enabled",
+    ):
+        if bf in valid:
+            valid[bf] = 1 if valid[bf] else 0
+    merged = {**get_notification_preferences(user_id), **valid}
+    now = datetime.now(timezone.utc).isoformat()
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(text("""
+            INSERT INTO user_notification_preferences
+                (user_id, email_notifications_enabled, pipeline_digest_enabled,
+                 next_action_reminders_enabled, opportunity_alerts_enabled,
+                 digest_frequency, updated_at)
+            VALUES
+                (:uid, :email_notifications_enabled, :pipeline_digest_enabled,
+                 :next_action_reminders_enabled, :opportunity_alerts_enabled,
+                 :digest_frequency, :now)
+            ON CONFLICT(user_id) DO UPDATE SET
+                email_notifications_enabled   = excluded.email_notifications_enabled,
+                pipeline_digest_enabled       = excluded.pipeline_digest_enabled,
+                next_action_reminders_enabled = excluded.next_action_reminders_enabled,
+                opportunity_alerts_enabled    = excluded.opportunity_alerts_enabled,
+                digest_frequency              = excluded.digest_frequency,
+                updated_at                    = excluded.updated_at
+        """), {**merged, "uid": user_id, "now": now})
+    return get_notification_preferences(user_id)
 
 
 def get_company_profile(user_id):

@@ -44,6 +44,8 @@ from db import (
     get_opportunity_by_contract,
     list_opportunities,
     update_opportunity,
+    get_notification_preferences,
+    update_notification_preferences,
 )
 from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
@@ -1547,6 +1549,30 @@ def settings_alerts():
     defaults = {"expiry_days": 30, "enabled": 1}
     prefs = dict(prefs) if prefs else defaults
     return render_template("settings_alerts.html", prefs=prefs)
+
+
+@app.route("/settings/notifications", methods=["GET", "POST"])
+def settings_notifications():
+    user = g.get("user")
+    if not user:
+        return redirect(url_for("auth.login"))
+    if request.method == "POST":
+        try:
+            update_notification_preferences(
+                user["id"],
+                email_notifications_enabled=bool(request.form.get("email_notifications_enabled")),
+                pipeline_digest_enabled=bool(request.form.get("pipeline_digest_enabled")),
+                next_action_reminders_enabled=bool(request.form.get("next_action_reminders_enabled")),
+                opportunity_alerts_enabled=bool(request.form.get("opportunity_alerts_enabled")),
+                digest_frequency=request.form.get("digest_frequency", "weekly"),
+            )
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("settings_notifications"))
+        flash("Notification settings saved.", "success")
+        return redirect(url_for("settings_notifications"))
+    prefs = get_notification_preferences(user["id"])
+    return render_template("settings_notifications.html", prefs=prefs)
 
 
 @app.route("/admin")

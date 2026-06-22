@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Recompete.us{% endblock %}</title>
+<style>
+body { margin: 0; padding: 0; background: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+.wrapper { max-width: 600px; margin: 0 auto; padding: 32px 16px; }
+.card { background: #ffffff; border-radius: 8px; padding: 32px; border: 1px solid #e4e4e7; }
+.header { border-bottom: 2px solid #10b981; padding-bottom: 16px; margin-bottom: 24px; }
+.header h1 { margin: 0; font-size: 20px; color: #111827; }
+.logo { color: #10b981; font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; }
+.footer { margin-top: 24px; font-size: 11px; color: #9ca3af; text-align: center; }
+.btn { display: inline-block; background: #10b981; color: #ffffff !important; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 14px; }
+table.data { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+table.data th { background: #f9fafb; color: #6b7280; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; padding: 6px 8px; text-align: left; border-bottom: 1px solid #e4e4e7; }
+table.data td { padding: 8px; border-bottom: 1px solid #f3f4f6; color: #374151; vertical-align: top; }
+.tag { display: inline-block; background: #d1fae5; color: #065f46; padding: 2px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="card">
+    <div class="header">
+      <div class="logo">Recompete.us</div>
+      <h1>{% block heading %}{% endblock %}</h1>
+    </div>
+    {% block body %}{% endblock %}
+    <div style="margin-top:28px">
+      <a href="https://govrecompete.com/pipeline" class="btn">View My Pipeline</a>
+    </div>
+  </div>
+  <div class="footer">
+    <p>You're receiving this because you have email notifications enabled.
+    <a href="https://govrecompete.com/settings/notifications" style="color:#9ca3af">Manage preferences</a></p>
+    <p>&copy; Recompete.us</p>
+  </div>
+</div>
+</body>
+</html>
