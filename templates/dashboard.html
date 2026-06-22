@@ -7,8 +7,77 @@
 {# ── Mobile greeting (hidden on desktop via CSS) ─────────── #}
 <div class="mobile-greeting">
   <p class="mobile-greeting-text" id="mobile-greeting-text">Welcome back</p>
-  <p class="mobile-greeting-sub">Here's what needs your attention today.</p>
+  <p class="mobile-greeting-sub">
+    {%- if g.user -%}
+      {%- if analytics.platform.critical_contracts -%}
+        {{ analytics.platform.critical_contracts }} critical contract{{ 's' if analytics.platform.critical_contracts != 1 }} need attention
+        {%- if analytics.upcoming %}, {{ analytics.upcoming | length }} expiring soon{%- endif -%}.
+      {%- elif analytics.upcoming -%}
+        {{ analytics.upcoming | length }} contract{{ 's' if analytics.upcoming | length != 1 }} expiring in 90 days.
+      {%- elif pipeline_summary.active -%}
+        {{ pipeline_summary.active }} active pipeline item{{ 's' if pipeline_summary.active != 1 }}.
+      {%- else -%}
+        Here&rsquo;s what needs your attention today.
+      {%- endif -%}
+    {%- else -%}
+      Here&rsquo;s what needs your attention today.
+    {%- endif -%}
+  </p>
+  {% if g.user %}
+  <div class="dash-quick-stats">
+    {% if analytics.platform.critical_contracts %}
+    <a href="/contracts?priority=CRITICAL" class="dash-stat-chip stat-critical">{{ analytics.platform.critical_contracts }} Critical</a>
+    {% endif %}
+    {% if analytics.upcoming %}
+    <a href="/contracts?days=90" class="dash-stat-chip stat-warning">{{ analytics.upcoming | length }} Expiring</a>
+    {% endif %}
+    {% if pipeline_summary.active %}
+    <a href="/pipeline" class="dash-stat-chip stat-accent">{{ pipeline_summary.active }} Pipeline</a>
+    {% endif %}
+    {% if analytics.platform.total_contracts %}
+    <a href="/contracts" class="dash-stat-chip">{{ analytics.platform.total_contracts }} Contracts</a>
+    {% endif %}
+  </div>
+  {% endif %}
 </div>
+
+{# ── Mobile Next Best Action (hidden on desktop) ──────────── #}
+{% if g.user %}
+<div class="mobile-today m-show">
+  <div class="nba-card">
+    <div class="nba-label">Next best action</div>
+    {% if not has_profile %}
+    <div class="nba-action">Complete your company profile</div>
+    <div class="nba-desc">Tell us about your business to see contracts matched to your NAICS codes and size range.</div>
+    <a href="/onboarding" class="nba-btn">Set Up Profile &rarr;</a>
+    {% elif pipeline_summary.top and pipeline_summary.top[0]['next_action_due'] %}
+    <div class="nba-action">{{ pipeline_summary.top[0]['next_action'] or 'Review pipeline item' }}</div>
+    <div class="nba-desc">{{ pipeline_summary.top[0]['award_id'] or pipeline_summary.top[0]['internal_id'] }} &middot; due {{ pipeline_summary.top[0]['next_action_due'] }}</div>
+    <a href="/pipeline/{{ pipeline_summary.top[0]['id'] }}" class="nba-btn">View Pipeline Item &rarr;</a>
+    {% elif analytics.platform.critical_contracts %}
+    <div class="nba-action">Review {{ analytics.platform.critical_contracts }} critical contract{{ 's' if analytics.platform.critical_contracts != 1 }}</div>
+    <div class="nba-desc">These opportunities require immediate attention before they expire.</div>
+    <a href="/contracts?priority=CRITICAL" class="nba-btn">View Critical Contracts &rarr;</a>
+    {% elif biz_opps %}
+    <div class="nba-action">Review {{ biz_opps | length }} matched opportunit{{ 'ies' if biz_opps | length != 1 else 'y' }}</div>
+    <div class="nba-desc">Contracts matched to your company profile are waiting for review.</div>
+    <a href="/contracts?for_my_business=1" class="nba-btn">View My Matches &rarr;</a>
+    {% elif dash_actions %}
+    <div class="nba-action">{{ dash_actions[0].next_action }}</div>
+    <div class="nba-desc">{{ dash_actions[0].vendor or '' }}{% if dash_actions[0].vendor and dash_actions[0].agency %} &middot; {% endif %}{{ dash_actions[0].agency or '' }}</div>
+    <a href="/contract/{{ dash_actions[0].internal_id }}" class="nba-btn">View Contract &rarr;</a>
+    {% elif analytics.upcoming %}
+    <div class="nba-action">Review {{ analytics.upcoming | length }} upcoming expiration{{ 's' if analytics.upcoming | length != 1 }}</div>
+    <div class="nba-desc">Contracts expiring within 90 days that may be worth pursuing.</div>
+    <a href="/contracts?days=90" class="nba-btn">View Expirations &rarr;</a>
+    {% else %}
+    <div class="nba-action">Explore the contract pipeline</div>
+    <div class="nba-desc">Search SAM.gov contracts by agency, value, and expiration date.</div>
+    <a href="/contracts" class="nba-btn">Browse Contracts &rarr;</a>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
 
 {# ── Page header ───────────────────────────────────────────── #}
 <div class="page-head" style="margin-bottom:20px">
@@ -322,8 +391,8 @@
       {% endif %}
     </div>
 
-    {# Recent Changes #}
-    <div class="table-wrapper">
+    {# Recent Changes — hidden on mobile (low-priority on small screen) #}
+    <div class="table-wrapper m-hide">
       <div class="table-header">
         <h2>Recent Changes</h2>
       </div>
@@ -413,8 +482,8 @@
     </div>
     {% endif %}
 
-    {# Recommended Opportunities (compact) #}
-    <div class="table-wrapper">
+    {# Recommended Opportunities (compact) — hidden on mobile #}
+    <div class="table-wrapper m-hide">
       <div class="table-header">
         <h2>Recommended Opportunities</h2>
       </div>
@@ -442,8 +511,8 @@
       </table>
     </div>
 
-    {# Top Agencies #}
-    <div class="table-wrapper">
+    {# Top Agencies — hidden on mobile #}
+    <div class="table-wrapper m-hide">
       <div class="table-header"><h2>Top Agencies</h2></div>
       <table>
         <thead><tr><th>Agency</th><th class="col-r">Count</th></tr></thead>
@@ -460,8 +529,8 @@
       </table>
     </div>
 
-    {# Top Vendors #}
-    <div class="table-wrapper">
+    {# Top Vendors — hidden on mobile #}
+    <div class="table-wrapper m-hide">
       <div class="table-header"><h2>Top Vendors</h2></div>
       <table>
         <thead><tr><th>Vendor</th><th class="col-r">Count</th></tr></thead>
