@@ -3,14 +3,19 @@
 
 {% block content %}
 <meta name="csrf-token" content="{{ csrf_token() }}">
-<h1>{{ row["award_id"] or row["internal_id"] }}</h1>
-<div class="muted">{{ row["internal_id"] }}</div>
-<button class="bm-btn" data-id="{{ row['internal_id'] }}" onclick="bookmarkToggle(this)"
-        style="background:none;border:none;cursor:pointer;font-size:16px;margin-top:4px;" title="Bookmark">
-  {{ "★ Remove from watchlist" if is_bookmarked else "☆ Add to watchlist" }}
-</button>
 
-<div style="margin-top:14px;padding:12px 16px;background:#eff6ff;border:1px solid #dbeafe;border-radius:8px;line-height:1.6;color:#1e3a5f;font-size:14px">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:4px">
+  <div>
+    <h1>{{ row["award_id"] or row["internal_id"] }}</h1>
+    <div class="page-meta" style="margin-bottom:6px">{{ row["internal_id"] }}</div>
+  </div>
+  <button class="bm-btn" data-id="{{ row['internal_id'] }}" onclick="bookmarkToggle(this)"
+          style="font-size:14px;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--accent)" title="Bookmark">
+    {{ "★ Remove from watchlist" if is_bookmarked else "☆ Add to watchlist" }}
+  </button>
+</div>
+
+<div class="summary-box">
   <strong>Summary:</strong>
   This contract{% if row["vendor"] %} is held by <strong>{{ row["vendor"] }}</strong>{% endif %}{% if row["agency"] %} for <strong>{{ row["agency"] }}</strong>{% if row["sub_agency"] %} ({{ row["sub_agency"] }}){% endif %}{% endif %}{% if row["value"] %}, valued at <strong>${{ "{:,.0f}".format(row["value"]) }}</strong>{% endif %}.
   {% if row["end_date"] %}It runs through <strong>{{ row["end_date"] }}</strong>{% if row["days_remaining"] is not none %} ({{ row["days_remaining"] }} days remaining){% endif %}.{% endif %}
@@ -18,69 +23,81 @@
   {% if row["priority"] %}Recompete priority: <strong>{{ row["priority"] }}</strong> (score {{ row["recompete_score"] }}).{% endif %}
 </div>
 
-<div class="cards" style="margin-top:18px;">
-  <div class="card">
-    <div class="muted">Value</div>
-    <div class="num">${{ "{:,.0f}".format(row["value"] or 0) }}</div>
+{% if next_step %}
+<div style="margin-top:14px;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--radius-sm);line-height:1.6">
+  <div style="font-weight:600;color:var(--accent);margin-bottom:4px">Recompete timing: {{ next_step.timing }}</div>
+  <div class="muted" style="margin-bottom:8px">{{ next_step.detail }}</div>
+  <div><strong>Recommended next step:</strong> {{ next_step.action }}</div>
+</div>
+{% endif %}
+
+<div class="kpi-row" style="grid-template-columns:repeat(4,1fr)">
+  <div class="kpi-card">
+    <div class="kpi-label">Value</div>
+    <div class="kpi-value" style="font-size:20px">${{ "{:,.0f}".format(row["value"] or 0) }}</div>
   </div>
-  <div class="card">
-    <div class="muted">Recompete Score</div>
-    <div class="num">{{ row["recompete_score"] }}</div>
+  <div class="kpi-card">
+    <div class="kpi-label">Recompete Score</div>
+    <div class="kpi-value">{{ row["recompete_score"] }}</div>
   </div>
-  <div class="card">
-    <div class="muted">Days Remaining</div>
-    <div class="num">{{ row["days_remaining"] }}</div>
+  <div class="kpi-card">
+    <div class="kpi-label">Days Remaining</div>
+    <div class="kpi-value">{{ row["days_remaining"] }}</div>
   </div>
-  <div class="card">
-    <div class="muted">Priority</div>
-    <div class="num">
+  <div class="kpi-card">
+    <div class="kpi-label">Priority</div>
+    <div class="kpi-value" style="font-size:14px;padding-top:4px">
       <span class="priority-badge priority-{{ (row["priority"] or "unknown").lower() }}">{{ row["priority"] }}</span>
     </div>
   </div>
 </div>
 
-<details style="margin:4px 0 12px;border:1px solid #e5e7eb;border-radius:8px;padding:10px 14px;background:#f9fafb;">
-  <summary style="cursor:pointer;font-weight:600;color:#1e40af;font-size:14px;">How is the Recompete Score calculated?</summary>
-  <div class="muted" style="margin-top:8px;font-size:13px;line-height:1.6;">
-    <p style="margin:0 0 8px;">The score (0–100) ranks how attractive a contract is to pursue as a recompete. It adds up:</p>
-    <ul style="margin:0 0 8px;padding-left:18px;">
-      <li><strong>Competition type</strong> — up to 40 pts (full &amp; open competition scores highest)</li>
-      <li><strong>Contract value</strong> — up to 35 pts (larger awards score higher)</li>
-      <li><strong>Time remaining</strong> — up to 25 pts (sooner expirations score higher)</li>
-      <li><strong>Agency &amp; sourcing signals</strong> — small bonuses (up to 15 pts) for priority agencies, a known solicitation, and key contracting offices</li>
+<details class="score-explainer">
+  <summary>How is the Recompete Score calculated?</summary>
+  <div class="explainer-body">
+    <p>The score (0&ndash;100) ranks how attractive a contract is to pursue as a recompete. It adds up:</p>
+    <ul>
+      <li><strong>Competition type</strong> &mdash; up to 40 pts (full &amp; open competition scores highest)</li>
+      <li><strong>Contract value</strong> &mdash; up to 35 pts (larger awards score higher)</li>
+      <li><strong>Time remaining</strong> &mdash; up to 25 pts (sooner expirations score higher)</li>
+      <li><strong>Agency &amp; sourcing signals</strong> &mdash; small bonuses (up to 15 pts) for priority agencies, a known solicitation, and key contracting offices</li>
     </ul>
-    <p style="margin:0;">Priority tiers: <strong>CRITICAL</strong> 90+, <strong>HIGH</strong> 75–89, <strong>MEDIUM</strong> 60–74, <strong>LOW</strong> below 60.</p>
+    <p>Priority tiers: <strong>CRITICAL</strong> 90+, <strong>HIGH</strong> 75&ndash;89, <strong>MEDIUM</strong> 60&ndash;74, <strong>LOW</strong> below 60.</p>
   </div>
 </details>
 
-<table style="margin-top:8px;">
-  <tr><th>Vendor</th><td><a href="/vendor/{{ row["vendor"]|urlencode }}">{{ row["vendor"] }}</a></td></tr>
-  <tr><th>Agency</th><td><a href="/agency/{{ row["agency"]|urlencode }}">{{ row["agency"] }}</a></td></tr>
-  <tr><th>Sub-Agency</th><td>{{ row["sub_agency"] }}</td></tr>
-  <tr><th>Award ID</th><td>{{ row["award_id"] }}</td></tr>
-  <tr><th>Solicitation ID</th><td>{{ row["solicitation_id"] }}</td></tr>
-  <tr><th>Competition Type</th><td>{{ row["competition_type"] }}</td></tr>
-  <tr><th>Start Date</th><td>{{ row["start_date"] }}</td></tr>
-  <tr><th>End Date</th><td>{{ row["end_date"] }}</td></tr>
-  <tr><th>Updated</th><td>{{ row["updated_at"] }}</td></tr>
-</table>
+<div class="table-wrapper">
+  <table class="detail-table">
+    <tbody>
+      <tr><th>Vendor</th><td><a href="/vendor/{{ row["vendor"]|urlencode }}">{{ row["vendor"] }}</a></td></tr>
+      <tr><th>Agency</th><td><a href="/agency/{{ row["agency"]|urlencode }}">{{ row["agency"] }}</a></td></tr>
+      <tr><th>Sub-Agency</th><td>{{ row["sub_agency"] }}</td></tr>
+      <tr><th>Award ID</th><td>{{ row["award_id"] }}</td></tr>
+      <tr><th>Solicitation ID</th><td>{{ row["solicitation_id"] }}</td></tr>
+      <tr><th>Competition Type</th><td>{{ row["competition_type"] }}</td></tr>
+      <tr><th>Start Date</th><td>{{ row["start_date"] }}</td></tr>
+      <tr><th>End Date</th><td>{{ row["end_date"] }}</td></tr>
+      <tr><th>Updated</th><td>{{ row["updated_at"] }}</td></tr>
+    </tbody>
+  </table>
+</div>
 
 {% if g.user %}
-<div style="margin-top:28px;">
-  <h2 style="font-size:16px;margin-bottom:8px;">Notes</h2>
-  <ul id="notes-list" style="list-style:none;padding:0;margin:0 0 12px;">
+<div class="notes-section">
+  <h2>Notes</h2>
+  <ul id="notes-list" class="notes-list">
     {% for n in notes %}
-    <li style="background:white;border-radius:6px;padding:10px 14px;margin-bottom:8px;box-shadow:0 1px 3px #ddd;">
+    <li class="note-item">
       <div>{{ n.body }}</div>
-      <div class="muted" style="font-size:12px;margin-top:4px;">{{ n.created_at[:10] }}</div>
+      <div class="note-date">{{ n.created_at[:10] }}</div>
     </li>
     {% else %}
     <li id="notes-empty" class="muted">No notes yet.</li>
     {% endfor %}
   </ul>
-  <textarea id="note-body" rows="3" style="width:100%;max-width:600px;padding:8px;box-sizing:border-box;" placeholder="Add a private note..."></textarea><br>
-  <button onclick="addNote()" style="margin-top:6px;">Add note</button>
-  <span id="note-error" class="muted" style="margin-left:8px;color:#b00020;display:none;"></span>
+  <textarea id="note-body" rows="3" style="width:100%;max-width:600px;padding:8px;" placeholder="Add a private note&hellip;"></textarea><br>
+  <button onclick="addNote()" class="btn btn-secondary" style="margin-top:6px">Add note</button>
+  <span id="note-error" class="muted" style="margin-left:8px;color:var(--badge-critical-bg);display:none"></span>
 </div>
 {% endif %}
 
@@ -113,8 +130,8 @@ function addNote() {
     var empty = document.getElementById('notes-empty');
     if (empty) empty.remove();
     var li = document.createElement('li');
-    li.style.cssText = 'background:white;border-radius:6px;padding:10px 14px;margin-bottom:8px;box-shadow:0 1px 3px #ddd;';
-    li.innerHTML = '<div>' + body.replace(/</g,'&lt;') + '</div><div class="muted" style="font-size:12px;margin-top:4px;">' + data.created_at.slice(0,10) + '</div>';
+    li.className = 'note-item';
+    li.innerHTML = '<div>' + body.replace(/</g,'&lt;') + '</div><div class="note-date">' + data.created_at.slice(0,10) + '</div>';
     document.getElementById('notes-list').prepend(li);
     document.getElementById('note-body').value = '';
   }).catch(function() { errEl.textContent = 'Could not save note.'; errEl.style.display = 'inline'; });

@@ -1,105 +1,128 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Recompete — Government Contract Intelligence{% endblock %}</title>
-  <style>
-    body{font-family:Arial,sans-serif;margin:0;background:#f7f7f7;color:#222}
-    .topbar{background:#1a2744;color:white;padding:0 24px;display:flex;align-items:center;min-height:50px}
-    .topbar-brand{display:inline-flex;align-items:center;font-weight:bold;font-size:16px;color:white;text-decoration:none;margin-right:28px;letter-spacing:.3px}
-    .brand-mark{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:5px;background:#2563eb;color:#fff;font-weight:800;font-size:13px;margin-right:8px;line-height:1}
-    .topbar-nav{display:flex;align-items:center;flex:1}
-    .topbar-nav a{color:rgba(255,255,255,.82);text-decoration:none;padding:14px 12px;font-size:14px;display:block;transition:color .12s}
-    .topbar-nav a:hover{color:white}
-    .topbar-right{display:flex;align-items:center;gap:10px;margin-left:auto}
-    .topbar-right a{color:rgba(255,255,255,.82);text-decoration:none;font-size:13px}
-    .topbar-right a:hover{color:white;text-decoration:underline}
-    .btn-signup{background:#2563eb;color:white!important;padding:6px 14px;border-radius:4px;font-weight:bold;font-size:13px;text-decoration:none!important}
-    .btn-signup:hover{background:#1d4ed8!important}
-    .trial-banner{background:#fef3c7;border-bottom:1px solid #f59e0b;padding:8px 24px;font-size:13px}
-    .trial-banner.urgent{background:#fee2e2;border-bottom-color:#ef4444}
-    .content{padding:28px 32px}
-    a{color:#1f4f8f;text-decoration:none}
-    a:hover{text-decoration:underline}
-    h1{margin-bottom:4px}
-    .muted{color:#666;margin-bottom:18px}
-    .cards{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px}
-    .card{background:white;border-radius:10px;padding:18px;min-width:140px;box-shadow:0 1px 4px #ddd;transition:box-shadow .15s,background .15s;cursor:pointer}
-    .card:hover{background:#f0f4ff;box-shadow:0 3px 10px #c7d2e8}
-    .num{font-size:28px;font-weight:bold}
-    table{width:100%;border-collapse:collapse;background:white;margin:16px 0 28px}
-    th,td{padding:10px;border-bottom:1px solid #eee;text-align:left;vertical-align:top}
-    th{background:#fafafa}
-    input,select,button{padding:8px;margin-right:8px}
-    .priority-badge{display:inline-block;padding:4px 8px;border-radius:999px;font-weight:bold;font-size:12px;color:white}
-    .priority-critical{background:#b00020}
-    .priority-high{background:#d97706}
-    .priority-medium{background:#2563eb}
-    .priority-low{background:#4b5563}
-    @media(max-width:700px){.content{padding:12px}.cards{gap:10px}.card{min-width:120px;padding:12px}.num{font-size:22px}th,td{padding:6px 4px;font-size:13px}.topbar-nav a{padding:10px 8px;font-size:13px}}
-    @media(max-width:480px){.topbar{padding:0 12px}.topbar-nav a{padding:10px 6px;font-size:12px}}
-  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/design.css') }}">
 </head>
 <body>
-  <div class="topbar">
-    <a class="topbar-brand" href="{% if g.user %}/dashboard{% else %}/{% endif %}"><span class="brand-mark" aria-hidden="true">R</span>Recompete</a>
-    {% if g.user %}
-      <nav class="topbar-nav">
-        <a href="/dashboard">Dashboard</a>
-        <a href="/contracts">Contracts</a>
-        <a href="/watchlist">Watchlist{% if g.watchlist_count %} ({{ g.watchlist_count }}){% endif %}</a>
-        <a href="/searches">Saved Searches</a>
-        <a href="/views">Views</a>
-        <a href="/settings/alerts">Alerts</a>
-        <a href="/ingest">Ingest</a>
-      </nav>
-      <div class="topbar-right">
-        <span style="font-size:13px;color:rgba(255,255,255,.65)" title="{{ g.user['email'] }}">{{ g.user.get('company_name') or g.user['email'] }}</span>
+
+{% if g.user %}
+{% set p = request.path %}
+<div class="app-layout">
+  <aside class="sidebar">
+    <a class="sidebar-brand" href="/dashboard">
+      <span class="brand-mark" aria-hidden="true">R</span>
+      <span class="brand-name">Recompete</span>
+    </a>
+    <nav class="sidebar-nav">
+      <a href="/dashboard" class="{{ 'active' if p == '/dashboard' }}">Dashboard</a>
+      <a href="/contracts" class="{{ 'active' if p.startswith('/contract') }}">Contracts</a>
+      <a href="/watchlist" class="{{ 'active' if p == '/watchlist' }}">Watchlist{% if g.watchlist_count %}<span class="nav-badge">{{ g.watchlist_count }}</span>{% endif %}</a>
+      <a href="/searches" class="{{ 'active' if p == '/searches' }}">Saved Searches</a>
+      <a href="/views" class="{{ 'active' if p.startswith('/views') }}">Views</a>
+      <a href="/settings/alerts" class="{{ 'active' if p.startswith('/settings') }}">Alerts</a>
+      <a href="/ingest" class="{{ 'active' if p == '/ingest' }}">Ingest</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-user-name" title="{{ g.user['email'] }}">{{ g.user.get('company_name') or g.user['email'] }}</div>
+      <div class="sidebar-footer-links">
         {% if g.user.get('stripe_customer_id') %}
           <form method="post" action="/billing/portal" style="display:inline;margin:0">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" style="background:none;border:none;padding:0;cursor:pointer;font-size:13px;color:rgba(255,255,255,.82);text-decoration:underline">Subscription</button>
+            <button type="submit">Subscription</button>
           </form>
-        {% else %}
-          <a href="/subscribe" style="color:#fbbf24;font-weight:bold">Upgrade</a>
         {% endif %}
         <a href="/settings/account">Account</a>
         <a href="/logout">Sign out</a>
       </div>
-    {% else %}
-      <div class="topbar-right">
-        <a href="/login">Sign in</a>
-        <a href="/register" class="btn-signup">Start free trial</a>
-      </div>
-    {% endif %}
-  </div>
-
-  {% if g.user and trial_days_remaining is not none %}
-    {% if trial_days_remaining <= 3 %}
-      <div class="trial-banner urgent">
-        <strong>Trial ending soon:</strong> {{ trial_days_remaining }} day{{ 's' if trial_days_remaining != 1 else '' }} remaining &mdash;
-        <a href="/subscribe" style="color:#b91c1c;font-weight:bold">Subscribe now to keep access →</a>
-      </div>
-    {% else %}
-      <div class="trial-banner">
-        <strong>Free trial:</strong> {{ trial_days_remaining }} day{{ 's' if trial_days_remaining != 1 else '' }} remaining &mdash;
-        <a href="/subscribe" style="color:#92400e">Upgrade to Pro →</a>
-      </div>
-    {% endif %}
-  {% endif %}
-
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% for category, message in messages %}
-      {% if category == 'error' %}
-        <div style="background:#fee2e2;border-left:4px solid #ef4444;padding:10px 24px;font-size:14px;color:#991b1b;">{{ message }}</div>
-      {% else %}
-        <div style="background:#d1fae5;border-left:4px solid #10b981;padding:10px 24px;font-size:14px;color:#065f46;">{{ message }}</div>
+      {% if not g.user.get('stripe_customer_id') %}
+        <a href="/subscribe" class="sidebar-upgrade">Upgrade to Pro</a>
       {% endif %}
-    {% endfor %}
-  {% endwith %}
-
-  <div class="content">
-    {% block content %}{% endblock %}
+    </div>
+  </aside>
+  <div class="main-wrapper">
+    <header class="top-header">
+      <button class="sidebar-toggle" onclick="document.body.classList.toggle('sidebar-open')" aria-label="Toggle navigation">&#9776;</button>
+      <div class="header-spacer"></div>
+      <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">Dark</button>
+    </header>
+    {% if trial_days_remaining is not none %}
+      {% if trial_days_remaining <= 3 %}
+        <div class="trial-banner urgent">
+          <strong>Trial ending soon:</strong> {{ trial_days_remaining }} day{{ 's' if trial_days_remaining != 1 else '' }} remaining &mdash;
+          <a href="/subscribe" style="color:#b91c1c">Subscribe now to keep access &rarr;</a>
+        </div>
+      {% else %}
+        <div class="trial-banner">
+          <strong>Free trial:</strong> {{ trial_days_remaining }} day{{ 's' if trial_days_remaining != 1 else '' }} remaining &mdash;
+          <a href="/subscribe" style="color:#92400e">Upgrade to Pro &rarr;</a>
+        </div>
+      {% endif %}
+    {% endif %}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        {% if category == 'error' %}
+          <div class="flash-error" style="background:#fee2e2;border-left:3px solid #ef4444;color:#991b1b">{{ message }}</div>
+        {% else %}
+          <div class="flash-success" style="background:#d1fae5;border-left:3px solid #10b981;color:#065f46">{{ message }}</div>
+        {% endif %}
+      {% endfor %}
+    {% endwith %}
+    <main class="content">
+{% else %}
+<div class="anon-topbar">
+  <a class="anon-topbar-brand" href="/">
+    <span class="brand-mark" aria-hidden="true">R</span>
+    Recompete
+  </a>
+  <div class="anon-topbar-links">
+    <a href="/login">Sign in</a>
+    <a href="/register" class="btn btn-primary">Start free trial</a>
   </div>
-  {% block scripts %}{% endblock %}
+</div>
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for category, message in messages %}
+    {% if category == 'error' %}
+      <div class="flash-error" style="background:#fee2e2;border-left:3px solid #ef4444;color:#991b1b">{{ message }}</div>
+    {% else %}
+      <div class="flash-success" style="background:#d1fae5;border-left:3px solid #10b981;color:#065f46">{{ message }}</div>
+    {% endif %}
+  {% endfor %}
+{% endwith %}
+<div class="anon-content">
+{% endif %}
+
+{% block content %}{% endblock %}
+
+{% if g.user %}
+    </main>
+  </div>
+</div>
+{% else %}
+</div>
+{% endif %}
+
+<script>
+(function() {
+  var btn = document.getElementById('theme-btn');
+  function toggleTheme() {
+    var html = document.documentElement;
+    if (html.getAttribute('data-theme') === 'dark') {
+      html.removeAttribute('data-theme');
+      if (btn) btn.textContent = 'Dark';
+    } else {
+      html.setAttribute('data-theme', 'dark');
+      if (btn) btn.textContent = 'Light';
+    }
+  }
+  window.toggleTheme = toggleTheme;
+})();
+</script>
+{% block scripts %}{% endblock %}
 </body>
 </html>

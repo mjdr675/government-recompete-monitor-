@@ -3,195 +3,255 @@
 
 {% block content %}
 <h1>Dashboard</h1>
-<div class="muted">Data as of {{ report.run_date }}</div>
-{% if last_ingest %}
-<div class="muted" style="font-size:13px;">Data last updated {{ hours_ago }}h ago ({{ last_ingest[:10] }})</div>
-{% else %}
-<div class="muted" style="font-size:13px;">Data freshness unknown — no ingest completed yet.</div>
-{% endif %}
+<div class="page-meta">
+  Data as of {{ report.run_date }}
+  {% if last_ingest %}
+   &middot; Data last updated {{ hours_ago }}h ago ({{ last_ingest[:10] }})
+  {% else %}
+   &middot; Data freshness unknown &mdash; no ingest completed yet
+  {% endif %}
+</div>
 
 {% if show_onboarding %}
-<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:18px 22px;margin:16px 0 24px;position:relative;">
-  <form method="post" action="/onboarding/dismiss" style="position:absolute;top:10px;right:14px;margin:0">
+<div class="onboarding-box">
+  <form method="post" action="/onboarding/dismiss" style="margin:0">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" style="background:none;border:none;cursor:pointer;font-size:18px;color:#93c5fd;line-height:1" title="Dismiss">&times;</button>
+    <button type="submit" class="onboarding-dismiss" title="Dismiss">&times;</button>
   </form>
-  <h3 style="margin:0 0 10px;color:#1e40af;font-size:15px">Welcome to Recompete — here's how to get started</h3>
-  <ol style="margin:0;padding-left:18px;color:#1e3a5f;line-height:2;font-size:14px">
-    <li><a href="/contracts">Browse contracts</a> — search and filter the full SAM.gov pipeline by agency, value, or expiration date.</li>
-    <li><a href="/contracts">Add to watchlist</a> — click the star on any contract to track it personally.</li>
-    <li><a href="/settings/alerts">Configure alerts</a> — set how many days before expiry you want to be notified by email.</li>
+  <h3>Welcome to Recompete &mdash; here&rsquo;s how to get started</h3>
+  <ol>
+    <li><a href="/contracts">Browse contracts</a> &mdash; search and filter the full SAM.gov pipeline by agency, value, or expiration date.</li>
+    <li><a href="/contracts">Add to watchlist</a> &mdash; click the star on any contract to track it personally.</li>
+    <li><a href="/settings/alerts">Configure alerts</a> &mdash; set how many days before expiry you want to be notified by email.</li>
   </ol>
 </div>
 {% endif %}
 
-<div class="cards" style="margin-top:20px">
-  <a href="/contracts" class="card" style="text-decoration:none;color:inherit;">
-    <div class="muted">Total Pipeline</div>
-    <div class="num">${{ "{:,.0f}".format(analytics.platform.total_pipeline or 0) }}</div>
+<div class="kpi-row">
+  <a href="/contracts" class="kpi-card">
+    <div class="kpi-label">Total Contracts</div>
+    <div class="kpi-value">{{ analytics.platform.total_contracts or 0 }}</div>
+    <div class="kpi-sub">{{ analytics.platform.active_contracts or 0 }} active</div>
   </a>
-  <a href="/contracts" class="card" style="text-decoration:none;color:inherit;">
-    <div class="muted">Total Contracts</div>
-    <div class="num">{{ analytics.platform.total_contracts or 0 }}</div>
+  <a href="/contracts?priority=CRITICAL" class="kpi-card critical">
+    <div class="kpi-label">Critical Priority</div>
+    <div class="kpi-value">{{ analytics.platform.critical_contracts or 0 }}</div>
+    <div class="kpi-sub">require immediate attention</div>
   </a>
-  <a href="/contracts" class="card" style="text-decoration:none;color:inherit;">
-    <div class="muted">Active</div>
-    <div class="num">{{ analytics.platform.active_contracts or 0 }}</div>
+  <a href="/contracts?days=90" class="kpi-card high">
+    <div class="kpi-label">Expiring in 90 Days</div>
+    <div class="kpi-value">{{ analytics.upcoming | length }}</div>
+    <div class="kpi-sub">upcoming expirations</div>
   </a>
-  <a href="/contracts?priority=CRITICAL" class="card" style="text-decoration:none;color:inherit;border-left:4px solid #b00020">
-    <div class="muted">Critical</div>
-    <div class="num" style="color:#b00020">{{ analytics.platform.critical_contracts or 0 }}</div>
-  </a>
-  <a href="/contracts" class="card" style="text-decoration:none;color:inherit;">
-    <div class="muted">Avg Score</div>
-    <div class="num">{{ "{:.1f}".format(analytics.platform.avg_score or 0) }}</div>
+  <a href="/contracts" class="kpi-card">
+    <div class="kpi-label">Total Pipeline</div>
+    <div class="kpi-value">${{ "{:,.0f}".format(analytics.platform.total_pipeline or 0) }}</div>
+    <div class="kpi-sub">avg score {{ "{:.1f}".format(analytics.platform.avg_score or 0) }}</div>
   </a>
 </div>
 
-<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:28px">
-  <a href="/contracts" style="display:inline-block;padding:10px 20px;background:#1f4f8f;color:white;border-radius:6px;font-weight:bold;text-decoration:none">All Contracts</a>
-  <a href="/contracts?priority=CRITICAL" style="display:inline-block;padding:10px 20px;background:#b00020;color:white;border-radius:6px;font-weight:bold;text-decoration:none">Critical Only</a>
-  <a href="/contracts?days=90" style="display:inline-block;padding:10px 20px;background:#d97706;color:white;border-radius:6px;font-weight:bold;text-decoration:none">Expiring in 90 Days</a>
-  <a href="/views" style="display:inline-block;padding:10px 20px;background:#4b5563;color:white;border-radius:6px;font-weight:bold;text-decoration:none">Saved Views</a>
-  <a href="/ingest" style="display:inline-block;padding:10px 20px;background:#2563eb;color:white;border-radius:6px;font-weight:bold;text-decoration:none">Ingest Data</a>
+<div class="quick-actions">
+  <a href="/contracts" class="btn btn-secondary">All Contracts</a>
+  <a href="/contracts?priority=CRITICAL" class="btn btn-secondary">Critical Only</a>
+  <a href="/contracts?days=90" class="btn btn-secondary">Expiring 90 Days</a>
+  <a href="/views" class="btn btn-secondary">Saved Views</a>
+  <a href="/ingest" class="btn btn-secondary">Ingest Data</a>
 </div>
 
-<h2>Critical Opportunities</h2>
-{% if analytics.critical %}
-<div style="overflow-x:auto">
-<table>
-<tr><th>Contract</th><th>Vendor</th><th>Agency</th><th>Value</th><th>End Date</th><th>Days</th><th>Score</th></tr>
-{% for r in analytics.critical %}
-{% set days = r.days_remaining %}
-<tr>
-<td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
-<td><a href="/vendor/{{ r.vendor|urlencode }}">{{ r.vendor }}</a></td>
-<td><a href="/agency/{{ r.agency|urlencode }}">{{ r.agency }}</a></td>
-<td>${{ "{:,.0f}".format(r.value or 0) }}</td>
-<td>{{ r.end_date or '—' }}</td>
-{% if days is none %}
-  <td>—</td>
-{% elif days <= 30 %}
-  <td style="color:#b00020;font-weight:bold">{{ days }}</td>
-{% elif days <= 90 %}
-  <td style="color:#d97706;font-weight:bold">{{ days }}</td>
-{% else %}
-  <td>{{ days }}</td>
-{% endif %}
-<td>{{ r.recompete_score or '—' }}</td>
-</tr>
-{% endfor %}
-</table>
-</div>
-{% else %}
-<p class="muted">No active critical contracts at this time.</p>
-{% endif %}
-
-<h2>Upcoming Expirations <span class="muted" style="font-size:14px;font-weight:normal">(next 90 days)</span></h2>
-{% if analytics.upcoming %}
-<div style="overflow-x:auto">
-<table>
-<tr><th>Priority</th><th>Contract</th><th>Vendor</th><th>Agency</th><th>Value</th><th>End Date</th><th>Days</th><th>Score</th></tr>
-{% for r in analytics.upcoming %}
-{% set days = r.days_remaining %}
-<tr>
-<td><span class="priority-badge priority-{{ (r.priority or 'unknown').lower().replace(' ','-').replace('_','-') }}">{{ r.priority or '—' }}</span></td>
-<td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
-<td><a href="/vendor/{{ r.vendor|urlencode }}">{{ r.vendor }}</a></td>
-<td><a href="/agency/{{ r.agency|urlencode }}">{{ r.agency }}</a></td>
-<td>${{ "{:,.0f}".format(r.value or 0) }}</td>
-<td>{{ r.end_date or '—' }}</td>
-{% if days is none %}
-  <td>—</td>
-{% elif days <= 30 %}
-  <td style="color:#b00020;font-weight:bold">{{ days }}</td>
-{% else %}
-  <td style="color:#d97706;font-weight:bold">{{ days }}</td>
-{% endif %}
-<td>{{ r.recompete_score or '—' }}</td>
-</tr>
-{% endfor %}
-</table>
-</div>
-{% else %}
-<p class="muted">No contracts expiring within 90 days.</p>
-{% endif %}
-
-<h2>Recommended Opportunities</h2>
-<div style="overflow-x:auto">
-<table>
-<tr><th>Why</th><th>Priority</th><th>Contract</th><th>Vendor</th><th>Agency</th><th>Value</th><th>Days</th><th>Score</th></tr>
-{% for r in recommendations %}
-<tr>
-<td style="font-size:13px;color:#444;white-space:nowrap">{{ r.reason }}</td>
-<td><span class="priority-badge priority-{{ (r.priority or 'unknown').lower().replace(' ','-').replace('_','-') }}">{{ r.priority or '—' }}</span></td>
-<td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
-<td><a href="/vendor/{{ r.vendor|urlencode }}">{{ r.vendor }}</a></td>
-<td><a href="/agency/{{ r.agency|urlencode }}">{{ r.agency }}</a></td>
-<td>${{ "{:,.0f}".format(r.value or 0) }}</td>
-<td>{{ r.days_remaining if r.days_remaining is not none else '—' }}</td>
-<td>{{ r.recompete_score or '—' }}</td>
-</tr>
-{% else %}
-<tr><td colspan="8" class="muted">No contracts loaded yet. <a href="/ingest">Ingest data</a> to get started.</td></tr>
-{% endfor %}
-</table>
+<div class="table-wrapper">
+  <div class="table-header">
+    <h2>Critical Opportunities</h2>
+    {% if analytics.critical %}<span class="table-count">{{ analytics.critical | length }}</span>{% endif %}
+  </div>
+  {% if analytics.critical %}
+  <table>
+    <thead>
+      <tr>
+        <th>Contract</th>
+        <th>Vendor</th>
+        <th>Agency</th>
+        <th>Value</th>
+        <th>End Date</th>
+        <th>Days</th>
+        <th>Score</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in analytics.critical %}
+      {% set days = r.days_remaining %}
+      <tr>
+        <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
+        <td><a href="/vendor/{{ r.vendor|urlencode }}">{{ r.vendor }}</a></td>
+        <td><a href="/agency/{{ r.agency|urlencode }}">{{ r.agency }}</a></td>
+        <td>${{ "{:,.0f}".format(r.value or 0) }}</td>
+        <td>{{ r.end_date or '&mdash;' }}</td>
+        <td>
+          {% if days is none %}&mdash;
+          {% elif days <= 30 %}<span class="days-critical">{{ days }}</span>
+          {% elif days <= 90 %}<span class="days-warning">{{ days }}</span>
+          {% else %}{{ days }}{% endif %}
+        </td>
+        <td>{{ r.recompete_score or '&mdash;' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div style="padding:16px;font-size:13px;color:var(--text-muted)">No active critical contracts at this time.</div>
+  {% endif %}
 </div>
 
-<h2>Recent Changes</h2>
-{% set total_changes = report.summary.values() | sum %}
-{% if total_changes == 0 %}
-<p class="muted">No changes detected for {{ report.run_date }}. Run a second ingest to compare snapshots.</p>
-{% else %}
-<div style="overflow-x:auto">
-<table>
-<tr><th>Priority</th><th>Vendor</th><th>Agency</th><th>Value</th><th>Days</th><th>Score</th><th>Change</th></tr>
-{% for row in report.top_opportunities %}
-<tr>
-<td><span class="priority-badge priority-{{ (row[0] or 'unknown').lower() }}">{{ row[0] }}</span></td>
-<td><a href="/vendor/{{ row[1]|urlencode }}">{{ row[1] }}</a></td>
-<td><a href="/agency/{{ row[2]|urlencode }}">{{ row[2] }}</a></td>
-<td>${{ "{:,.0f}".format(row[3] or 0) }}</td>
-<td>{{ row[4] }}</td>
-<td>{{ row[5] }}</td>
-<td>{{ row[6] }}</td>
-</tr>
-{% endfor %}
-</table>
+<div class="table-wrapper">
+  <div class="table-header">
+    <h2>Upcoming Expirations <span style="font-weight:400;text-transform:none;letter-spacing:0">(next 90 days)</span></h2>
+    {% if analytics.upcoming %}<span class="table-count">{{ analytics.upcoming | length }}</span>{% endif %}
+  </div>
+  {% if analytics.upcoming %}
+  <table>
+    <thead>
+      <tr>
+        <th>Priority</th>
+        <th>Contract</th>
+        <th>Vendor</th>
+        <th>Agency</th>
+        <th>Value</th>
+        <th>End Date</th>
+        <th>Days</th>
+        <th>Score</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in analytics.upcoming %}
+      {% set days = r.days_remaining %}
+      <tr>
+        <td><span class="priority-badge priority-{{ (r.priority or 'unknown').lower().replace(' ','-').replace('_','-') }}">{{ r.priority or '&mdash;' }}</span></td>
+        <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
+        <td><a href="/vendor/{{ r.vendor|urlencode }}">{{ r.vendor }}</a></td>
+        <td><a href="/agency/{{ r.agency|urlencode }}">{{ r.agency }}</a></td>
+        <td>${{ "{:,.0f}".format(r.value or 0) }}</td>
+        <td>{{ r.end_date or '&mdash;' }}</td>
+        <td>
+          {% if days is none %}&mdash;
+          {% elif days <= 30 %}<span class="days-critical">{{ days }}</span>
+          {% else %}<span class="days-warning">{{ days }}</span>{% endif %}
+        </td>
+        <td>{{ r.recompete_score or '&mdash;' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div style="padding:16px;font-size:13px;color:var(--text-muted)">No contracts expiring within 90 days.</div>
+  {% endif %}
 </div>
-{% endif %}
 
-<div style="display:flex;gap:28px;flex-wrap:wrap;margin-top:8px">
-<div style="flex:1;min-width:200px">
-<h2>Top Agencies</h2>
-<table>
-<tr><th>Agency</th><th>Contracts</th><th>Pipeline</th></tr>
-{% for r in analytics.top_agencies %}
-<tr>
-  <td><a href="/agency/{{ r.agency|urlencode }}">{{ r.agency }}</a></td>
-  <td>{{ r.contracts }}</td>
-  <td>${{ "{:,.0f}".format(r.pipeline_value or 0) }}</td>
-</tr>
-{% else %}
-<tr><td colspan="3" class="muted">None</td></tr>
-{% endfor %}
-</table>
+<div class="table-wrapper">
+  <div class="table-header">
+    <h2>Recommended Opportunities</h2>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Why</th>
+        <th>Priority</th>
+        <th>Contract</th>
+        <th>Vendor</th>
+        <th>Agency</th>
+        <th>Value</th>
+        <th>Days</th>
+        <th>Score</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in recommendations %}
+      <tr>
+        <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">{{ r.reason }}</td>
+        <td><span class="priority-badge priority-{{ (r.priority or 'unknown').lower().replace(' ','-').replace('_','-') }}">{{ r.priority or '&mdash;' }}</span></td>
+        <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
+        <td><a href="/vendor/{{ r.vendor|urlencode }}">{{ r.vendor }}</a></td>
+        <td><a href="/agency/{{ r.agency|urlencode }}">{{ r.agency }}</a></td>
+        <td>${{ "{:,.0f}".format(r.value or 0) }}</td>
+        <td>{{ r.days_remaining if r.days_remaining is not none else '&mdash;' }}</td>
+        <td>{{ r.recompete_score or '&mdash;' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" style="color:var(--text-muted)">No contracts loaded yet. <a href="/ingest">Ingest data</a> to get started.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </div>
 
-<div style="flex:1;min-width:200px">
-<h2>Top Vendors</h2>
-<table>
-<tr><th>Vendor</th><th>Contracts</th><th>Pipeline</th></tr>
-{% for r in analytics.top_vendors %}
-<tr>
-  <td><a href="/vendor/{{ r.vendor|urlencode }}">{{ r.vendor }}</a></td>
-  <td>{{ r.contracts }}</td>
-  <td>${{ "{:,.0f}".format(r.pipeline_value or 0) }}</td>
-</tr>
-{% else %}
-<tr><td colspan="3" class="muted">None</td></tr>
-{% endfor %}
-</table>
+<div class="table-wrapper">
+  <div class="table-header">
+    <h2>Recent Changes</h2>
+  </div>
+  {% set total_changes = report.summary.values() | sum %}
+  {% if total_changes == 0 %}
+  <div style="padding:16px;font-size:13px;color:var(--text-muted)">No changes detected for {{ report.run_date }}. Run a second ingest to compare snapshots.</div>
+  {% else %}
+  <table>
+    <thead>
+      <tr>
+        <th>Priority</th>
+        <th>Vendor</th>
+        <th>Agency</th>
+        <th>Value</th>
+        <th>Days</th>
+        <th>Score</th>
+        <th>Change</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in report.top_opportunities %}
+      <tr>
+        <td><span class="priority-badge priority-{{ (row[0] or 'unknown').lower() }}">{{ row[0] }}</span></td>
+        <td><a href="/vendor/{{ row[1]|urlencode }}">{{ row[1] }}</a></td>
+        <td><a href="/agency/{{ row[2]|urlencode }}">{{ row[2] }}</a></td>
+        <td>${{ "{:,.0f}".format(row[3] or 0) }}</td>
+        <td>{{ row[4] }}</td>
+        <td>{{ row[5] }}</td>
+        <td>{{ row[6] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
 </div>
+
+<div class="col-2">
+  <div class="table-wrapper" style="margin-bottom:0">
+    <div class="table-header"><h2>Top Agencies</h2></div>
+    <table>
+      <thead><tr><th>Agency</th><th>Contracts</th><th>Pipeline</th></tr></thead>
+      <tbody>
+        {% for r in analytics.top_agencies %}
+        <tr>
+          <td><a href="/agency/{{ r.agency|urlencode }}">{{ r.agency }}</a></td>
+          <td>{{ r.contracts }}</td>
+          <td>${{ "{:,.0f}".format(r.pipeline_value or 0) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" style="color:var(--text-muted)">None</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="table-wrapper" style="margin-bottom:0">
+    <div class="table-header"><h2>Top Vendors</h2></div>
+    <table>
+      <thead><tr><th>Vendor</th><th>Contracts</th><th>Pipeline</th></tr></thead>
+      <tbody>
+        {% for r in analytics.top_vendors %}
+        <tr>
+          <td><a href="/vendor/{{ r.vendor|urlencode }}">{{ r.vendor }}</a></td>
+          <td>{{ r.contracts }}</td>
+          <td>${{ "{:,.0f}".format(r.pipeline_value or 0) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" style="color:var(--text-muted)">None</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 {% endblock %}

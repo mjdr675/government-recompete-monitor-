@@ -4,40 +4,44 @@
 {% block content %}
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <h1>Watchlist</h1>
-<div class="muted">{{ count }} bookmarked contract{{ "s" if count != 1 else "" }}</div>
+<div class="page-meta">{{ count }} bookmarked contract{{ "s" if count != 1 else "" }}</div>
 
 {% if contracts %}
-<table>
-<tr>
-  <th>Watch</th>
-  <th>Priority</th>
-  <th>Vendor</th>
-  <th>Agency</th>
-  <th>Value</th>
-  <th>End Date</th>
-  <th>Days</th>
-  <th>Score</th>
-</tr>
-{% for r in contracts %}
-<tr>
-  <td><button class="bm-btn" data-id="{{ r['internal_id'] }}" onclick="bookmarkToggle(this)" style="background:none;border:none;cursor:pointer;font-size:16px;" title="Remove bookmark">★</button></td>
-  <td>
-    <a class="priority-badge priority-{{ (r["priority"] or "unknown").lower().replace(" ", "-").replace("_", "-") }}"
-       href="/contract/{{ r["internal_id"] }}">
-       {{ r["priority"] }}
-    </a>
-  </td>
-  <td><a href="/vendor/{{ r["vendor"]|urlencode }}">{{ r["vendor"] }}</a></td>
-  <td><a href="/agency/{{ r["agency"]|urlencode }}">{{ r["agency"] }}</a></td>
-  <td>${{ "{:,.0f}".format(r["value"] or 0) }}</td>
-  <td>{{ r["end_date"] }}</td>
-  <td>{{ r["days_remaining"] }}</td>
-  <td>{{ r["recompete_score"] }}</td>
-</tr>
-{% endfor %}
-</table>
+<div class="table-wrapper">
+  <table>
+    <thead>
+      <tr>
+        <th>Watch</th>
+        <th>Priority</th>
+        <th>Vendor</th>
+        <th>Agency</th>
+        <th>Value</th>
+        <th>End Date</th>
+        <th>Days</th>
+        <th>Score</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in contracts %}
+      <tr>
+        <td style="width:36px"><button class="bm-btn" data-id="{{ r['internal_id'] }}" onclick="bookmarkToggle(this)" title="Remove bookmark">★</button></td>
+        <td>
+          <a class="priority-badge priority-{{ (r["priority"] or "unknown").lower().replace(" ", "-").replace("_", "-") }}"
+             href="/contract/{{ r["internal_id"] }}">{{ r["priority"] }}</a>
+        </td>
+        <td><a href="/vendor/{{ r["vendor"]|urlencode }}">{{ r["vendor"] }}</a></td>
+        <td><a href="/agency/{{ r["agency"]|urlencode }}">{{ r["agency"] }}</a></td>
+        <td>${{ "{:,.0f}".format(r["value"] or 0) }}</td>
+        <td>{{ r["end_date"] }}</td>
+        <td>{{ r["days_remaining"] }}</td>
+        <td>{{ r["recompete_score"] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% else %}
-<p class="muted">No bookmarks yet. Browse <a href="/contracts">contracts</a> and click ☆ to add them.</p>
+<p class="muted">No bookmarks yet. Browse <a href="/contracts">contracts</a> and click &#9734; to add them.</p>
 {% endif %}
 
 <script>
@@ -51,7 +55,7 @@ function bookmarkToggle(btn) {
   }).then(function(r) { return r.json(); }).then(function() {
     var row = btn.closest('tr');
     if (row) row.remove();
-    var countEl = document.querySelector('.muted');
+    var countEl = document.querySelector('.page-meta');
     if (countEl) {
       var match = countEl.textContent.match(/^(\d+)/);
       if (match) {

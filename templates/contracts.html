@@ -4,53 +4,53 @@
 {% block content %}
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <h1>Contracts</h1>
-<div class="muted">Showing {{ start }}–{{ end }} of {{ total }} matching contracts</div>
+<div class="page-meta">Showing {{ start }}&ndash;{{ end }} of {{ total }} matching contracts</div>
 
-<form method="get" style="background:white;border-radius:8px;padding:16px 18px;box-shadow:0 1px 4px #ddd;margin-bottom:18px;">
-  <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
-    <div style="flex:2;min-width:160px;">
-      <label style="display:block;font-size:12px;color:#666;margin-bottom:3px;">Search</label>
-      <input name="q" value="{{ q }}" placeholder="Vendor, agency, award ID…" style="width:100%;box-sizing:border-box;">
+<form method="get" class="filter-bar">
+  <div class="filter-row">
+    <div class="filter-field grow">
+      <label>Search</label>
+      <input name="q" value="{{ q }}" placeholder="Vendor, agency, award ID&hellip;">
     </div>
-    <div style="flex:2;min-width:160px;">
-      <label style="display:block;font-size:12px;color:#666;margin-bottom:3px;">Agency</label>
-      <select name="agency" style="width:100%;padding:8px;box-sizing:border-box;">
+    <div class="filter-field grow">
+      <label>Agency</label>
+      <select name="agency">
         <option value="">All agencies</option>
         {% for a in all_agencies %}
           <option value="{{ a }}" {% if a == agency %}selected{% endif %}>{{ a }}</option>
         {% endfor %}
       </select>
     </div>
-    <div style="flex:1;min-width:110px;">
-      <label style="display:block;font-size:12px;color:#666;margin-bottom:3px;">Priority</label>
-      <select name="priority" style="width:100%;padding:8px;box-sizing:border-box;">
+    <div class="filter-field sm">
+      <label>Priority</label>
+      <select name="priority">
         <option value="">All</option>
         {% for p in priorities %}
           <option value="{{ p }}" {% if p == priority %}selected{% endif %}>{{ p }}</option>
         {% endfor %}
       </select>
     </div>
-    <div style="flex:1;min-width:110px;">
-      <label style="display:block;font-size:12px;color:#666;margin-bottom:3px;">Expiring within</label>
-      <select name="days" style="width:100%;padding:8px;box-sizing:border-box;">
+    <div class="filter-field sm">
+      <label>Expiring within</label>
+      <select name="days">
         <option value="">Any time</option>
         {% for d in [30, 60, 90, 180, 365] %}
           <option value="{{ d }}" {% if days|string == d|string %}selected{% endif %}>{{ d }} days</option>
         {% endfor %}
       </select>
     </div>
-    <div style="flex:1;min-width:120px;">
-      <label style="display:block;font-size:12px;color:#666;margin-bottom:3px;">Min value</label>
-      <select name="min_value" style="width:100%;padding:8px;box-sizing:border-box;">
+    <div class="filter-field sm">
+      <label>Min value</label>
+      <select name="min_value">
         <option value="">Any size</option>
         {% for val, label in [(100000, "$100K+"), (500000, "$500K+"), (1000000, "$1M+"), (5000000, "$5M+"), (10000000, "$10M+")] %}
           <option value="{{ val }}" {% if min_value and min_value|int == val %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
       </select>
     </div>
-    <div>
-      <label style="display:block;font-size:12px;color:#555;margin-bottom:3px;">Status</label>
-      <select name="status" style="width:100%;padding:8px;box-sizing:border-box;">
+    <div class="filter-field sm">
+      <label>Status</label>
+      <select name="status">
         {% for val, label in [("", "All"), ("open", "Open only"), ("expired", "Expired")] %}
           <option value="{{ val }}" {% if status == val %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
@@ -58,73 +58,90 @@
     </div>
     <input type="hidden" name="sort" value="{{ sort }}">
     <input type="hidden" name="dir" value="{{ direction }}">
-    <div style="display:flex;gap:8px;align-items:center;padding-top:18px;">
-      <button type="submit" style="padding:8px 18px;background:#1a2744;color:white;border:none;border-radius:4px;cursor:pointer;">Filter</button>
-      <a href="/contracts" style="font-size:13px;color:#666;">Reset</a>
+    <div style="display:flex;gap:8px;align-items:flex-end;padding-bottom:1px">
+      <button type="submit" class="btn btn-primary">Filter</button>
+      <a href="/contracts" class="btn btn-ghost">Reset</a>
     </div>
   </div>
   {% if g.user %}
-  <div style="margin-top:10px;border-top:1px solid #f3f4f6;padding-top:10px;display:flex;gap:12px;font-size:13px;">
-    <button type="button" onclick="saveSearch()" style="background:none;border:none;padding:0;cursor:pointer;color:#1f4f8f;font-size:13px;">Save this search</button>
-    <span id="save-confirm" class="muted" style="display:none;">Saved</span>
+  <div class="filter-meta">
+    <button type="button" onclick="saveSearch()" style="background:none;border:none;padding:0;cursor:pointer;font-size:12px;color:var(--accent);font-family:inherit">Save this search</button>
+    <span id="save-confirm" class="muted" style="display:none">Saved</span>
     <a href="/contracts/export.csv?{{ request.query_string.decode() }}">Export CSV</a>
   </div>
   {% endif %}
 </form>
-
-{% if g.user and saved_searches %}
-<div style="margin:-8px 0 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;">
-  <span class="muted" style="font-weight:600;">Saved searches:</span>
-  {% for s in saved_searches[:8] %}
-    <a href="{{ s.url }}" title="{{ s.name }}"
-       style="display:inline-block;padding:3px 10px;background:#eef2ff;color:#1f4f8f;border:1px solid #dbe3ff;border-radius:12px;text-decoration:none;">{{ s.name }}</a>
-  {% endfor %}
-  <a href="/searches" class="muted" style="text-decoration:underline;">Manage</a>
-</div>
-{% endif %}
 
 {% macro sort_link(col, label) %}
   {% set next_dir = "asc" if (sort == col and direction == "desc") else "desc" %}
   {% set arrow = " ↓" if (sort == col and direction == "desc") else (" ↑" if sort == col else "") %}
   <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&sort={{ col }}&dir={{ next_dir }}">{{ label }}{{ arrow }}</a>
 {% endmacro %}
-<div style="margin-bottom:8px;">
-  <button id="compare-btn" disabled onclick="compareSelected()">Compare selected</button>
-  <span id="compare-hint" class="muted" style="margin-left:8px;">Select exactly 2 contracts</span>
+
+<div style="margin-bottom:8px;display:flex;align-items:center;gap:10px">
+  <button id="compare-btn" disabled onclick="compareSelected()" class="btn btn-secondary">Compare selected</button>
+  <span id="compare-hint" class="muted" style="font-size:12px">Select exactly 2 contracts</span>
 </div>
-<table>
-<tr>
-  <th>Watch</th>
-  <th></th>
-  <th>{{ sort_link("priority", "Priority") }}</th>
-  <th>{{ sort_link("vendor", "Vendor") }}</th>
-  <th>{{ sort_link("agency", "Agency") }}</th>
-  <th>{{ sort_link("value", "Value") }}</th>
-  <th>{{ sort_link("end_date", "End Date") }}</th>
-  <th>{{ sort_link("days_remaining", "Days") }}</th>
-  <th>{{ sort_link("recompete_score", "Score") }} <span title="Recompete Score (0–100): competition type (≤40) + contract value (≤35) + time remaining (≤25) + agency/sourcing bonuses. Higher = more attractive to pursue. Open any contract for the full breakdown." style="cursor:help;color:#9ca3af;font-weight:bold;">&#9432;</span></th>
-</tr>
-{% for r in rows %}
-<tr>
-<td><button class="bm-btn" data-id="{{ r['internal_id'] }}" onclick="bookmarkToggle(this)" style="background:none;border:none;cursor:pointer;font-size:16px;" title="Bookmark">{{ "★" if r['internal_id'] in watchlist_ids else "☆" }}</button></td>
-<td><input type="checkbox" class="cmp-check" value="{{ r['internal_id'] }}" onchange="updateCompare()"></td>
-<td>
-  <a class="priority-badge priority-{{ (r["priority"] or "unknown").lower().replace(" ", "-").replace("_", "-") }}"
-     href="/contract/{{ r["internal_id"] }}">
-     {{ r["priority"] }}
-  </a>
-</td>
-<td><a href="/vendor/{{ r["vendor"]|urlencode }}">{{ r["vendor"] }}</a></td>
-<td><a href="/agency/{{ r["agency"]|urlencode }}">{{ r["agency"] }}</a></td>
-<td>${{ "{:,.0f}".format(r["value"] or 0) }}</td>
-<td>{{ r["end_date"] }}</td>
-<td>{{ r["days_remaining"] }}</td>
-<td>{{ r["recompete_score"] }}</td>
-</tr>
-{% else %}
-<tr><td colspan="9">No contracts found.</td></tr>
-{% endfor %}
-</table>
+
+<div class="table-wrapper">
+  <table>
+    <thead>
+      <tr>
+        <th>Watch</th>
+        <th></th>
+        <th>{{ sort_link("priority", "Priority") }}</th>
+        <th>{{ sort_link("vendor", "Vendor") }}</th>
+        <th>{{ sort_link("agency", "Agency") }}</th>
+        <th>{{ sort_link("value", "Value") }}</th>
+        <th>{{ sort_link("end_date", "End Date") }}</th>
+        <th>{{ sort_link("days_remaining", "Days") }}</th>
+        <th>{{ sort_link("recompete_score", "Score") }} <span title="Recompete Score (0–100): competition type (≤40) + contract value (≤35) + time remaining (≤25) + agency/sourcing bonuses. Higher = more attractive to pursue. Open any contract for the full breakdown." style="cursor:help;color:var(--text-faint);font-weight:normal">&#9432;</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td style="width:36px"><button class="bm-btn" data-id="{{ r['internal_id'] }}" onclick="bookmarkToggle(this)" title="Bookmark">{{ "★" if r['internal_id'] in watchlist_ids else "☆" }}</button></td>
+        <td style="width:28px"><input type="checkbox" class="cmp-check" value="{{ r['internal_id'] }}" onchange="updateCompare()"></td>
+        <td>
+          <a class="priority-badge priority-{{ (r["priority"] or "unknown").lower().replace(" ", "-").replace("_", "-") }}"
+             href="/contract/{{ r["internal_id"] }}">{{ r["priority"] }}</a>
+        </td>
+        <td><a href="/vendor/{{ r["vendor"]|urlencode }}">{{ r["vendor"] }}</a></td>
+        <td><a href="/agency/{{ r["agency"]|urlencode }}">{{ r["agency"] }}</a></td>
+        <td>${{ "{:,.0f}".format(r["value"] or 0) }}</td>
+        <td>{{ r["end_date"] }}</td>
+        <td>{{ r["days_remaining"] }}</td>
+        <td>{{ r["recompete_score"] }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9" style="color:var(--text-muted)">No contracts found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px">
+  {% set base_qs %}q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&sort={{ sort }}&dir={{ direction }}{% endset %}
+
+  {% if has_prev %}
+    <a href="/contracts?{{ base_qs }}&page=1" class="btn btn-ghost" style="padding:5px 10px">First</a>
+    <a href="/contracts?{{ base_qs }}&page={{ page - 1 }}" class="btn btn-ghost" style="padding:5px 10px">Previous</a>
+  {% else %}
+    <span class="muted" aria-disabled="true" style="padding:5px 10px">First</span>
+    <span class="muted" aria-disabled="true" style="padding:5px 10px">Previous</span>
+  {% endif %}
+
+  <span class="muted">Page {{ page }} of {{ total_pages }}</span>
+
+  {% if has_next %}
+    <a href="/contracts?{{ base_qs }}&page={{ page + 1 }}" class="btn btn-ghost" style="padding:5px 10px">Next</a>
+    <a href="/contracts?{{ base_qs }}&page={{ total_pages }}" class="btn btn-ghost" style="padding:5px 10px">Last</a>
+  {% else %}
+    <span class="muted" aria-disabled="true" style="padding:5px 10px">Next</span>
+    <span class="muted" aria-disabled="true" style="padding:5px 10px">Last</span>
+  {% endif %}
+</div>
 
 <script>
 function updateCompare() {
@@ -173,26 +190,4 @@ function bookmarkToggle(btn) {
   });
 }
 </script>
-
-<div style="margin-top:18px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-  {% set base_qs %}q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&sort={{ sort }}&dir={{ direction }}{% endset %}
-
-  {% if has_prev %}
-    <a href="/contracts?{{ base_qs }}&page=1">First</a>
-    <a href="/contracts?{{ base_qs }}&page={{ page - 1 }}">Previous</a>
-  {% else %}
-    <span class="muted" aria-disabled="true">First</span>
-    <span class="muted" aria-disabled="true">Previous</span>
-  {% endif %}
-
-  <span class="muted" style="margin:0 8px;">Page {{ page }} of {{ total_pages }}</span>
-
-  {% if has_next %}
-    <a href="/contracts?{{ base_qs }}&page={{ page + 1 }}">Next</a>
-    <a href="/contracts?{{ base_qs }}&page={{ total_pages }}">Last</a>
-  {% else %}
-    <span class="muted" aria-disabled="true">Next</span>
-    <span class="muted" aria-disabled="true">Last</span>
-  {% endif %}
-</div>
 {% endblock %}

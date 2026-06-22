@@ -3,13 +3,13 @@
 
 {% block content %}
 <h1>Intelligence Views</h1>
-<div class="muted">Saved filters for common research scenarios.</div>
+<div class="page-meta">Saved filters for common research scenarios.</div>
 
-<div class="cards" style="margin-top:20px;">
+<div class="cards" style="margin-top:16px">
   {% for key, v in views.items() %}
-    <a class="card" href="/views/{{ key }}" style="text-decoration:none;color:inherit;min-width:200px;">
-      <div style="font-weight:bold;font-size:15px;">{{ v.label }}</div>
-      <div class="muted" style="margin-top:6px;font-size:13px;">{{ format_filter_summary(v.filters) }}</div>
+    <a class="card" href="/views/{{ key }}">
+      <div style="font-weight:600;font-size:14px;margin-bottom:4px">{{ v.label }}</div>
+      <div class="muted" style="font-size:12px">{{ format_filter_summary(v.filters) }}</div>
     </a>
   {% endfor %}
 </div>

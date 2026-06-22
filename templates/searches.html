@@ -3,37 +3,38 @@
 
 {% block content %}
 <h1>Saved Searches</h1>
-<div class="muted">{{ count }} saved search{{ "es" if count != 1 else "" }}</div>
+<div class="page-meta">{{ count }} saved search{{ "es" if count != 1 else "" }}</div>
 
 {% if searches %}
-<table>
-<tr>
-  <th>Name</th>
-  <th>Filters</th>
-  <th>Saved</th>
-  <th>Actions</th>
-</tr>
-{% for s in searches %}
-<tr id="search-row-{{ s.id }}">
-  <td><a href="{{ s.url }}">{{ s.name }}</a></td>
-  <td class="muted" style="font-size:13px;">
-    {% if s.params %}
-      {{ s.params | tojson }}
-    {% else %}
-      All contracts
-    {% endif %}
-  </td>
-  <td class="muted">{{ s.created_at[:10] }}</td>
-  <td>
-    <a href="{{ s.url }}">Run</a>
-    &nbsp;
-    <button onclick="deleteSearch({{ s.id }}, this)" style="background:none;border:none;cursor:pointer;color:#b00020;padding:0;">Delete</button>
-  </td>
-</tr>
-{% endfor %}
-</table>
+<div class="table-wrapper">
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Filters</th>
+        <th>Saved</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in searches %}
+      <tr id="search-row-{{ s.id }}">
+        <td><a href="{{ s.url }}">{{ s.name }}</a></td>
+        <td class="muted" style="font-size:12px">
+          {% if s.params %}{{ s.params | tojson }}{% else %}All contracts{% endif %}
+        </td>
+        <td class="muted">{{ s.created_at[:10] }}</td>
+        <td>
+          <a href="{{ s.url }}" class="btn btn-ghost" style="padding:3px 8px;font-size:12px">Run</a>
+          <button onclick="deleteSearch({{ s.id }}, this)" class="btn-link" style="margin-left:8px;font-size:12px">Delete</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% else %}
-<p class="muted">No saved searches yet. Use the <a href="/contracts">contracts</a> filter and click "Save this search".</p>
+<p class="muted">No saved searches yet. Use the <a href="/contracts">contracts</a> filter and click &ldquo;Save this search&rdquo;.</p>
 {% endif %}
 
 <script>
@@ -44,7 +45,7 @@ function deleteSearch(id, btn) {
       if (data.ok) {
         var row = document.getElementById('search-row-' + id);
         if (row) row.remove();
-        var countEl = document.querySelector('.muted');
+        var countEl = document.querySelector('.page-meta');
         if (countEl) {
           var match = countEl.textContent.match(/^(\d+)/);
           if (match) {
