@@ -122,7 +122,13 @@
         <td><a href="/agency/{{ r["agency"]|urlencode }}">{{ r["agency"] }}</a></td>
         <td class="col-r">${{ "{:,.0f}".format(r["value"] or 0) }}</td>
         <td>{{ r["end_date"] }}</td>
-        <td class="col-r">{{ r["days_remaining"] }}</td>
+        <td class="col-r">
+          {%- set days = r["days_remaining"] -%}
+          {%- if days is none or days == "" -%}&mdash;
+          {%- elif days|int <= 30 -%}<span class="days-critical">{{ days }}</span>
+          {%- elif days|int <= 90 -%}<span class="days-warning">{{ days }}</span>
+          {%- else -%}{{ days }}{%- endif -%}
+        </td>
         <td class="col-r">{{ r["recompete_score"] }}</td>
       </tr>
       {% else %}

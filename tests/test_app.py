@@ -134,6 +134,53 @@ def test_contracts_positive_days_returns_200(client):
     assert rv.status_code == 200
 
 
+def test_contracts_days_critical_class_for_imminent_expiry(test_db, client):
+    """days_remaining ≤ 30 must render with the days-critical CSS class."""
+    with db_module.connect() as con:
+        con.execute(
+            "INSERT INTO contracts "
+            "(internal_id, award_id, vendor, agency, value, end_date, priority, recompete_score, days_remaining) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("ID-CRIT", "AWARD-CRIT", "Urgent Vendor", "DOD", 500_000, "2026-07-01", "CRITICAL", 92, 15),
+        )
+        con.commit()
+    rv = client.get("/contracts")
+    assert rv.status_code == 200
+    assert b'class="days-critical"' in rv.data
+
+
+def test_contracts_days_warning_class_for_near_expiry(test_db, client):
+    """days_remaining 31–90 must render with the days-warning CSS class."""
+    with db_module.connect() as con:
+        con.execute(
+            "INSERT INTO contracts "
+            "(internal_id, award_id, vendor, agency, value, end_date, priority, recompete_score, days_remaining) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("ID-WARN", "AWARD-WARN", "Watchlist Vendor", "DHS", 750_000, "2026-09-01", "HIGH", 78, 70),
+        )
+        con.commit()
+    rv = client.get("/contracts")
+    assert rv.status_code == 200
+    assert b'class="days-warning"' in rv.data
+
+
+def test_contracts_days_no_class_for_distant_expiry(test_db, client):
+    """days_remaining > 90 must render as a plain number with no urgency class."""
+    with db_module.connect() as con:
+        con.execute(
+            "INSERT INTO contracts "
+            "(internal_id, award_id, vendor, agency, value, end_date, priority, recompete_score, days_remaining) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("ID-SAFE", "AWARD-SAFE", "Safe Vendor", "GSA", 200_000, "2027-06-01", "LOW", 55, 180),
+        )
+        con.commit()
+    rv = client.get("/contracts")
+    assert rv.status_code == 200
+    body = rv.data.decode()
+    assert "180" in body
+    assert "days-critical" not in body or "days-warning" not in body
+
+
 # ---------------------------------------------------------------------------
 # Railway ephemeral DB warning tests
 # ---------------------------------------------------------------------------
