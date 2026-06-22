@@ -368,6 +368,8 @@ def dash_client(dash_db):
             "password": "password123",
             "confirm": "password123",
         })
+        with c.session_transaction() as sess:
+            sess["onboarding_skipped"] = "1"
         yield c
 
 

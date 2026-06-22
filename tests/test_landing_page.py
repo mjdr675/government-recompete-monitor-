@@ -75,6 +75,7 @@ class TestDashboardRoute:
         set_trial(user["id"], days=14)
         with client.session_transaction() as sess:
             sess["user_id"] = user["id"]
+            sess["onboarding_skipped"] = "1"
         resp = client.get("/dashboard")
         assert resp.status_code == 200
 
@@ -83,6 +84,7 @@ class TestDashboardRoute:
         set_trial(user["id"], days=10)
         with client.session_transaction() as sess:
             sess["user_id"] = user["id"]
+            sess["onboarding_skipped"] = "1"
         resp = client.get("/dashboard")
         body = resp.data.decode()
         assert "trial" in body.lower() or "Trial" in body
@@ -99,6 +101,7 @@ class TestNavConditional:
         set_trial(user["id"], days=14)
         with client.session_transaction() as sess:
             sess["user_id"] = user["id"]
+            sess["onboarding_skipped"] = "1"
         resp = client.get("/dashboard")
         body = resp.data.decode()
         assert "/contracts" in body
@@ -110,6 +113,7 @@ class TestNavConditional:
         set_trial(user["id"], days=14)
         with client.session_transaction() as sess:
             sess["user_id"] = user["id"]
+            sess["onboarding_skipped"] = "1"
         resp = client.get("/dashboard")
         body = resp.data.decode()
         assert "/settings/alerts" in body

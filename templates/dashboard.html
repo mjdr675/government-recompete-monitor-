@@ -104,9 +104,27 @@
 <div style="padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
   <div>
     <div style="font-weight:600;margin-bottom:4px">Opportunities For Your Business</div>
-    <div class="muted" style="font-size:13px">Create your Company Profile to see contracts matched to your NAICS codes, preferred agencies, and contract size.</div>
+    <div class="muted" style="font-size:13px">Tell us about your business to see contracts matched to your NAICS codes, preferred agencies, and contract size.</div>
   </div>
-  <a href="/company-profile" class="btn btn-primary" style="white-space:nowrap">Create Company Profile</a>
+  <a href="/onboarding" class="btn btn-primary" style="white-space:nowrap">Set Up Your Profile</a>
+</div>
+{% endif %}
+
+{% if g.user and has_profile and profile_hints %}
+<div style="padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--radius-sm);margin-bottom:16px;display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px">
+  <div style="flex:1;min-width:0">
+    <div style="font-size:13px;font-weight:600;margin-bottom:6px">
+      Complete your profile to improve recommendations
+      <span style="font-weight:400;color:var(--text-muted)">({{ profile_completion }}% complete)</span>
+    </div>
+    <div style="width:100%;height:4px;background:var(--border);border-radius:2px;margin-bottom:8px">
+      <div style="width:{{ profile_completion }}%;height:4px;background:var(--accent);border-radius:2px"></div>
+    </div>
+    <ul style="margin:0;padding-left:16px;font-size:12px;color:var(--text-muted)">
+      {% for hint in profile_hints %}<li>{{ hint }}</li>{% endfor %}
+    </ul>
+  </div>
+  <a href="/company-profile" class="btn btn-ghost" style="white-space:nowrap;font-size:13px">Update Profile</a>
 </div>
 {% endif %}
 

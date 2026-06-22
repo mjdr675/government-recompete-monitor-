@@ -59,6 +59,8 @@ def client(test_db):
                 "confirm": "testpass123",
             })
         assert rv.status_code in (200, 302), f"Registration failed: {rv.status_code}"
+        with c.session_transaction() as sess:
+            sess["onboarding_skipped"] = "1"
         yield c
 
 

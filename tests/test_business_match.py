@@ -83,6 +83,8 @@ def authed_client(biz_db):
     )
     with flask_app.app.test_client() as c:
         c.post("/login", data={"email": "biz@example.com", "password": "password123"})
+        with c.session_transaction() as sess:
+            sess["onboarding_skipped"] = "1"
         yield c
 
 

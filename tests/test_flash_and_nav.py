@@ -27,6 +27,7 @@ def _login(client, email="flash@example.com"):
     set_trial(user["id"], days=14)
     with client.session_transaction() as sess:
         sess["user_id"] = user["id"]
+        sess["onboarding_skipped"] = "1"
     return user
 
 

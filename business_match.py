@@ -227,3 +227,39 @@ def _set_aside_sql_keywords(set_aside_codes: list[str]) -> list[str]:
     for code in set_aside_codes:
         keywords.extend(_SET_ASIDE_MAP.get(code, []))
     return keywords
+
+
+# Profile completeness: 7 dimensions, each worth ~14 points.
+_COMPLETENESS_FIELDS = [
+    ("company_name", lambda p: bool(p.get("company_name"))),
+    ("naics_codes", lambda p: bool(p.get("naics_codes"))),
+    ("agencies", lambda p: bool(p.get("agencies"))),
+    ("min_contract_value", lambda p: p.get("min_contract_value") is not None),
+    ("max_contract_value", lambda p: p.get("max_contract_value") is not None),
+    ("set_asides", lambda p: bool(p.get("set_asides"))),
+    ("geo", lambda p: bool(p.get("states")) or p.get("geo_coverage") == "nationwide"),
+]
+
+
+def profile_completeness(profile) -> int:
+    """Return 0–100 completion percentage for a company profile dict."""
+    if not profile:
+        return 0
+    filled = sum(1 for _, check in _COMPLETENESS_FIELDS if check(profile))
+    return round(filled * 100 / len(_COMPLETENESS_FIELDS))
+
+
+def profile_completion_hints(profile) -> list[str]:
+    """Return actionable one-line hints for each missing profile field."""
+    if not profile:
+        return ["Create your Company Profile to see personalized opportunities."]
+    hints = []
+    if not profile.get("naics_codes"):
+        hints.append("Add your NAICS codes to match contracts in your industry.")
+    if not profile.get("agencies"):
+        hints.append("Choose preferred agencies to focus on the most relevant contracts.")
+    if profile.get("min_contract_value") is None and profile.get("max_contract_value") is None:
+        hints.append("Set your preferred contract size range.")
+    if not profile.get("set_asides"):
+        hints.append("Add your set-aside certifications if applicable.")
+    return hints

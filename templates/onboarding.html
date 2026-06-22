@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}
+  {% if step == 1 %}About Your Business
+  {% elif step == 2 %}Where You Work
+  {% else %}Contract Preferences
+  {% endif %} — Recompete
+{% endblock %}
+
+{% block content %}
+<div style="max-width:640px;margin:0 auto;padding-bottom:48px">
+
+  {# Progress indicator #}
+  <div style="display:flex;align-items:center;gap:0;margin-bottom:32px">
+    {% for i in [1, 2, 3] %}
+    <div style="width:32px;height:32px;border-radius:50%;flex-shrink:0;
+                background:{{ 'var(--accent)' if i <= step else 'var(--border)' }};
+                color:{{ '#fff' if i <= step else 'var(--text-muted)' }};
+                display:flex;align-items:center;justify-content:center;
+                font-size:13px;font-weight:600">{{ i }}</div>
+    {% if i < 3 %}
+    <div style="flex:1;height:2px;background:{{ 'var(--accent)' if i < step else 'var(--border)' }}"></div>
+    {% endif %}
+    {% endfor %}
+    <span style="font-size:13px;color:var(--text-muted);margin-left:12px;white-space:nowrap">Step {{ step }} of 3</span>
+  </div>
+
+  {# ── Step 1: Company + NAICS ───────────────────────────────────────────── #}
+  {% if step == 1 %}
+  <h1 style="margin-top:0;margin-bottom:6px">About Your Business</h1>
+  <p class="muted" style="margin-bottom:24px">
+    This helps us match you to government contracts in your industry. Takes about 2 minutes.
+  </p>
+
+  <form method="post" action="/onboarding?step=1">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="step" value="1">
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
+      <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px">
+        Company Name <span class="muted">(optional)</span>
+      </label>
+      <input name="company_name"
+             value="{{ ob.company_name or '' }}"
+             style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:14px"
+             placeholder="Acme Government Solutions">
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:24px">
+      <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px">
+        What type of work do you do? <span class="muted">(NAICS codes)</span>
+      </label>
+      <p class="muted" style="font-size:12px;margin:0 0 8px">
+        Enter your NAICS codes, one per line or comma-separated. These identify your capabilities and help us find matching contracts.
+      </p>
+      <textarea name="naics_codes" rows="4"
+                style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:14px;font-family:inherit;resize:vertical"
+                placeholder="561720&#10;541511&#10;541519">{{ ob.naics_codes | join('\n') if ob.naics_codes else '' }}</textarea>
+      <div style="margin-top:6px;font-size:12px;color:var(--text-muted)">
+        Not sure of your codes?
+        <a href="https://www.naics.com/search/" target="_blank" rel="noopener noreferrer">Look up your NAICS code</a>
+      </div>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <a href="/onboarding/skip" class="muted" style="font-size:13px">Skip for now</a>
+      <button type="submit" class="btn btn-primary">Next: Where you work &rarr;</button>
+    </div>
+  </form>
+
+  {# ── Step 2: Geography ─────────────────────────────────────────────────── #}
+  {% elif step == 2 %}
+  <h1 style="margin-top:0;margin-bottom:6px">Where do you perform work?</h1>
+  <p class="muted" style="margin-bottom:24px">
+    We use your service area to prioritize contracts in your region.
+  </p>
+
+  <form method="post" action="/onboarding?step=2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="step" value="2">
+
+    {% set geo = ob.geo_coverage or 'nationwide' %}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:24px">
+      <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px">
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:{{ 'var(--accent-subtle,#f0f9ff)' if geo == 'nationwide' else 'var(--bg)' }}">
+          <input type="radio" name="geo_coverage" value="nationwide" {{ 'checked' if geo == 'nationwide' }}
+                 onchange="document.getElementById('states-section').style.display='none';this.closest('label').style.background='var(--accent-subtle,#f0f9ff)';document.querySelector('[data-geo-states]').style.background='var(--bg)'"
+                 style="margin-top:2px">
+          <div>
+            <div style="font-weight:500;font-size:14px">Nationwide</div>
+            <div class="muted" style="font-size:12px">I work across the entire US</div>
+          </div>
+        </label>
+        <label data-geo-states style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:{{ 'var(--accent-subtle,#f0f9ff)' if geo == 'states' else 'var(--bg)' }}">
+          <input type="radio" name="geo_coverage" value="states" {{ 'checked' if geo == 'states' }}
+                 onchange="document.getElementById('states-section').style.display='block';this.closest('label').style.background='var(--accent-subtle,#f0f9ff)';document.querySelector('[name=geo_coverage][value=nationwide]').closest('label').style.background='var(--bg)'"
+                 style="margin-top:2px">
+          <div>
+            <div style="font-weight:500;font-size:14px">Specific states</div>
+            <div class="muted" style="font-size:12px">I focus on certain regions</div>
+          </div>
+        </label>
+      </div>
+      <div id="states-section" style="display:{{ 'block' if geo == 'states' else 'none' }}">
+        <div class="muted" style="font-size:12px;margin-bottom:6px">Hold Ctrl / Cmd to select multiple states.</div>
+        <select name="states" multiple size="8"
+                style="width:100%;max-width:420px;padding:4px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:13px">
+          {% for code, name in us_states %}
+          <option value="{{ code }}" {{ 'selected' if ob.states and code in ob.states }}>{{ name }} ({{ code }})</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <a href="/onboarding?step=1" class="btn btn-ghost">&larr; Back</a>
+      <button type="submit" class="btn btn-primary">Next: Contract preferences &rarr;</button>
+    </div>
+  </form>
+
+  {# ── Step 3: Contract Preferences ─────────────────────────────────────── #}
+  {% elif step == 3 %}
+  <h1 style="margin-top:0;margin-bottom:6px">Contract Preferences</h1>
+  <p class="muted" style="margin-bottom:24px">
+    Set your typical contract size and preferred agencies to surface the right opportunities.
+  </p>
+
+  <form method="post" action="/onboarding?step=3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="step" value="3">
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
+      <h2 style="margin-top:0;margin-bottom:12px;font-size:14px;font-weight:600">Preferred Contract Size</h2>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px">Minimum Value <span class="muted">(optional)</span></label>
+          <select name="min_contract_value"
+                  style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:14px">
+            <option value="">No minimum</option>
+            {% for val, label in [(100000, "$100K"), (250000, "$250K"), (500000, "$500K"), (1000000, "$1M"), (5000000, "$5M"), (10000000, "$10M")] %}
+            <option value="{{ val }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px">Maximum Value <span class="muted">(optional)</span></label>
+          <select name="max_contract_value"
+                  style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:14px">
+            <option value="">No maximum</option>
+            {% for val, label in [(500000, "$500K"), (1000000, "$1M"), (5000000, "$5M"), (10000000, "$10M"), (50000000, "$50M"), (100000000, "$100M")] %}
+            <option value="{{ val }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    {% if all_agencies %}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
+      <h2 style="margin-top:0;margin-bottom:4px;font-size:14px;font-weight:600">Preferred Agencies <span class="muted" style="font-weight:400">(optional)</span></h2>
+      <div class="muted" style="font-size:12px;margin-bottom:8px">Hold Ctrl / Cmd to select multiple. Leave blank to see all agencies.</div>
+      <select name="agencies" multiple size="6"
+              style="width:100%;padding:4px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:13px">
+        {% for a in all_agencies %}
+        <option value="{{ a }}">{{ a }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:24px">
+      <h2 style="margin-top:0;margin-bottom:12px;font-size:14px;font-weight:600">Set-Aside Certifications <span class="muted" style="font-weight:400">(optional)</span></h2>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px">
+        {% for value, label in set_aside_options %}
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;padding:6px 0">
+          <input type="checkbox" name="set_asides" value="{{ value }}">
+          {{ label }}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <a href="/onboarding?step=2" class="btn btn-ghost">&larr; Back</a>
+      <button type="submit" class="btn btn-primary">Show My Opportunities &rarr;</button>
+    </div>
+  </form>
+  {% endif %}
+
+</div>
+{% endblock %}

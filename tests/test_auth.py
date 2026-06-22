@@ -226,6 +226,8 @@ def test_logout_redirects_to_login(client):
 
 def test_protected_routes_accessible_when_logged_in(client):
     _register(client)
+    with client.session_transaction() as sess:
+        sess["onboarding_skipped"] = "1"
     for path in ["/dashboard", "/contracts", "/views", "/ingest"]:
         rv = client.get(path)
         assert rv.status_code == 200, f"{path} returned {rv.status_code}"

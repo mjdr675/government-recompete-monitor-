@@ -40,7 +40,14 @@ from db import (
 from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
 from analytics import dashboard_analytics, opportunity_recommendations, dashboard_recommended_actions, business_opportunities
-from business_match import business_match_score, business_match_reasons, business_mismatch_reasons, profile_filter_for_sql
+from business_match import (
+    business_match_score,
+    business_match_reasons,
+    business_mismatch_reasons,
+    profile_completeness,
+    profile_completion_hints,
+    profile_filter_for_sql,
+)
 from report_builder import build_report
 from views import SAVED_VIEWS, build_view_query, format_filter_summary
 import hubspot_service
@@ -229,6 +236,10 @@ _SUBSCRIPTION_EXEMPT = frozenset({
     "/create-checkout-session",
     "/success",
     "/cancel",
+    "/onboarding",
+    "/onboarding/complete",
+    "/onboarding/skip",
+    "/onboarding/dismiss",
 })
 
 
@@ -292,6 +303,13 @@ def index():
 
 @app.route("/dashboard")
 def dashboard():
+    user_id = g.user["id"] if g.user else None
+    profile = get_company_profile(user_id) if user_id else None
+
+    # First-login redirect: authenticated user with no profile → onboarding wizard.
+    if user_id and not profile and not session.get("onboarding_skipped"):
+        return redirect(url_for("onboarding"))
+
     analytics = dashboard_analytics()
     recommendations = opportunity_recommendations()
     engine = get_engine()
@@ -317,10 +335,11 @@ def dashboard():
         g.get("watchlist_count", 0) == 0
         and not session.get("onboarding_dismissed")
     )
-    dash_actions = dashboard_recommended_actions(g.user["id"] if g.user else None)
-    user_id = g.user["id"] if g.user else None
+    dash_actions = dashboard_recommended_actions(user_id)
+    has_profile = bool(profile)
     biz_opps = business_opportunities(user_id)
-    has_profile = bool(get_company_profile(user_id)) if user_id else False
+    p_completion = profile_completeness(profile) if profile else 0
+    p_hints = profile_completion_hints(profile) if profile and p_completion < 100 else []
     return render_template(
         "dashboard.html",
         report=build_report(date.today().isoformat()),
@@ -329,6 +348,8 @@ def dashboard():
         dash_actions=dash_actions,
         biz_opps=biz_opps,
         has_profile=has_profile,
+        profile_completion=p_completion,
+        profile_hints=p_hints,
         last_ingest=last_ingest,
         hours_ago=hours_ago,
         show_onboarding=show_onboarding,
@@ -339,6 +360,132 @@ def dashboard():
 def onboarding_dismiss():
     session["onboarding_dismissed"] = "1"
     return redirect(url_for("dashboard"))
+
+
+@app.route("/onboarding/skip")
+def onboarding_skip():
+    session["onboarding_skipped"] = "1"
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/onboarding", methods=["GET", "POST"])
+def onboarding():
+    if not g.user:
+        return redirect(url_for("auth.login", next="/onboarding"))
+    user_id = g.user["id"]
+
+    if request.method == "POST":
+        posted_step = request.form.get("step", "1")
+
+        if posted_step == "1":
+            raw_naics = request.form.get("naics_codes", "")
+            _raw_codes = [
+                c.strip()
+                for line in raw_naics.splitlines()
+                for c in line.split(",")
+                if c.strip()
+            ]
+            naics_codes = [c for c in _raw_codes if re.fullmatch(r"\d{2,6}", c)]
+            session["ob"] = {
+                **session.get("ob", {}),
+                "company_name": request.form.get("company_name", "").strip(),
+                "naics_codes": naics_codes,
+            }
+            session.modified = True
+            return redirect(url_for("onboarding", step=2))
+
+        if posted_step == "2":
+            geo_coverage = request.form.get("geo_coverage", "nationwide")
+            if geo_coverage not in ("nationwide", "states"):
+                geo_coverage = "nationwide"
+            states = [s for s in request.form.getlist("states") if s in _VALID_STATE_CODES]
+            session["ob"] = {
+                **session.get("ob", {}),
+                "geo_coverage": geo_coverage,
+                "states": states if geo_coverage == "states" else [],
+            }
+            session.modified = True
+            return redirect(url_for("onboarding", step=3))
+
+        if posted_step == "3":
+            engine = get_engine()
+            with engine.connect() as conn:
+                agency_rows = conn.execute(
+                    text(
+                        "SELECT DISTINCT agency FROM contracts"
+                        " WHERE agency IS NOT NULL AND agency != '' ORDER BY agency"
+                    )
+                ).fetchall()
+            all_agencies_set = frozenset(r[0] for r in agency_rows)
+
+            min_val = request.form.get("min_contract_value", "").strip()
+            max_val = request.form.get("max_contract_value", "").strip()
+            try:
+                min_v = float(min_val) if min_val else None
+            except ValueError:
+                min_v = None
+            try:
+                max_v = float(max_val) if max_val else None
+            except ValueError:
+                max_v = None
+
+            agencies = [a for a in request.form.getlist("agencies") if a in all_agencies_set]
+            set_asides = [s for s in request.form.getlist("set_asides") if s in _VALID_SET_ASIDES]
+
+            ob = session.pop("ob", {})
+            save_company_profile(user_id, {
+                "company_name": ob.get("company_name", ""),
+                "website": "",
+                "geo_coverage": ob.get("geo_coverage", "nationwide"),
+                "min_contract_value": min_v,
+                "max_contract_value": max_v,
+                "naics_codes": ob.get("naics_codes", []),
+                "states": ob.get("states", []),
+                "agencies": agencies,
+                "set_asides": set_asides,
+            })
+            session.modified = True
+            return redirect(url_for("onboarding_complete"))
+
+        return redirect(url_for("onboarding"))
+
+    # GET
+    step = request.args.get("step", "1")
+    if step not in ("1", "2", "3"):
+        step = "1"
+    step = int(step)
+
+    ob = session.get("ob", {})
+    all_agencies = []
+    if step == 3:
+        engine = get_engine()
+        with engine.connect() as conn:
+            agency_rows = conn.execute(
+                text(
+                    "SELECT DISTINCT agency FROM contracts"
+                    " WHERE agency IS NOT NULL AND agency != '' ORDER BY agency"
+                )
+            ).fetchall()
+        all_agencies = [r[0] for r in agency_rows]
+
+    return render_template(
+        "onboarding.html",
+        step=step,
+        ob=ob,
+        all_agencies=all_agencies,
+        us_states=_US_STATES,
+        set_aside_options=_SET_ASIDE_OPTIONS,
+    )
+
+
+@app.route("/onboarding/complete")
+def onboarding_complete():
+    if not g.user:
+        return redirect(url_for("auth.login"))
+    user_id = g.user["id"]
+    profile = get_company_profile(user_id)
+    opps = business_opportunities(user_id)
+    return render_template("onboarding_complete.html", profile=profile, opps=opps)
 
 
 @app.route("/contracts")
@@ -1135,6 +1282,7 @@ def company_profile_page():
 
     # Single read covers both GET and the re-render after a successful POST.
     profile = get_company_profile(user["id"])
+    p_completion = profile_completeness(profile) if profile else 0
 
     return render_template(
         "company_profile.html",
@@ -1144,6 +1292,7 @@ def company_profile_page():
         us_states=_US_STATES,
         error=error,
         success=success,
+        profile_completion=p_completion,
     )
 
 

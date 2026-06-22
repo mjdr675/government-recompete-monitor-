@@ -40,6 +40,8 @@ def authed_client(profile_db):
             "email": "profile@example.com",
             "password": "password123",
         })
+        with c.session_transaction() as sess:
+            sess["onboarding_skipped"] = "1"
         yield c
 
 

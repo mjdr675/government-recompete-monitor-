@@ -58,6 +58,8 @@ def test_registration_collects_company_and_header_shows_it(client):
         "confirm": "password123", "company_name": "Acme Facilities",
     }, follow_redirects=True)
     assert rv.status_code == 200
+    with client.session_transaction() as sess:
+        sess["onboarding_skipped"] = "1"
     page = client.get("/dashboard")
     body = page.get_data(as_text=True)
     assert "Acme Facilities" in body          # company name shown in the header
@@ -69,5 +71,7 @@ def test_header_falls_back_to_email_without_company(client):
         "email": "noco@example.com", "password": "password123",
         "confirm": "password123",
     }, follow_redirects=True)
+    with client.session_transaction() as sess:
+        sess["onboarding_skipped"] = "1"
     body = client.get("/dashboard").get_data(as_text=True)
     assert "noco@example.com" in body
