@@ -58,6 +58,42 @@
   <a href="/ingest" class="btn btn-secondary">Ingest Data</a>
 </div>
 
+{% if dash_actions %}
+<div class="table-wrapper" style="margin-bottom:16px">
+  <div class="table-header">
+    <h2>Recommended Actions</h2>
+    <span style="font-size:12px;color:var(--text-muted);font-weight:400">
+      {% if g.user %}Based on your watchlist and high-priority contracts{% else %}Top high-priority contracts{% endif %}
+    </span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Contract</th>
+        <th>Vendor</th>
+        <th>Agency</th>
+        <th>Next Action</th>
+        <th>Days</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in dash_actions %}
+      <tr>
+        <td>
+          <a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a>
+          {% if r.action_source == 'watched' %}<span style="font-size:11px;color:var(--accent);margin-left:4px">★</span>{% endif %}
+        </td>
+        <td>{{ r.vendor or '&mdash;' }}</td>
+        <td>{{ r.agency or '&mdash;' }}</td>
+        <td style="font-size:13px">→ {{ r.next_action }}</td>
+        <td>{{ r.days_remaining if r.days_remaining is not none else '&mdash;' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
 <div class="table-wrapper">
   <div class="table-header">
     <h2>Critical Opportunities</h2>
