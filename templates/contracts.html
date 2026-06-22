@@ -72,6 +72,17 @@
   {% endif %}
 </form>
 
+{% if g.user and saved_searches %}
+<div style="margin:-8px 0 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;">
+  <span class="muted" style="font-weight:600;">Saved searches:</span>
+  {% for s in saved_searches[:8] %}
+    <a href="{{ s.url }}" title="{{ s.name }}"
+       style="display:inline-block;padding:3px 10px;background:#eef2ff;color:#1f4f8f;border:1px solid #dbe3ff;border-radius:12px;text-decoration:none;">{{ s.name }}</a>
+  {% endfor %}
+  <a href="/searches" class="muted" style="text-decoration:underline;">Manage</a>
+</div>
+{% endif %}
+
 {% macro sort_link(col, label) %}
   {% set next_dir = "asc" if (sort == col and direction == "desc") else "desc" %}
   {% set arrow = " ↓" if (sort == col and direction == "desc") else (" ↑" if sort == col else "") %}

@@ -28,6 +28,7 @@ from db import (
     get_contracts,
     get_engine,
     init_db,
+    list_saved_searches,
     save_demo_request,
     save_early_access,
     save_snapshot,
@@ -370,6 +371,7 @@ def contracts():
 
     engine = get_engine()
     watchlist_ids = set()
+    saved_searches = []
     if g.user:
         with engine.connect() as conn:
             wl_rows = conn.execute(
@@ -377,6 +379,8 @@ def contracts():
                 {"uid": g.user["id"]},
             ).fetchall()
         watchlist_ids = {r[0] for r in wl_rows}
+        # one-click reuse of saved filters right where the user is filtering
+        saved_searches = _saved_searches_with_urls(g.user["id"])
 
     with engine.connect() as conn:
         agency_rows = conn.execute(text(
@@ -406,6 +410,7 @@ def contracts():
         sort=sort,
         direction=direction,
         watchlist_ids=watchlist_ids,
+        saved_searches=saved_searches,
     )
 
 
@@ -972,28 +977,17 @@ def contract_note_add(internal_id):
     return jsonify({"ok": True, "id": new_id, "created_at": now})
 
 
+def _saved_searches_with_urls(user_id):
+    """Saved searches plus a ready-to-use reload URL for /contracts."""
+    items = list_saved_searches(user_id)
+    for s in items:
+        s["url"] = ("/contracts?" + urllib.parse.urlencode(s["params"])) if s["params"] else "/contracts"
+    return items
+
+
 @app.route("/searches")
 def searches():
-    engine = get_engine()
-    with engine.connect() as conn:
-        rows = conn.execute(
-            text(
-                "SELECT id, name, query_params_json, created_at"
-                " FROM user_saved_searches WHERE user_id = :uid"
-                " ORDER BY created_at DESC"
-            ),
-            {"uid": g.user["id"]},
-        ).mappings().fetchall()
-    searches_list = []
-    for r in rows:
-        params = json.loads(r["query_params_json"] or "{}")
-        searches_list.append({
-            "id": r["id"],
-            "name": r["name"],
-            "created_at": r["created_at"],
-            "params": params,
-            "url": "/contracts?" + urllib.parse.urlencode(params) if params else "/contracts",
-        })
+    searches_list = _saved_searches_with_urls(g.user["id"])
     return render_template("searches.html", searches=searches_list, count=len(searches_list))
 
 

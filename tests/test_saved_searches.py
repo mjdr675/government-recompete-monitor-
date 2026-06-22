@@ -124,3 +124,53 @@ def test_delete_removes_row_from_db(client, auth_db):
     count = con.execute("SELECT COUNT(*) FROM user_saved_searches WHERE id=?", (search_id,)).fetchone()[0]
     con.close()
     assert count == 0
+
+
+# ---------------------------------------------------------------------------
+# Reload round-trip (incl. the new status filter) + contracts-page quick links
+# ---------------------------------------------------------------------------
+
+def test_saved_search_roundtrips_status_and_query(client):
+    # save a filter combo that includes the new Open/Active status filter
+    client.post("/searches/save", json={
+        "name": "Open big contracts",
+        "params": {"q": "janitorial", "status": "open", "min_value": "1000000"},
+    })
+    body = client.get("/searches").get_data(as_text=True)
+    assert "Open big contracts" in body
+    # the Run link reloads /contracts with the saved params, status included
+    assert "/contracts?" in body
+    assert "status=open" in body
+    assert "q=janitorial" in body
+
+
+def test_contracts_page_shows_saved_search_links(client):
+    client.post("/searches/save", json={
+        "name": "Open DoD", "params": {"status": "open", "agency": "DEFENSE"},
+    })
+    body = client.get("/contracts").get_data(as_text=True)
+    assert "Saved searches:" in body            # the quick-links section renders
+    assert "Open DoD" in body                    # the saved search appears as a chip
+    assert "status=open" in body                 # links back to the filtered list
+
+
+def test_contracts_page_no_saved_searches_section_when_empty(client):
+    body = client.get("/contracts").get_data(as_text=True)
+    assert "Saved searches:" not in body         # nothing shown until the user saves one
+
+
+def test_empty_params_search_links_to_plain_contracts(client):
+    client.post("/searches/save", json={"name": "Everything", "params": {}})
+    body = client.get("/searches").get_data(as_text=True)
+    assert "Everything" in body
+
+
+def test_list_saved_searches_helper_parses_params(client, auth_db):
+    import db as db_module
+    from users import get_user_by_email
+    client.post("/searches/save", json={"name": "H", "params": {"status": "expired"}})
+    uid = get_user_by_email("ss@example.com")["id"]
+    items = db_module.list_saved_searches(uid)
+    assert len(items) == 1
+    assert items[0]["name"] == "H"
+    assert items[0]["params"] == {"status": "expired"}

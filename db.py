@@ -595,6 +595,33 @@ def save_early_access(email: str, hubspot_contact_id: str | None = None) -> None
 _SORTABLE = {"recompete_score", "value", "days_remaining", "end_date", "priority", "vendor", "agency"}
 
 
+def list_saved_searches(user_id):
+    """Return a user's saved searches (newest first) with parsed params.
+
+    Each item: {id, name, created_at, params}. The caller builds the reload URL.
+    Used by both the /searches page and the contracts-page quick links.
+    """
+    engine = get_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                "SELECT id, name, query_params_json, created_at"
+                " FROM user_saved_searches WHERE user_id = :uid"
+                " ORDER BY created_at DESC"
+            ),
+            {"uid": user_id},
+        ).mappings().fetchall()
+    out = []
+    for r in rows:
+        try:
+            params = json.loads(r["query_params_json"] or "{}")
+        except (ValueError, TypeError):
+            params = {}
+        out.append({"id": r["id"], "name": r["name"],
+                    "created_at": r["created_at"], "params": params})
+    return out
+
+
 def search_tokens(q, limit=8):
     """Split a user search string into safe, lowercased word tokens.
 
