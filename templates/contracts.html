@@ -73,12 +73,12 @@
 </form>
 
 {% if g.user and saved_searches %}
-<div class="saved-searches" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;margin:0 0 16px;">
-  <span class="muted" style="font-weight:600;">Saved searches:</span>
+<div class="saved-searches">
+  <span class="saved-searches-label">Saved searches:</span>
   {% for s in saved_searches[:8] %}
-    <a href="{{ s.url }}" title="{{ s.name }}" style="display:inline-block;padding:3px 10px;background:var(--surface);color:var(--accent);border:1px solid var(--border-strong);border-radius:12px;text-decoration:none;">{{ s.name }}</a>
+    <a href="{{ s.url }}" title="{{ s.name }}" class="saved-search-chip">{{ s.name }}</a>
   {% endfor %}
-  <a href="/searches" class="muted" style="text-decoration:underline;">Manage</a>
+  <a href="/searches" class="muted" style="font-size:12px;text-decoration:underline;">Manage</a>
 </div>
 {% endif %}
 
@@ -122,7 +122,13 @@
         <td><a href="/agency/{{ r["agency"]|urlencode }}">{{ r["agency"] }}</a></td>
         <td class="col-r">${{ "{:,.0f}".format(r["value"] or 0) }}</td>
         <td>{{ r["end_date"] }}</td>
-        <td class="col-r">{{ r["days_remaining"] }}</td>
+        <td class="col-r">
+          {%- set days = r["days_remaining"] -%}
+          {%- if days is none or days == "" -%}&mdash;
+          {%- elif days|int <= 30 -%}<span class="days-critical">{{ days }}</span>
+          {%- elif days|int <= 90 -%}<span class="days-warning">{{ days }}</span>
+          {%- else -%}{{ days }}{%- endif -%}
+        </td>
         <td class="col-r">{{ r["recompete_score"] }}</td>
       </tr>
       {% else %}

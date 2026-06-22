@@ -1,47 +1,105 @@
 {% extends "base.html" %}
-{% block title %}Ingest Data{% endblock %}
+{% block title %}Ingest Data — Recompete{% endblock %}
 
 {% block content %}
 <h1>Ingest Data</h1>
-<div class="muted">Import contracts via CSV upload or trigger a live API pull.</div>
+<div class="page-meta">Import contracts via CSV upload or trigger a live API pull.</div>
 
 {% if message %}
-<div style="margin:16px 0;padding:12px 16px;background:#d1fae5;border-radius:8px;color:#065f46;">{{ message }}</div>
+<div class="flash-success" style="margin:0 0 16px;border-radius:var(--radius-sm);padding:10px 14px;">{{ message }}</div>
 {% endif %}
 {% if error %}
-<div style="margin:16px 0;padding:12px 16px;background:#fee2e2;border-radius:8px;color:#991b1b;">{{ error }}</div>
+<div class="flash-error" style="margin:0 0 16px;border-radius:var(--radius-sm);padding:10px 14px;">{{ error }}</div>
 {% endif %}
 
-<div class="cards" style="margin-top:24px;align-items:stretch;">
+<div class="cards" style="margin-top:20px;align-items:stretch;">
 
   <div class="card" style="flex:1;min-width:280px;">
-    <h2 style="margin-top:0;">CSV Upload</h2>
-    <p class="muted">Upload a recompete report CSV. Rows are upserted into the database and a snapshot is saved for today.</p>
-    <form method="post" enctype="multipart/form-data">
+    <h2 style="margin-top:0;margin-bottom:4px">CSV Upload</h2>
+    <p class="muted" style="font-size:12.5px;margin-bottom:16px">Upload a Recompete report CSV. Rows are upserted and a snapshot is saved for today.</p>
+    <form method="post" enctype="multipart/form-data" id="csv-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="csv">
-      <input type="file" name="file" accept=".csv" required style="display:block;margin-bottom:12px;">
-      <button type="submit">Upload &amp; Import</button>
+
+      <div class="upload-zone" id="drop-zone">
+        <input type="file" name="file" accept=".csv" required id="file-input" aria-label="Choose CSV file">
+        <svg class="upload-zone-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <span class="upload-zone-title">Drop CSV here or click to browse</span>
+        <span class="upload-zone-hint">Accepts .csv files from Recompete reports</span>
+      </div>
+
+      <div class="upload-chosen" id="file-chosen">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+        </svg>
+        <span id="file-name">No file selected</span>
+      </div>
+
+      <button type="submit" class="btn btn-primary" id="upload-btn">Upload &amp; Import</button>
     </form>
   </div>
 
   <div class="card" style="flex:1;min-width:280px;">
-    <h2 style="margin-top:0;">API Pull</h2>
-    <p class="muted">Fetch fresh contract data from USASpending.gov and enrich with SAM.gov. Runs in the background — check the dashboard in a few minutes.</p>
+    <h2 style="margin-top:0;margin-bottom:4px">API Pull</h2>
+    <p class="muted" style="font-size:12.5px;margin-bottom:16px">Fetch fresh contract data from USASpending.gov, enriched with SAM.gov. Runs in the background — check the dashboard in a few minutes.</p>
     <input type="hidden" id="csrf-token" value="{{ csrf_token() }}">
-    <button id="start-pull-btn" onclick="startPull()">Start Pull</button>
-    <div id="pull-status" style="margin-top:12px;display:none;">
-      <span id="pull-status-text" class="muted">Enqueuing…</span>
-      <div id="pull-progress-bar" style="margin-top:6px;height:6px;background:#e5e7eb;border-radius:3px;">
-        <div id="pull-progress-fill" style="height:6px;background:#10b981;border-radius:3px;width:0%;transition:width 0.4s;"></div>
+
+    <button id="start-pull-btn" onclick="startPull()" class="btn btn-primary" style="margin-bottom:14px">Start Pull</button>
+
+    <div id="pull-status" style="display:none">
+      <p id="pull-status-text" class="muted" style="font-size:12.5px;margin-bottom:8px">Enqueuing…</p>
+      <div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden">
+        <div id="pull-progress-fill" style="height:5px;background:var(--accent);border-radius:3px;width:0%;transition:width 0.4s"></div>
       </div>
     </div>
-    <p style="margin-top:12px;"><a href="/ingest/status">View log</a></p>
+
+    <p style="margin-top:12px;font-size:12.5px"><a href="/ingest/status">View log</a></p>
   </div>
 
 </div>
 
 <script>
+(function () {
+  var dropZone = document.getElementById('drop-zone');
+  var fileInput = document.getElementById('file-input');
+  var fileChosen = document.getElementById('file-chosen');
+  var fileName = document.getElementById('file-name');
+
+  function showFile(file) {
+    if (file) {
+      fileName.textContent = file.name;
+      fileChosen.classList.add('visible');
+    }
+  }
+
+  fileInput.addEventListener('change', function () {
+    showFile(this.files[0]);
+  });
+
+  dropZone.addEventListener('dragover', function (e) {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+  });
+  dropZone.addEventListener('dragleave', function () {
+    dropZone.classList.remove('drag-over');
+  });
+  dropZone.addEventListener('drop', function (e) {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    var file = e.dataTransfer.files[0];
+    if (file) {
+      var dt = new DataTransfer();
+      dt.items.add(file);
+      fileInput.files = dt.files;
+      showFile(file);
+    }
+  });
+})();
+
 function startPull() {
   var btn = document.getElementById('start-pull-btn');
   var statusDiv = document.getElementById('pull-status');
@@ -64,7 +122,7 @@ function startPull() {
         btn.disabled = false;
         return;
       }
-      statusText.textContent = 'Task enqueued (ID: ' + data.task_id.slice(0, 8) + '…). Polling…';
+      statusText.textContent = 'Task enqueued. Polling for status…';
       pollStatus(data.task_id);
     })
     .catch(function(err) {
@@ -87,11 +145,7 @@ function pollStatus(taskId) {
         if (data.status === 'SUCCESS' || data.status === 'FAILURE') {
           clearInterval(interval);
           btn.disabled = false;
-          if (data.status === 'SUCCESS') {
-            progressFill.style.background = '#10b981';
-          } else {
-            progressFill.style.background = '#ef4444';
-          }
+          progressFill.style.background = data.status === 'SUCCESS' ? '#10b981' : '#ef4444';
         }
       })
       .catch(function() { /* keep polling on transient error */ });

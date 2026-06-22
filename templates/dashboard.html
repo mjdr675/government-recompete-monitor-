@@ -2,15 +2,21 @@
 {% block title %}Dashboard — Recompete{% endblock %}
 
 {% block content %}
-<h1>Dashboard</h1>
-<div class="page-meta">
-  Data as of {{ report.run_date }}
-  {% if last_ingest %}
-   &middot; Data last updated {{ hours_ago }}h ago ({{ last_ingest[:10] }})
-  {% else %}
-   &middot; Data freshness unknown &mdash; no ingest completed yet
-  {% endif %}
+<div class="page-head">
+  <div>
+    <h1>Dashboard</h1>
+    <div class="page-meta" style="margin-bottom:0">
+      Data as of {{ report.run_date }}
+      {% if last_ingest %}
+       &middot; Data last updated {{ hours_ago }}h ago ({{ last_ingest[:10] }})
+      {% else %}
+       &middot; Data freshness unknown &mdash; no ingest completed yet
+      {% endif %}
+    </div>
+  </div>
+  <a href="/ingest" class="btn btn-primary">Refresh Data</a>
 </div>
+<div style="margin-bottom:18px"></div>
 
 {% if show_onboarding %}
 <div class="onboarding-box">
@@ -133,7 +139,15 @@
     </tbody>
   </table>
   {% else %}
-  <div class="empty-state">No active critical contracts at this time.</div>
+  <div class="empty-state-rich" style="padding:32px 24px">
+    <div class="empty-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+    </div>
+    <p class="empty-title" style="font-size:13.5px">No critical contracts</p>
+    <p class="empty-desc" style="font-size:12px;margin-bottom:0">Ingest contract data to surface critical opportunities.</p>
+  </div>
   {% endif %}
 </div>
 
@@ -177,7 +191,15 @@
     </tbody>
   </table>
   {% else %}
-  <div class="empty-state">No contracts expiring within 90 days.</div>
+  <div class="empty-state-rich" style="padding:32px 24px">
+    <div class="empty-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+      </svg>
+    </div>
+    <p class="empty-title" style="font-size:13.5px">No upcoming expirations</p>
+    <p class="empty-desc" style="font-size:12px;margin-bottom:0">No contracts expire within the next 90 days.</p>
+  </div>
   {% endif %}
 </div>
 
