@@ -1707,4 +1707,53 @@ tbody tr:hover > th { background: var(--accent-light) !important; }
 
   /* ── Phase 2: mobile greeting sub-text update ── */
   .mobile-greeting-sub { margin-bottom: 0; }
+
+  /* ── Phase 2: contract detail mobile CTA bar ── */
+  .detail-desktop-actions { display: none; }
+  .contract-mobile-cta {
+    position: fixed;
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+    left: 0;
+    right: 0;
+    display: flex;
+    gap: 10px;
+    padding: 10px 16px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.07);
+    z-index: 200;
+  }
+  .contract-cta-btn {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 46px;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: var(--radius-sm);
+    border: 2px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+    cursor: pointer;
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.12s, color 0.12s;
+  }
+  .contract-cta-btn:hover { text-decoration: none; opacity: 0.85; }
+  .contract-cta-watching {
+    background: var(--accent);
+    color: var(--bg);
+  }
+  .contract-cta-pipeline {
+    background: #d1fae5;
+    color: #065f46;
+    border-color: #065f46;
+  }
+  .contract-cta-add {
+    border-color: #10b981;
+    color: #059669;
+  }
+  /* Extra bottom padding on contract detail — clears bottom nav + CTA bar */
+  body.has-contract-cta .content { padding-bottom: calc(76px + 70px); }
 }

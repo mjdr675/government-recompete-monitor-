@@ -3,6 +3,7 @@
 
 {% block content %}
 <meta name="csrf-token" content="{{ csrf_token() }}">
+<script>(function(){if(window.innerWidth<=768)document.body.classList.add('has-contract-cta');})()</script>
 
 <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:4px">
   <div>
@@ -10,7 +11,7 @@
     <div class="page-meta" style="margin-bottom:6px">{{ row["internal_id"] }}</div>
   </div>
   {% if g.user %}
-  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+  <div class="detail-desktop-actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
     <button id="watch-btn" data-id="{{ row['internal_id'] }}" onclick="watchToggle(this)" class="btn"
             style="font-size:14px;padding:8px 18px;border:2px solid var(--accent);border-radius:var(--radius-sm);background:{{ 'var(--accent)' if is_bookmarked else 'transparent' }};color:{{ 'var(--bg)' if is_bookmarked else 'var(--accent)' }};font-weight:600;cursor:pointer" title="Watch this contract">
       {{ "★ Watching" if is_bookmarked else "☆ Watch" }}
@@ -32,6 +33,23 @@
   </div>
   {% endif %}
 </div>
+
+{# ── Mobile sticky CTA bar (hidden on desktop) ──────────── #}
+{% if g.user %}
+<div class="contract-mobile-cta m-show" aria-label="Contract actions">
+  <button id="mobile-watch-btn" data-id="{{ row['internal_id'] }}" onclick="watchToggleMobile(this)" class="contract-cta-btn {{ 'contract-cta-watching' if is_bookmarked else '' }}">
+    {{ "★ Watching" if is_bookmarked else "☆ Watch" }}
+  </button>
+  {% if pipeline_opp %}
+  <a href="/pipeline/{{ pipeline_opp['id'] }}" class="contract-cta-btn contract-cta-pipeline">&#10003; In Pipeline</a>
+  {% else %}
+  <form method="post" action="/pipeline/add/{{ row['internal_id'] }}" style="margin:0;flex:1">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="contract-cta-btn contract-cta-add" style="width:100%">+ Add to Pipeline</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
 
 <div class="summary-box">
   <strong>Summary:</strong>
@@ -187,26 +205,44 @@
 {% endif %}
 
 <script>
-function watchToggle(btn) {
-  var id = btn.dataset.id;
-  var isWatching = btn.textContent.trim().startsWith('★');
+function _applyWatchState(btn, watching) {
+  if (btn.classList.contains('contract-cta-btn')) {
+    btn.textContent = watching ? '★ Watching' : '☆ Watch';
+    if (watching) btn.classList.add('contract-cta-watching');
+    else btn.classList.remove('contract-cta-watching');
+  } else {
+    btn.textContent = watching ? '★ Watching' : '☆ Watch';
+    btn.style.background = watching ? 'var(--accent)' : 'transparent';
+    btn.style.color = watching ? 'var(--bg)' : 'var(--accent)';
+  }
+}
+function _doWatch(id, isWatching) {
   var url = isWatching ? '/watchlist/remove' : '/watchlist/add';
   var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-  fetch(url, {
+  return fetch(url, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({internal_id: id, csrf_token: token})
-  }).then(function(r) { return r.json(); }).then(function(data) {
+  }).then(function(r) { return r.json(); });
+}
+function watchToggle(btn) {
+  var id = btn.dataset.id;
+  var isWatching = btn.textContent.trim().startsWith('★');
+  _doWatch(id, isWatching).then(function(data) {
     if (!data.ok && !data.already) return;
-    if (isWatching) {
-      btn.textContent = '☆ Watch';
-      btn.style.background = 'transparent';
-      btn.style.color = 'var(--accent)';
-    } else {
-      btn.textContent = '★ Watching';
-      btn.style.background = 'var(--accent)';
-      btn.style.color = 'var(--bg)';
-    }
+    _applyWatchState(btn, !isWatching);
+    var mob = document.getElementById('mobile-watch-btn');
+    if (mob) _applyWatchState(mob, !isWatching);
+  });
+}
+function watchToggleMobile(btn) {
+  var id = btn.dataset.id;
+  var isWatching = btn.textContent.trim().startsWith('★');
+  _doWatch(id, isWatching).then(function(data) {
+    if (!data.ok && !data.already) return;
+    _applyWatchState(btn, !isWatching);
+    var desk = document.getElementById('watch-btn');
+    if (desk) _applyWatchState(desk, !isWatching);
   });
 }
 function addNote() {
