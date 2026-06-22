@@ -89,11 +89,37 @@ def _apply_pg_migrations() -> None:
             _log.warning("Skipping migration %s — database unavailable: %s", sql_file.name, exc)
 
 
+def _ensure_description_column():
+    """Migrate existing SQLite DBs to add description column and rebuild FTS with it.
+
+    Returns True when the migration ran (FTS was dropped and needs recreation),
+    False when no action was needed (new DB or already migrated).
+    """
+    engine = get_engine()
+    with engine.begin() as conn:
+        rows = conn.execute(text("PRAGMA table_info(contracts)")).fetchall()
+        if not rows:
+            return False  # table doesn't exist yet; CREATE TABLE will include description
+        cols = [r[1] for r in rows]
+        if "description" in cols:
+            return False
+        conn.execute(text("ALTER TABLE contracts ADD COLUMN description TEXT"))
+        # FTS5 virtual table schema is immutable — must drop and recreate with description.
+        # content='contracts' means no FTS data is lost; rebuild restores the index below.
+        conn.execute(text("DROP TABLE IF EXISTS contracts_fts"))
+        conn.execute(text("DROP TRIGGER IF EXISTS contracts_ai"))
+        conn.execute(text("DROP TRIGGER IF EXISTS contracts_ad"))
+        conn.execute(text("DROP TRIGGER IF EXISTS contracts_au"))
+    return True
+
+
 def init_db():
     database_url = os.environ.get("DATABASE_URL", "")
     if database_url:
         _apply_pg_migrations()
         return
+
+    needs_fts_rebuild = _ensure_description_column()
 
     engine = get_engine()
     with engine.begin() as conn:
@@ -104,6 +130,7 @@ def init_db():
             vendor TEXT,
             agency TEXT,
             sub_agency TEXT,
+            description TEXT,
             value REAL,
             start_date TEXT,
             end_date TEXT,
@@ -137,30 +164,32 @@ def init_db():
         conn.execute(text("""
         CREATE VIRTUAL TABLE IF NOT EXISTS contracts_fts USING fts5(
             internal_id UNINDEXED,
-            vendor, agency, award_id,
+            vendor, agency, award_id, description,
             content='contracts', content_rowid='rowid'
         )
         """))
         conn.execute(text("""
         CREATE TRIGGER IF NOT EXISTS contracts_ai AFTER INSERT ON contracts BEGIN
-            INSERT INTO contracts_fts(rowid, internal_id, vendor, agency, award_id)
-            VALUES (new.rowid, new.internal_id, new.vendor, new.agency, new.award_id);
+            INSERT INTO contracts_fts(rowid, internal_id, vendor, agency, award_id, description)
+            VALUES (new.rowid, new.internal_id, new.vendor, new.agency, new.award_id, new.description);
         END
         """))
         conn.execute(text("""
         CREATE TRIGGER IF NOT EXISTS contracts_ad AFTER DELETE ON contracts BEGIN
-            INSERT INTO contracts_fts(contracts_fts, rowid, internal_id, vendor, agency, award_id)
-            VALUES ('delete', old.rowid, old.internal_id, old.vendor, old.agency, old.award_id);
+            INSERT INTO contracts_fts(contracts_fts, rowid, internal_id, vendor, agency, award_id, description)
+            VALUES ('delete', old.rowid, old.internal_id, old.vendor, old.agency, old.award_id, old.description);
         END
         """))
         conn.execute(text("""
         CREATE TRIGGER IF NOT EXISTS contracts_au AFTER UPDATE ON contracts BEGIN
-            INSERT INTO contracts_fts(contracts_fts, rowid, internal_id, vendor, agency, award_id)
-            VALUES ('delete', old.rowid, old.internal_id, old.vendor, old.agency, old.award_id);
-            INSERT INTO contracts_fts(rowid, internal_id, vendor, agency, award_id)
-            VALUES (new.rowid, new.internal_id, new.vendor, new.agency, new.award_id);
+            INSERT INTO contracts_fts(contracts_fts, rowid, internal_id, vendor, agency, award_id, description)
+            VALUES ('delete', old.rowid, old.internal_id, old.vendor, old.agency, old.award_id, old.description);
+            INSERT INTO contracts_fts(rowid, internal_id, vendor, agency, award_id, description)
+            VALUES (new.rowid, new.internal_id, new.vendor, new.agency, new.award_id, new.description);
         END
         """))
+        if needs_fts_rebuild:
+            conn.execute(text("INSERT INTO contracts_fts(contracts_fts) VALUES ('rebuild')"))
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS users (
             id                      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -271,11 +300,11 @@ def upsert_contract(row):
     with get_engine().begin() as conn:
         conn.execute(text("""
         INSERT INTO contracts (
-            internal_id, award_id, vendor, agency, sub_agency, value,
+            internal_id, award_id, vendor, agency, sub_agency, description, value,
             start_date, end_date, days_remaining, competition_type,
             solicitation_id, recompete_score, priority, raw_json, updated_at
         )
-        VALUES (:internal_id, :award_id, :vendor, :agency, :sub_agency, :value,
+        VALUES (:internal_id, :award_id, :vendor, :agency, :sub_agency, :description, :value,
                 :start_date, :end_date, :days_remaining, :competition_type,
                 :solicitation_id, :recompete_score, :priority, :raw_json, :updated_at)
         ON CONFLICT(internal_id) DO UPDATE SET
@@ -283,6 +312,7 @@ def upsert_contract(row):
             vendor=excluded.vendor,
             agency=excluded.agency,
             sub_agency=excluded.sub_agency,
+            description=excluded.description,
             value=excluded.value,
             start_date=excluded.start_date,
             end_date=excluded.end_date,
@@ -299,6 +329,7 @@ def upsert_contract(row):
             "vendor": row.get("vendor"),
             "agency": row.get("agency"),
             "sub_agency": row.get("sub_agency"),
+            "description": row.get("description"),
             "value": float(row.get("value") or 0),
             "start_date": row.get("start_date"),
             "end_date": row.get("end_date"),
@@ -353,11 +384,11 @@ def save_snapshot(run_date, rows):
 
             conn.execute(text("""
             INSERT INTO contracts (
-                internal_id, award_id, vendor, agency, sub_agency, value,
+                internal_id, award_id, vendor, agency, sub_agency, description, value,
                 start_date, end_date, days_remaining, competition_type,
                 solicitation_id, recompete_score, priority, raw_json, updated_at
             )
-            VALUES (:internal_id, :award_id, :vendor, :agency, :sub_agency, :value,
+            VALUES (:internal_id, :award_id, :vendor, :agency, :sub_agency, :description, :value,
                     :start_date, :end_date, :days_remaining, :competition_type,
                     :solicitation_id, :recompete_score, :priority, :raw_json, CURRENT_TIMESTAMP)
             ON CONFLICT(internal_id) DO UPDATE SET
@@ -365,6 +396,7 @@ def save_snapshot(run_date, rows):
                 vendor=excluded.vendor,
                 agency=excluded.agency,
                 sub_agency=excluded.sub_agency,
+                description=excluded.description,
                 value=excluded.value,
                 start_date=excluded.start_date,
                 end_date=excluded.end_date,
@@ -381,6 +413,7 @@ def save_snapshot(run_date, rows):
                 "vendor": row.get("vendor"),
                 "agency": row.get("agency"),
                 "sub_agency": row.get("sub_agency"),
+                "description": row.get("description"),
                 "value": float(row.get("value") or 0),
                 "start_date": row.get("start_date"),
                 "end_date": row.get("end_date"),

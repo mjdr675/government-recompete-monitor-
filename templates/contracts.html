@@ -72,6 +72,16 @@
   {% endif %}
 </form>
 
+{% if g.user and saved_searches %}
+<div class="saved-searches" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;margin:0 0 16px;">
+  <span class="muted" style="font-weight:600;">Saved searches:</span>
+  {% for s in saved_searches[:8] %}
+    <a href="{{ s.url }}" title="{{ s.name }}" style="display:inline-block;padding:3px 10px;background:var(--surface);color:var(--accent);border:1px solid var(--border-strong);border-radius:12px;text-decoration:none;">{{ s.name }}</a>
+  {% endfor %}
+  <a href="/searches" class="muted" style="text-decoration:underline;">Manage</a>
+</div>
+{% endif %}
+
 {% macro sort_link(col, label) %}
   {% set next_dir = "asc" if (sort == col and direction == "desc") else "desc" %}
   {% set arrow = " ↓" if (sort == col and direction == "desc") else (" ↑" if sort == col else "") %}
@@ -128,8 +138,8 @@
     <a href="/contracts?{{ base_qs }}&page=1" class="btn btn-ghost" style="padding:5px 10px">First</a>
     <a href="/contracts?{{ base_qs }}&page={{ page - 1 }}" class="btn btn-ghost" style="padding:5px 10px">Previous</a>
   {% else %}
-    <span class="muted" aria-disabled="true" style="padding:5px 10px">First</span>
-    <span class="muted" aria-disabled="true" style="padding:5px 10px">Previous</span>
+    <span class="muted" style="padding:5px 10px" aria-disabled="true">First</span>
+    <span class="muted" style="padding:5px 10px" aria-disabled="true">Previous</span>
   {% endif %}
 
   <span class="muted">Page {{ page }} of {{ total_pages }}</span>
@@ -138,8 +148,8 @@
     <a href="/contracts?{{ base_qs }}&page={{ page + 1 }}" class="btn btn-ghost" style="padding:5px 10px">Next</a>
     <a href="/contracts?{{ base_qs }}&page={{ total_pages }}" class="btn btn-ghost" style="padding:5px 10px">Last</a>
   {% else %}
-    <span class="muted" aria-disabled="true" style="padding:5px 10px">Next</span>
-    <span class="muted" aria-disabled="true" style="padding:5px 10px">Last</span>
+    <span class="muted" style="padding:5px 10px" aria-disabled="true">Next</span>
+    <span class="muted" style="padding:5px 10px" aria-disabled="true">Last</span>
   {% endif %}
 </div>
 
