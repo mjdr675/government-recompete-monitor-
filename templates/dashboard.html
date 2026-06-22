@@ -2,6 +2,13 @@
 {% block title %}Dashboard — Recompete{% endblock %}
 
 {% block content %}
+<div class="dash-wrap">
+
+{# ── Mobile greeting (hidden on desktop via CSS) ─────────── #}
+<div class="mobile-greeting">
+  <p class="mobile-greeting-text" id="mobile-greeting-text">Welcome back</p>
+  <p class="mobile-greeting-sub">Here's what needs your attention today.</p>
+</div>
 
 {# ── Page header ───────────────────────────────────────────── #}
 <div class="page-head" style="margin-bottom:20px">
@@ -358,6 +365,54 @@
   {# Right: aside panels #}
   <div class="db-aside">
 
+    {# Pipeline widget #}
+    {% if g.user %}
+    <div class="table-wrapper" style="margin-bottom:16px">
+      <div class="table-header">
+        <h2>My Pipeline</h2>
+        {% if pipeline_summary.total %}<span class="table-count">{{ pipeline_summary.active }} active</span>{% endif %}
+        <a href="/pipeline" class="btn btn-ghost" style="margin-left:auto;padding:3px 9px;font-size:12px">View all</a>
+      </div>
+      {% if pipeline_summary.total %}
+        {# Stage mini-bar #}
+        <div style="padding:8px 12px 0;display:flex;gap:6px;flex-wrap:wrap">
+          {% for val, label in pipeline_stages %}
+            {% if pipeline_summary.by_stage.get(val) %}
+            <a href="/pipeline?stage={{ val }}"
+               style="font-size:11.5px;padding:2px 8px;border-radius:var(--radius-sm);border:1px solid var(--border);text-decoration:none;background:var(--surface);color:var(--text-muted)">
+              {{ label }} <strong style="color:var(--text)">{{ pipeline_summary.by_stage[val] }}</strong>
+            </a>
+            {% endif %}
+          {% endfor %}
+        </div>
+        {% if pipeline_summary.top %}
+        <table style="margin-top:8px">
+          <thead>
+            <tr>
+              <th>Contract</th>
+              <th>Stage</th>
+              <th>Due</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for opp in pipeline_summary.top %}
+            <tr>
+              <td style="font-size:12.5px"><a href="/pipeline/{{ opp['id'] }}">{{ opp['award_id'] or opp['internal_id'] }}</a></td>
+              <td style="font-size:12px;color:var(--text-muted)">{{ opp['stage']|capitalize }}</td>
+              <td style="font-size:12px;color:var(--text-muted)">{{ opp['next_action_due'] or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+      {% else %}
+        <div class="empty-state" style="font-size:12.5px">
+          No opportunities yet. <a href="/contracts">Browse contracts</a> and click <strong>Add to Pipeline</strong>.
+        </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
     {# Recommended Opportunities (compact) #}
     <div class="table-wrapper">
       <div class="table-header">
@@ -426,4 +481,6 @@
   </div>{# /db-aside #}
 
 </div>{# /dashboard-body #}
+
+</div>{# /dash-wrap #}
 {% endblock %}
