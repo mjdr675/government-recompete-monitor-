@@ -34,7 +34,9 @@ def format_filter_summary(filters: dict) -> str:
 
 SAVED_VIEWS = {
     "dod-critical": {
-        "label": "DoD Critical Contracts",
+        # "DoD" = U.S. Department of Defense. Label spelled out for clarity since it
+        # was the only preset using a bare acronym; the agency filter is "DEFENSE".
+        "label": "Defense (DoD) Critical Contracts",
         "filters": {
             "agency": "DEFENSE",
             "priority": "CRITICAL"

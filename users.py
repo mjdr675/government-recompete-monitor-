@@ -8,37 +8,44 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from db import get_engine
 
 
-def create_user(email: str, password: str) -> dict:
+def create_user(email: str, password: str, company_name: str = "") -> dict:
     """
     Insert a new user. Returns the new user dict (no password_hash).
     Raises ValueError if the email is already registered.
+
+    ``company_name`` is optional; stored as NULL when blank so existing callers
+    and existing users stay backward compatible.
     """
     password_hash = generate_password_hash(password)
     now = datetime.now(timezone.utc).isoformat()
     email = email.lower().strip()
+    company_name = (company_name or "").strip() or None
     engine = get_engine()
     is_pg = engine.dialect.name == "postgresql"
+    params = {"email": email, "password_hash": password_hash,
+              "created_at": now, "company_name": company_name}
     try:
         with engine.begin() as conn:
             if is_pg:
                 result = conn.execute(
                     text(
-                        "INSERT INTO users (email, password_hash, created_at)"
-                        " VALUES (:email, :password_hash, :created_at) RETURNING id"
+                        "INSERT INTO users (email, password_hash, created_at, company_name)"
+                        " VALUES (:email, :password_hash, :created_at, :company_name) RETURNING id"
                     ),
-                    {"email": email, "password_hash": password_hash, "created_at": now},
+                    params,
                 )
                 user_id = result.scalar()
             else:
                 result = conn.execute(
                     text(
-                        "INSERT INTO users (email, password_hash, created_at)"
-                        " VALUES (:email, :password_hash, :created_at)"
+                        "INSERT INTO users (email, password_hash, created_at, company_name)"
+                        " VALUES (:email, :password_hash, :created_at, :company_name)"
                     ),
-                    {"email": email, "password_hash": password_hash, "created_at": now},
+                    params,
                 )
                 user_id = result.lastrowid
-        return {"id": user_id, "email": email, "created_at": now}
+        return {"id": user_id, "email": email, "created_at": now,
+                "company_name": company_name}
     except IntegrityError:
         raise ValueError(f"Email already registered: {email}")
 
@@ -160,7 +167,7 @@ def get_user_by_id(user_id: int) -> dict | None:
         row = conn.execute(
             text(
                 "SELECT id, email, created_at, stripe_customer_id,"
-                " subscription_status, trial_ends_at"
+                " subscription_status, trial_ends_at, company_name"
                 " FROM users WHERE id = :id AND is_active = 1"
             ),
             {"id": user_id},

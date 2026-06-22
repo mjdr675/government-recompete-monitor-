@@ -62,18 +62,30 @@ def _apply_pg_migrations() -> None:
     if not migrations_dir.is_dir():
         return
     sql_files = sorted(migrations_dir.glob("*.sql"))
-    engine = get_engine()
     import logging as _log
+    # The database may be unreachable or the driver (psycopg2) absent — e.g. in
+    # local/dev/test environments where DATABASE_URL points at a server we can't
+    # reach. Migrations are best-effort and idempotent, so a connection failure
+    # must not crash app startup; log and continue (real releases ship psycopg2
+    # and a reachable PostgreSQL and apply the migrations normally).
+    try:
+        engine = get_engine()
+    except Exception as exc:
+        _log.warning("Skipping migrations — database engine unavailable: %s", exc)
+        return
     for sql_file in sql_files:
         statements = [s.strip() for s in sql_file.read_text().split(";") if s.strip()]
-        with engine.begin() as conn:
-            for stmt in statements:
-                if stmt.lstrip().startswith("--"):
-                    continue
-                try:
-                    conn.execute(text(stmt))
-                except Exception as exc:
-                    _log.warning("Migration %s: %s", sql_file.name, exc)
+        try:
+            with engine.begin() as conn:
+                for stmt in statements:
+                    if stmt.lstrip().startswith("--"):
+                        continue
+                    try:
+                        conn.execute(text(stmt))
+                    except Exception as exc:
+                        _log.warning("Migration %s: %s", sql_file.name, exc)
+        except Exception as exc:
+            _log.warning("Skipping migration %s — database unavailable: %s", sql_file.name, exc)
 
 
 def init_db():
@@ -163,6 +175,7 @@ def init_db():
             "stripe_customer_id TEXT",
             "subscription_status TEXT NOT NULL DEFAULT 'trialing'",
             "trial_ends_at TEXT",
+            "company_name TEXT",
         ):
             try:
                 conn.execute(text(f"ALTER TABLE users ADD COLUMN {col}"))

@@ -72,6 +72,7 @@ def register():
         email = request.form.get("email", "").strip()
         password = request.form.get("password", "")
         confirm = request.form.get("confirm", "")
+        company_name = request.form.get("company_name", "").strip()
         if not email or "@" not in email:
             error = "Enter a valid email address."
         elif len(password) < 8:
@@ -80,7 +81,7 @@ def register():
             error = "Passwords do not match."
         else:
             try:
-                user = create_user(email, password)
+                user = create_user(email, password, company_name=company_name)
                 set_trial(user["id"], days=14)
                 session.clear()
                 session["user_id"] = user["id"]
