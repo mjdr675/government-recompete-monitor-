@@ -3,8 +3,11 @@
 
 {% block content %}
 <meta name="csrf-token" content="{{ csrf_token() }}">
-<h1>Watchlist</h1>
-<div class="page-meta">{{ count }} bookmarked contract{{ "s" if count != 1 else "" }}</div>
+<div style="margin-bottom:16px">
+  <h1>Watchlist</h1>
+  <p class="page-subtitle">Contracts you&rsquo;ve starred for quick access. Use the &#9734; button on any contract to add it here.</p>
+  <div class="page-meta" style="margin-top:4px">{{ count }} bookmarked contract{{ "s" if count != 1 else "" }}</div>
+</div>
 
 {% if contracts %}
 <div class="table-wrapper">

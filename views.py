@@ -37,25 +37,29 @@ SAVED_VIEWS = {
         # "DoD" = U.S. Department of Defense. Label spelled out for clarity since it
         # was the only preset using a bare acronym; the agency filter is "DEFENSE".
         "label": "Defense (DoD) Critical Contracts",
+        "description": "High-priority recompete opportunities within the Department of Defense. These contracts are expiring soon, competitively awarded, and large enough to be worth pursuing.",
         "filters": {
             "agency": "DEFENSE",
             "priority": "CRITICAL"
         }
     },
     "high-value-contracts": {
-        "label": "High Value Contracts",
+        "label": "High-Value Contracts",
+        "description": "Contracts worth $1 million or more across all agencies. Larger awards take longer to pursue — start early to build relationships and submit a strong bid.",
         "filters": {
             "min_value": 1000000
         }
     },
     "top-risk-agencies": {
-        "label": "Top Risk Agencies",
+        "label": "Critical Priority",
+        "description": "All contracts scored CRITICAL (90+). These have the highest combination of competitive bid type, contract value, and time urgency — act before the window closes.",
         "filters": {
             "priority": "CRITICAL"
         }
     },
     "expiring-soon": {
-        "label": "Expiring Soon",
+        "label": "Expiring Within 90 Days",
+        "description": "Contracts expiring in the next 90 days. Agencies typically issue a new solicitation 60–90 days before expiration — this window is your best opportunity to engage.",
         "filters": {
             "days": 90
         }
