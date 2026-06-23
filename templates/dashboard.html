@@ -247,6 +247,40 @@
         </div>
         {% endif %}
 
+        {# For My Business: personalized contracts based on profile #}
+        {% if for_business %}
+        <div class="table-wrapper" style="margin-bottom:12px">
+          <div class="table-header">
+            <h2>For My Business</h2>
+            <span style="font-size:12px;color:var(--text-muted);font-weight:400">Matched to your profile</span>
+          </div>
+          <table>
+            <thead><tr>
+              <th>Contract</th><th>Vendor</th><th>Agency</th>
+              <th class="col-r">Value</th><th class="col-r">Days</th><th>Match</th>
+            </tr></thead>
+            <tbody>
+              {% for r in for_business %}
+              <tr>
+                <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
+                <td>{{ r.vendor or '&mdash;' }}</td>
+                <td>{{ r.agency or '&mdash;' }}</td>
+                <td class="col-r">${{ "{:,.0f}".format(r.value or 0) }}</td>
+                <td class="col-r">{{ r.days_remaining if r.days_remaining is not none else '&mdash;' }}</td>
+                <td style="font-size:12px;color:var(--text-muted)">{{ r.match_reason }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% elif has_profile and not my_contracts.total %}
+        <div style="padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:16px;text-align:center">
+          <div style="font-weight:600;margin-bottom:6px">No matches yet</div>
+          <div class="muted" style="font-size:13px;margin-bottom:12px">Try expanding your company profile (NAICS codes, states, agencies) to see more matching opportunities.</div>
+          <a href="/company-profile" class="btn btn-primary" style="font-size:13px">Update Profile</a>
+        </div>
+        {% endif %}
+
         {# Suggested matches #}
         {% if suggested_matches %}
         <div class="table-wrapper" style="margin-bottom:12px">
