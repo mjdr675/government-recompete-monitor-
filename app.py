@@ -46,6 +46,8 @@ from db import (
     update_opportunity,
     get_notification_preferences,
     update_notification_preferences,
+    infer_category,
+    extract_raw_field,
 )
 from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
@@ -1013,13 +1015,31 @@ def contract_detail(internal_id):
             biz_mismatch_reasons_list = business_mismatch_reasons(row, biz_profile)
         pipeline_opp = get_opportunity_by_contract(g.user["id"], internal_id)
 
+    category = infer_category(
+        description=row.get("description") or "",
+        naics_code=extract_raw_field(row, "sam_naics") or extract_raw_field(row, "naics_code") or "",
+        vendor=row.get("vendor") or "",
+    )
+    performance_state = (
+        row.get("place_of_performance_state")
+        or extract_raw_field(row, "performance_state")
+        or extract_raw_field(row, "recipient_state")
+        or ""
+    )
+    performance_city = extract_raw_field(row, "performance_city") or ""
+    psc_description = extract_raw_field(row, "psc_description") or ""
+
     return render_template("contract_detail.html", row=row, is_bookmarked=is_bookmarked,
                            notes=notes, next_step=guidance, action=action,
                            why_matters=matters, timeline=timeline,
                            biz_match_score=biz_match_score,
                            biz_match_reasons=biz_match_reasons_list,
                            biz_mismatch_reasons=biz_mismatch_reasons_list,
-                           pipeline_opp=pipeline_opp)
+                           pipeline_opp=pipeline_opp,
+                           category=category,
+                           performance_state=performance_state,
+                           performance_city=performance_city,
+                           psc_description=psc_description)
 
 
 @app.route("/watchlist/add", methods=["POST"])
@@ -1492,10 +1512,33 @@ def compare():
         con.close()
         return row
 
-    id_a = request.args.get("a", "").strip()
-    id_b = request.args.get("b", "").strip()
-    return render_template("compare.html", a=_fetch(id_a), b=_fetch(id_b),
-                           id_a=id_a, id_b=id_b)
+    # Support up to 5 contracts via params a–e; also accepts legacy ?a=X&b=Y.
+    _SLOTS = ["a", "b", "c", "d", "e"]
+    raw_ids = [request.args.get(s, "").strip() for s in _SLOTS]
+    # Drop empty trailing slots so the form stays minimal.
+    while raw_ids and not raw_ids[-1]:
+        raw_ids.pop()
+
+    # Always surface at least two slots for the form.
+    while len(raw_ids) < 2:
+        raw_ids.append("")
+
+    contracts = [(_fetch(rid) if rid else None, rid) for rid in raw_ids]
+
+    # Legacy two-contract template vars preserved for backward compatibility.
+    id_a = raw_ids[0] if raw_ids else ""
+    id_b = raw_ids[1] if len(raw_ids) > 1 else ""
+    a = contracts[0][0] if contracts else None
+    b = contracts[1][0] if len(contracts) > 1 else None
+
+    return render_template(
+        "compare.html",
+        contracts=contracts,
+        raw_ids=raw_ids,
+        slots=_SLOTS,
+        # Legacy vars — kept so existing bookmarks/links using ?a=&b= still work.
+        a=a, b=b, id_a=id_a, id_b=id_b,
+    )
 
 
 @app.route("/settings/account", methods=["GET", "POST"])

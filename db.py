@@ -97,6 +97,10 @@ _MIGRATION_PROBES: dict = {
         "SELECT COUNT(*) FROM information_schema.tables "
         "WHERE table_schema = 'public' AND table_name = 'user_notification_preferences'"
     ),
+    "009_contracts_ci_columns.sql": (
+        "SELECT COUNT(*) FROM information_schema.columns "
+        "WHERE table_name = 'contracts' AND column_name = 'place_of_performance_state'"
+    ),
 }
 
 
@@ -273,6 +277,101 @@ def _apply_pg_migrations() -> None:
     _apply_migrations()
 
 
+# ---------------------------------------------------------------------------
+# Contract-intelligence helpers
+# ---------------------------------------------------------------------------
+
+_CATEGORY_RULES = [
+    ("Cybersecurity", ["cyber", "information security", "security operations", "soc "]),
+    ("IT", [
+        "information technology", "help desk", "helpdesk", "software", "cloud ",
+        "network ", "hardware", "data center", "systems integrat",
+        "it support", "it service", "managed service",
+    ]),
+    ("Cleaning", ["janitorial", "cleaning", "custodial", "housekeeping", "sanitation"]),
+    ("Grounds", ["grounds", "landscaping", "lawn", "mowing", "turf "]),
+    ("Facilities", [
+        "facility", "facilities", "hvac", "building maintenance",
+        "operations and maintenance", "o&m", "maintenance and repair",
+    ]),
+    ("Construction", ["construction", "renovation", "roofing", "paving", "demolition", "structural"]),
+    ("Logistics", ["logistics", "supply chain", "transportation", "shipping", "warehousing", "distribution"]),
+    ("Security", ["security guard", "physical security", "guard service", "armed guard", "unarmed guard"]),
+    ("Administrative", ["administrative support", "administrative services", "program support", "clerical"]),
+]
+
+_NAICS_CATEGORY_MAP = [
+    ("5415", "IT"), ("5416", "IT"), ("5413", "IT"),
+    ("7371", "IT"), ("7372", "IT"), ("7374", "IT"),
+    ("2381", "Construction"), ("2382", "Construction"),
+    ("2383", "Construction"), ("2389", "Construction"),
+    ("56173", "Grounds"),
+    ("5617", "Cleaning"),
+    ("56161", "Security"), ("5616", "Security"),
+    ("4841", "Logistics"), ("4842", "Logistics"), ("4931", "Logistics"),
+]
+
+ALL_CATEGORIES = [
+    "Administrative", "Cleaning", "Construction", "Cybersecurity",
+    "Facilities", "Grounds", "IT", "Logistics", "Security",
+]
+
+
+def infer_category(description="", naics_code="", vendor="", agency=""):
+    """Return a human-readable contract category inferred from available fields.
+
+    Checks keyword rules against description+vendor first, then falls back to
+    NAICS code prefix matching. Returns 'Other' when nothing matches.
+    """
+    text = " ".join(filter(None, [description, vendor])).lower()
+    for cat, keywords in _CATEGORY_RULES:
+        for kw in keywords:
+            if kw in text:
+                return cat
+    if naics_code:
+        nc = str(naics_code).strip()
+        for prefix, cat in _NAICS_CATEGORY_MAP:
+            if nc.startswith(prefix):
+                return cat
+    return "Other"
+
+
+def extract_raw_field(row, field, default=None):
+    """Pull a field from a contract row's raw_json blob.
+
+    Returns the field value when present, or *default* when raw_json is absent,
+    unparseable, or the field is missing/falsy.  Never raises.
+    """
+    raw = row.get("raw_json") if row else None
+    if not raw:
+        return default
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else raw
+        return data.get(field) or default
+    except Exception:
+        return default
+
+
+def _ensure_ci_columns():
+    """Add place_of_performance_state and vendor_website to contracts if absent.
+
+    SQLite does not support IF NOT EXISTS on ALTER TABLE; we check PRAGMA
+    table_info first.  Idempotent — safe to call on every startup.
+    """
+    engine = get_engine()
+    with engine.begin() as conn:
+        rows = conn.execute(text("PRAGMA table_info(contracts)")).fetchall()
+        if not rows:
+            return
+        existing = {r[1] for r in rows}
+        for col, coltype in [
+            ("place_of_performance_state", "TEXT"),
+            ("vendor_website", "TEXT"),
+        ]:
+            if col not in existing:
+                conn.execute(text(f"ALTER TABLE contracts ADD COLUMN {col} {coltype}"))
+
+
 def _ensure_description_column():
     """Migrate existing SQLite DBs to add description column and rebuild FTS with it.
 
@@ -304,6 +403,7 @@ def init_db():
         return
 
     needs_fts_rebuild = _ensure_description_column()
+    _ensure_ci_columns()
 
     engine = get_engine()
     with engine.begin() as conn:
@@ -324,7 +424,9 @@ def init_db():
             recompete_score INTEGER,
             priority TEXT,
             raw_json TEXT,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            place_of_performance_state TEXT,
+            vendor_website TEXT
         )
         """))
         conn.execute(text(
