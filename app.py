@@ -14,6 +14,7 @@ import threading
 from datetime import date, datetime, timezone
 from logging.handlers import RotatingFileHandler
 
+import payments
 import sentry_sdk
 import stripe
 from dotenv import load_dotenv
@@ -777,10 +778,8 @@ def views_detail(view_id):
 @app.route("/create-checkout-session", methods=["POST"])
 def create_checkout_session():
     try:
-        checkout = stripe.checkout.Session.create(
-            payment_method_types=["card"],
-            mode="subscription",
-            line_items=[{"price": STRIPE_PRICE_ID, "quantity": 1}],
+        checkout = payments.service.create_checkout_session(
+            price_id=STRIPE_PRICE_ID,
             success_url=request.host_url.rstrip("/") + "/success?session_id={CHECKOUT_SESSION_ID}",
             cancel_url=request.host_url.rstrip("/") + "/cancel",
         )
@@ -795,7 +794,7 @@ def success():
     session_id = request.args.get("session_id", "")
     if session_id:
         try:
-            checkout = stripe.checkout.Session.retrieve(session_id)
+            checkout = payments.service.retrieve_checkout_session(session_id)
             details = checkout.get("customer_details") or {}
             email = details.get("email") or ""
             name = details.get("name") or ""
@@ -830,8 +829,8 @@ def billing_portal():
         flash("No active subscription found.", "error")
         return redirect(url_for("dashboard"))
     try:
-        portal = stripe.billing_portal.Session.create(
-            customer=stripe_customer_id,
+        portal = payments.service.create_billing_portal_session(
+            customer_id=stripe_customer_id,
             return_url=request.host_url.rstrip("/") + "/",
         )
         return redirect(portal.url, code=303)
@@ -851,13 +850,13 @@ def stripe_webhook():
         logging.warning("Stripe webhook received but STRIPE_WEBHOOK_SECRET is not configured")
         return "Webhook secret not configured", 400
     try:
-        event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
-    except (stripe.error.SignatureVerificationError, ValueError) as e:
-        logging.warning("Stripe webhook signature error: %s", e)
+        event = payments.service.construct_webhook_event(payload, sig, STRIPE_WEBHOOK_SECRET)
+    except ValueError as e:
+        logging.warning("Webhook signature error: %s", e)
         return "Bad request", 400
     except Exception as exc:
         sentry_sdk.capture_exception(exc)
-        logging.exception("Unexpected error parsing Stripe webhook: %s", exc)
+        logging.exception("Unexpected error parsing webhook: %s", exc)
         return "Internal error", 500
 
     if event["type"] == "checkout.session.completed":

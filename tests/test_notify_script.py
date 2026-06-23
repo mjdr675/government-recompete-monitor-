@@ -4,9 +4,12 @@ import stat
 import subprocess
 from pathlib import Path
 
+import pytest
+
+from tools import registry
+
 REPO_ROOT = Path(__file__).parent.parent
 SCRIPT = REPO_ROOT / "scripts" / "notify.sh"
-AE_BIN = Path("/home/michael/autonomous-engineering/.venv/bin/ae")
 
 
 def test_script_exists():
@@ -18,9 +21,15 @@ def test_script_is_executable():
     assert mode & stat.S_IXUSR, "scripts/notify.sh is not executable"
 
 
-def test_script_contains_ae_venv_path():
+def test_script_uses_registry_for_ae():
     text = SCRIPT.read_text()
-    assert "/home/michael/autonomous-engineering/.venv" in text
+    # No hardcoded paths or venv coupling may remain in runtime code...
+    assert "/home/michael/autonomous-engineering" not in text
+    assert "/usr/local/bin" not in text
+    assert "activate" not in text
+    assert "which ae" not in text
+    # ...and `ae` must be detected through the central tool registry.
+    assert "registry" in text
 
 
 def test_script_contains_repo_label():
@@ -33,8 +42,18 @@ def test_script_contains_branch_detection():
     assert "rev-parse --abbrev-ref HEAD" in text
 
 
-def test_ae_binary_exists():
-    assert AE_BIN.exists(), f"ae binary not found at {AE_BIN}"
+def test_ae_resolution_contract():
+    """`ae` is resolved through the central registry, never a hardcoded path.
+
+    Validates behaviour, not filesystem layout. When `ae` is absent (e.g. in CI)
+    the registry reports it unavailable and the test is skipped — notify.sh
+    degrades gracefully in that case. When present, the contract must hold."""
+    tool = registry.get("ae")
+    if not tool.available:
+        assert tool.path is None
+        pytest.skip("ae not installed (CI/portable env); notify.sh degrades gracefully")
+    assert tool.path is not None
+    assert Path(tool.path).exists()
 
 
 def test_script_exits_nonzero_without_event_arg():

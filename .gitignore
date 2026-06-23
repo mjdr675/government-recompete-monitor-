@@ -1,6 +1,10 @@
 __pycache__/
 *.pyc
+.pytest_cache/
 contracts.db
+
+# Repo-local pytest sandbox (auto-created + wiped by pytest each run)
+.ci/
 ContractOpportunitiesFullCSV.csv
 sam_page.html
 urls.txt
