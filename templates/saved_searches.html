@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Saved Searches{% endblock %}
+
+{% block content %}
+<h1>Saved Searches</h1>
+<div class="muted">Load, rename, or delete your saved searches.</div>
+
+{% if searches %}
+<table style="margin-top:20px;">
+<tr>
+  <th>Name</th>
+  <th>Filters</th>
+  <th>Saved</th>
+  <th>Actions</th>
+</tr>
+{% for s in searches %}
+<tr>
+  <td><strong>{{ s.name }}</strong></td>
+  <td class="muted" style="font-size:13px;">
+    {% for k, v in s.filters.items() %}{{ k }}: {{ v }}{% if not loop.last %}, {% endif %}{% endfor %}
+  </td>
+  <td class="muted" style="font-size:13px;">{{ s.created_at[:10] }}</td>
+  <td style="white-space:nowrap;">
+    <a href="/saved-searches/{{ s.id }}/load" style="margin-right:8px;">Load</a>
+
+    <form method="post" action="/saved-searches/{{ s.id }}/rename" style="display:inline;">
+      <input name="name" value="{{ s.name }}" style="width:160px;padding:4px;">
+      <button type="submit">Rename</button>
+    </form>
+
+    <form method="post" action="/saved-searches/{{ s.id }}/delete" style="display:inline;margin-left:8px;"
+          onsubmit="return confirm('Delete saved search &quot;{{ s.name }}&quot;?');">
+      <button type="submit" style="color:#b00020;background:none;border:none;cursor:pointer;padding:4px;">Delete</button>
+    </form>
+  </td>
+</tr>
+{% endfor %}
+</table>
+{% else %}
+<div class="muted" style="margin-top:24px;">
+  No saved searches yet. Use the <a href="/contracts">Contracts</a> page to save a search.
+</div>
+{% endif %}
+{% endblock %}

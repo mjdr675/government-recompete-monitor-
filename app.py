@@ -466,6 +466,23 @@ def health():
     return {"status": "ok"}, 200
 
 
+@app.route("/ingest/run", methods=["POST"])
+def ingest_run():
+    """Cron trigger endpoint. Protected by CRON_SECRET bearer token."""
+    if _CRON_SECRET:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header != f"Bearer {_CRON_SECRET}":
+            return {"error": "unauthorized"}, 401
+
+    subprocess.Popen(
+        [sys.executable, "recompete_report.py"],
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return {"status": "started", "date": date.today().isoformat()}, 202
+
+
 @app.route("/")
 def index():
     """Public landing page; authenticated users are redirected to /dashboard."""
@@ -710,6 +727,7 @@ def onboarding_complete():
 def contracts():
     q = request.args.get("q", "")
     agency = request.args.get("agency", "")
+    category = request.args.get("category", "")
     priority = request.args.get("priority", "")
     days = request.args.get("days", None)
     min_value = request.args.get("min_value", type=float)
@@ -833,6 +851,7 @@ def contracts():
         all_categories=ALL_CATEGORIES,
         q=q,
         agency=agency,
+        category=category,
         priority=priority,
         days=days or "",
         min_value=min_value or "",

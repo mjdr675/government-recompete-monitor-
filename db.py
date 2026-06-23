@@ -506,6 +506,8 @@ def init_db():
             solicitation_id TEXT,
             recompete_score INTEGER,
             priority TEXT,
+            psc_description TEXT,
+            description TEXT,
             raw_json TEXT,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
             vendor_website TEXT
@@ -1547,6 +1549,8 @@ def upsert_contract(row):
             solicitation_id=excluded.solicitation_id,
             recompete_score=excluded.recompete_score,
             priority=excluded.priority,
+            psc_description=excluded.psc_description,
+            description=excluded.description,
             raw_json=excluded.raw_json,
             updated_at=excluded.updated_at
         """), {
@@ -1647,6 +1651,8 @@ def save_snapshot(run_date, rows):
                 solicitation_id=excluded.solicitation_id,
                 recompete_score=excluded.recompete_score,
                 priority=excluded.priority,
+                psc_description=excluded.psc_description,
+                description=excluded.description,
                 raw_json=excluded.raw_json,
                 updated_at=CURRENT_TIMESTAMP
             """), {
@@ -2029,6 +2035,119 @@ def save_early_access(email: str, hubspot_contact_id: str | None = None) -> None
         })
 
 
+def init_watchlist_table():
+    with connect() as con:
+        con.execute("""
+        CREATE TABLE IF NOT EXISTS watchlist (
+            internal_id TEXT PRIMARY KEY,
+            added_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+        con.commit()
+
+def watch_contract(internal_id: str) -> None:
+    init_watchlist_table()
+    with connect() as con:
+        con.execute(
+            "INSERT OR IGNORE INTO watchlist (internal_id) VALUES (?)",
+            (internal_id,),
+        )
+        con.commit()
+
+def unwatch_contract(internal_id: str) -> None:
+    init_watchlist_table()
+    with connect() as con:
+        con.execute("DELETE FROM watchlist WHERE internal_id = ?", (internal_id,))
+        con.commit()
+
+def is_watched(internal_id: str) -> bool:
+    init_watchlist_table()
+    with connect() as con:
+        row = con.execute(
+            "SELECT 1 FROM watchlist WHERE internal_id = ?", (internal_id,)
+        ).fetchone()
+    return row is not None
+
+def get_watchlist() -> list:
+    init_watchlist_table()
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("""
+        SELECT c.*
+        FROM watchlist w
+        JOIN contracts c ON c.internal_id = w.internal_id
+        ORDER BY c.recompete_score DESC, c.value DESC
+    """).fetchall()
+    conn.close()
+    return rows
+
+
+def init_saved_searches_table():
+    with connect() as con:
+        con.execute("""
+        CREATE TABLE IF NOT EXISTS saved_searches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            filters TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+        con.commit()
+
+def create_saved_search(name: str, filters: dict) -> int:
+    import json as _json
+    init_saved_searches_table()
+    with connect() as con:
+        cur = con.execute(
+            "INSERT INTO saved_searches (name, filters) VALUES (?, ?)",
+            (name, _json.dumps(filters)),
+        )
+        con.commit()
+        return cur.lastrowid
+
+def get_saved_searches() -> list:
+    import json as _json
+    init_saved_searches_table()
+    with connect() as con:
+        rows = con.execute(
+            "SELECT id, name, filters, created_at FROM saved_searches ORDER BY id DESC"
+        ).fetchall()
+    return [
+        {"id": r[0], "name": r[1], "filters": _json.loads(r[2]), "created_at": r[3]}
+        for r in rows
+    ]
+
+def get_saved_search(search_id: int) -> dict | None:
+    import json as _json
+    init_saved_searches_table()
+    with connect() as con:
+        row = con.execute(
+            "SELECT id, name, filters, created_at FROM saved_searches WHERE id = ?",
+            (search_id,),
+        ).fetchone()
+    if not row:
+        return None
+    return {"id": row[0], "name": row[1], "filters": _json.loads(row[2]), "created_at": row[3]}
+
+def rename_saved_search(search_id: int, name: str) -> bool:
+    init_saved_searches_table()
+    with connect() as con:
+        cur = con.execute(
+            "UPDATE saved_searches SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (name, search_id),
+        )
+        con.commit()
+        return cur.rowcount > 0
+
+def delete_saved_search(search_id: int) -> bool:
+    init_saved_searches_table()
+    with connect() as con:
+        cur = con.execute("DELETE FROM saved_searches WHERE id = ?", (search_id,))
+        con.commit()
+        return cur.rowcount > 0
+
+
 _SORTABLE = {"recompete_score", "value", "days_remaining", "end_date", "priority", "vendor", "agency"}
 
 _CATEGORY_RULES = [
@@ -2152,6 +2271,12 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
         base += " AND c.agency LIKE :agency"
         params["agency"] = f"%{agency}%"
 
+    if category:
+        keywords = CATEGORY_KEYWORDS.get(category, [category])
+        clauses = " OR ".join("c.description LIKE ?" for _ in keywords)
+        base += f" AND ({clauses})"
+        params.extend(f"%{kw}%" for kw in keywords)
+
     if priority:
         base += " AND c.priority = :priority"
         params["priority"] = priority
@@ -2223,6 +2348,10 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
         base += f" AND c.internal_id NOT IN ({ex_placeholders})"
         for i, eid in enumerate(exclude_ids):
             params[f"ex_{i}"] = eid
+
+    if min_value is not None:
+        base += " AND c.value >= ?"
+        params.append(float(min_value))
 
     col = sort if sort in _SORTABLE else "recompete_score"
     order = "ASC" if direction == "asc" else "DESC"

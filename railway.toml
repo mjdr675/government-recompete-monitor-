@@ -1,0 +1,13 @@
+[build]
+  builder = "nixpacks"
+
+[[services]]
+  name = "web"
+  [services.deploy]
+    startCommand = "gunicorn app:app --bind 0.0.0.0:$PORT"
+
+[[services]]
+  name = "daily-ingest"
+  [services.deploy]
+    cronSchedule = "0 6 * * *"
+    startCommand = "curl -s -X POST https://recompete.us/ingest/run -H \"Authorization: Bearer $CRON_SECRET\""
