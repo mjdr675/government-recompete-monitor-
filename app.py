@@ -14,6 +14,7 @@ import threading
 from datetime import date, datetime, timezone
 from logging.handlers import RotatingFileHandler
 
+import payments
 import sentry_sdk
 import stripe
 from dotenv import load_dotenv
@@ -58,6 +59,17 @@ from db import (
     infer_category,
     extract_raw_field,
     get_recent_updates_for_user,
+    get_workspace_for_user,
+    get_or_create_workspace_for_user,
+    update_workspace,
+    get_workspace_billing,
+    update_workspace_subscription_status,
+    is_workspace_active,
+    list_workspace_members,
+    VALID_PLANS,
+    record_workspace_billing_event,
+    is_workspace_in_trial,
+    get_workspace_by_stripe_customer,
 )
 from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
@@ -103,9 +115,7 @@ def _configure_json_logging() -> None:
         root.addHandler(logging.StreamHandler(sys.stdout))
     for handler in root.handlers:
         handler.setFormatter(formatter)
-        
-app.config["PROPAGATE_EXCEPTIONS"] = True
-app.config["TRAP_HTTP_EXCEPTIONS"] = True
+
 
 _configure_json_logging()
 
@@ -463,111 +473,105 @@ def index():
         return redirect(url_for("dashboard"))
     return render_template("landing.html")
 
-import traceback
-
 @app.route("/dashboard")
 def dashboard():
-    import traceback
     try:
-        return "TEST"
-    except Exception:
-        print(traceback.format_exc())
-        raise
+        user_id = g.user["id"] if g.user else None
+        profile = get_company_profile(user_id) if user_id else None
 
-        return render_template("dashboard.html")
+        if user_id and not profile and not session.get("onboarding_skipped"):
+            return redirect(url_for("onboarding"))
+
+        analytics = dashboard_analytics()
+        recommendations = opportunity_recommendations()
+        engine = get_engine()
+        last_ingest = None
+        hours_ago = None
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT created_at FROM ingest_log"
+                    " WHERE status = 'success' ORDER BY created_at DESC LIMIT 1"
+                )
+            ).fetchone()
+        if row:
+            last_ingest = row[0]
+            try:
+                ts = datetime.fromisoformat(last_ingest)
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                hours_ago = round((datetime.now(timezone.utc) - ts).total_seconds() / 3600, 1)
+            except (ValueError, TypeError):
+                pass
+        show_onboarding = (
+            g.get("watchlist_count", 0) == 0
+            and not session.get("onboarding_dismissed")
+        )
+        dash_actions = dashboard_recommended_actions(user_id)
+        has_profile = bool(profile)
+        biz_opps = business_opportunities(user_id)
+        my_contracts = my_contracts_summary(user_id)
+        suggested = get_suggested_matches(user_id)
+        for_business = personalized_for_business(user_id, profile) if profile else []
+        p_completion = profile_completeness(profile) if profile else 0
+        p_hints = profile_completion_hints(profile) if profile and p_completion < 100 else []
+
+        pipeline_summary = {"total": 0, "active": 0, "by_stage": {}, "top": []}
+        if user_id:
+            all_opps = list_opportunities(user_id)
+            active_opps = [o for o in all_opps if o["stage"] not in PIPELINE_TERMINAL_STAGES]
+            by_stage: dict = {}
+            for o in all_opps:
+                by_stage[o["stage"]] = by_stage.get(o["stage"], 0) + 1
+            top_opps = sorted(
+                active_opps,
+                key=lambda o: (
+                    o["next_action_due"] or "9999-99-99",
+                    -(o["recompete_score"] or 0),
+                    o["updated_at"] or "",
+                ),
+            )[:5]
+            pipeline_summary = {
+                "total": len(all_opps),
+                "active": len(active_opps),
+                "by_stage": by_stage,
+                "top": top_opps,
+            }
+
+        recent_updates = []
+        if user_id:
+            from contract_summary import format_contract_update
+            recent_updates = [
+                format_contract_update(r)
+                for r in get_recent_updates_for_user(user_id, limit=8)
+            ]
+
+        return render_template(
+            "dashboard.html",
+            report=build_report(date.today().isoformat()),
+            analytics=analytics,
+            recommendations=recommendations,
+            dash_actions=dash_actions,
+            biz_opps=biz_opps,
+            my_contracts=my_contracts,
+            suggested_matches=suggested,
+            for_business=for_business,
+            recent_updates=recent_updates,
+            company_name=profile.get("company_name") if profile else None,
+            has_profile=has_profile,
+            profile_completion=p_completion,
+            profile_hints=p_hints,
+            last_ingest=last_ingest,
+            hours_ago=hours_ago,
+            show_onboarding=show_onboarding,
+            pipeline_summary=pipeline_summary,
+            pipeline_stages=PIPELINE_STAGES,
+        )
 
     except Exception:
         import traceback
         print(traceback.format_exc())
         return "Dashboard error", 500
-
-    analytics = dashboard_analytics()
-    recommendations = opportunity_recommendations()
-    engine = get_engine()
-    last_ingest = None
-    hours_ago = None
-    with engine.connect() as conn:
-        row = conn.execute(
-            text(
-                "SELECT created_at FROM ingest_log"
-                " WHERE status = 'success' ORDER BY created_at DESC LIMIT 1"
-            )
-        ).fetchone()
-    if row:
-        last_ingest = row[0]
-        try:
-            ts = datetime.fromisoformat(last_ingest)
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
-            hours_ago = round((datetime.now(timezone.utc) - ts).total_seconds() / 3600, 1)
-        except (ValueError, TypeError):
-            pass
-    show_onboarding = (
-        g.get("watchlist_count", 0) == 0
-        and not session.get("onboarding_dismissed")
-    )
-    dash_actions = dashboard_recommended_actions(user_id)
-    has_profile = bool(profile)
-    biz_opps = business_opportunities(user_id)
-    my_contracts = my_contracts_summary(user_id)
-    suggested = get_suggested_matches(user_id)
-    for_business = personalized_for_business(user_id, profile) if profile else []
-    p_completion = profile_completeness(profile) if profile else 0
-    p_hints = profile_completion_hints(profile) if profile and p_completion < 100 else []
-
-    pipeline_summary = {"total": 0, "active": 0, "by_stage": {}, "top": []}
-    if user_id:
-        all_opps = list_opportunities(user_id)
-        active_opps = [o for o in all_opps if o["stage"] not in PIPELINE_TERMINAL_STAGES]
-        by_stage: dict = {}
-        for o in all_opps:
-            by_stage[o["stage"]] = by_stage.get(o["stage"], 0) + 1
-        top_opps = sorted(
-            active_opps,
-            key=lambda o: (
-                o["next_action_due"] or "9999-99-99",
-                -(o["recompete_score"] or 0),
-                o["updated_at"] or "",
-            ),
-        )[:5]
-        pipeline_summary = {
-            "total": len(all_opps),
-            "active": len(active_opps),
-            "by_stage": by_stage,
-            "top": top_opps,
-        }
-
-    # Recent Updates feed — field-level changes on the user's tracked
-    # (watchlist + pipeline) contracts, formatted for compact display.
-    recent_updates = []
-    if user_id:
-        from contract_summary import format_contract_update
-        recent_updates = [
-            format_contract_update(r)
-            for r in get_recent_updates_for_user(user_id, limit=8)
-        ]
-
-    return render_template(
-        "dashboard.html",
-        report=build_report(date.today().isoformat()),
-        analytics=analytics,
-        recommendations=recommendations,
-        dash_actions=dash_actions,
-        biz_opps=biz_opps,
-        my_contracts=my_contracts,
-        suggested_matches=suggested,
-        for_business=for_business,
-        recent_updates=recent_updates,
-        company_name=profile.get("company_name") if profile else None,
-        has_profile=has_profile,
-        profile_completion=p_completion,
-        profile_hints=p_hints,
-        last_ingest=last_ingest,
-        hours_ago=hours_ago,
-        show_onboarding=show_onboarding,
-        pipeline_summary=pipeline_summary,
-        pipeline_stages=PIPELINE_STAGES,
-    )
 
 
 @app.route("/onboarding/dismiss", methods=["POST"])
@@ -914,10 +918,8 @@ def views_detail(view_id):
 @app.route("/create-checkout-session", methods=["POST"])
 def create_checkout_session():
     try:
-        checkout = stripe.checkout.Session.create(
-            payment_method_types=["card"],
-            mode="subscription",
-            line_items=[{"price": STRIPE_PRICE_ID, "quantity": 1}],
+        checkout = payments.service.create_checkout_session(
+            price_id=STRIPE_PRICE_ID,
             success_url=request.host_url.rstrip("/") + "/success?session_id={CHECKOUT_SESSION_ID}",
             cancel_url=request.host_url.rstrip("/") + "/cancel",
         )
@@ -932,7 +934,7 @@ def success():
     session_id = request.args.get("session_id", "")
     if session_id:
         try:
-            checkout = stripe.checkout.Session.retrieve(session_id)
+            checkout = payments.service.retrieve_checkout_session(session_id)
             details = checkout.get("customer_details") or {}
             email = details.get("email") or ""
             name = details.get("name") or ""
@@ -967,8 +969,8 @@ def billing_portal():
         flash("No active subscription found.", "error")
         return redirect(url_for("dashboard"))
     try:
-        portal = stripe.billing_portal.Session.create(
-            customer=stripe_customer_id,
+        portal = payments.service.create_billing_portal_session(
+            customer_id=stripe_customer_id,
             return_url=request.host_url.rstrip("/") + "/",
         )
         return redirect(portal.url, code=303)
@@ -1036,13 +1038,13 @@ def stripe_webhook():
         logging.warning("Stripe webhook received but STRIPE_WEBHOOK_SECRET is not configured")
         return "Webhook secret not configured", 400
     try:
-        event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
-    except (stripe.error.SignatureVerificationError, ValueError) as e:
-        logging.warning("Stripe webhook signature error: %s", e)
+        event = payments.service.construct_webhook_event(payload, sig, STRIPE_WEBHOOK_SECRET)
+    except ValueError as e:
+        logging.warning("Webhook signature error: %s", e)
         return "Bad request", 400
     except Exception as exc:
         sentry_sdk.capture_exception(exc)
-        logging.exception("Unexpected error parsing Stripe webhook: %s", exc)
+        logging.exception("Unexpected error parsing webhook: %s", exc)
         return "Internal error", 500
 
     if event["type"] == "checkout.session.completed":

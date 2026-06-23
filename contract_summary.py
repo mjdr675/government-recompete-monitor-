@@ -7,8 +7,54 @@ functions over already-stored fields only: no DB, no external/AI calls.
 
 from domain.policies.contract_ranking import rank_contracts
 
-def format_contract_update(*args, **kwargs):
-    return ""
+def format_contract_update(row):
+    """Format a field-change row for compact dashboard display."""
+    field = row.get("field_name", "")
+    kind = (row.get("change_kind") or "MODIFIED").upper()
+    old = row.get("old_value")
+    new = row.get("new_value")
+    award_id = row.get("award_id")
+    internal_id = row.get("internal_id", "")
+
+    _labels = {
+        "value": "Value",
+        "end_date": "Recompete date",
+        "days_remaining": "Days remaining",
+        "vendor": "Vendor",
+        "competition_type": "Competition type",
+        "recompete_score": "Recompete score",
+        "priority": "Priority",
+    }
+    label = _labels.get(field, field.replace("_", " ").title())
+
+    if kind == "INCREASE":
+        verb = "increased"
+    elif kind == "DECREASE":
+        verb = "decreased"
+    elif kind == "SET":
+        verb = "set"
+    else:
+        verb = "changed"
+
+    def _fmt(v):
+        if v is None:
+            return "—"
+        if field == "value":
+            try:
+                return f"${int(float(v)):,}"
+            except (ValueError, TypeError):
+                return str(v)
+        return str(v)
+
+    return {
+        "headline": f"{label} {verb}",
+        "field": field,
+        "old_value": _fmt(old),
+        "new_value": _fmt(new),
+        "contract": award_id or internal_id,
+        "run_date": row.get("run_date", ""),
+        "change_kind": kind,
+    }
 
 def _safe_int(v):
     try:

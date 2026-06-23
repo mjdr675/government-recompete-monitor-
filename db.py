@@ -1921,6 +1921,23 @@ def get_field_changes_for_contracts(internal_ids, limit=50):
     return [dict(r) for r in rows]
 
 
+def get_field_changes(run_date):
+    """Return all field-change rows for run_date (internal_id schema)."""
+    init_field_changes_table()
+    with get_engine().connect() as conn:
+        rows = conn.execute(text("""
+            SELECT run_date, internal_id, field_name, old_value, new_value,
+                   change_kind, created_at
+            FROM contract_field_changes
+            WHERE run_date = :run_date
+            ORDER BY internal_id, field_name
+        """), {"run_date": run_date}).mappings().fetchall()
+    return [dict(r) for r in rows]
+
+
+init_contract_field_changes_table = init_field_changes_table
+
+
 def get_recent_updates_for_user(user_id, limit=10):
     """Return recent field-level changes for the contracts a user tracks.
 

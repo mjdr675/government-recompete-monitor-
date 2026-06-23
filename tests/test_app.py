@@ -699,7 +699,13 @@ def test_webhook_rejects_without_secret(monkeypatch, client):
 
 def test_webhook_rejects_bad_signature(monkeypatch, client):
     import app as flask_app
+    import payments as payments_module
     monkeypatch.setattr(flask_app, "STRIPE_WEBHOOK_SECRET", "whsec_test")
+    monkeypatch.setattr(
+        payments_module.service,
+        "construct_webhook_event",
+        lambda payload, sig, secret: (_ for _ in ()).throw(ValueError("bad signature")),
+    )
     rv = client.post(
         "/stripe/webhook",
         data=b'{"type":"checkout.session.completed"}',
@@ -821,10 +827,14 @@ def test_sentry_init_called_when_dsn_set(monkeypatch):
 
 def test_sentry_capture_exception_called_on_stripe_webhook_error(client, monkeypatch):
     import sentry_sdk
-    import stripe
+    import payments as payments_module
     captured = []
     monkeypatch.setattr(sentry_sdk, "capture_exception", lambda exc: captured.append(exc))
-    monkeypatch.setattr(stripe.Webhook, "construct_event", lambda *a, **kw: (_ for _ in ()).throw(Exception("boom")))
+    monkeypatch.setattr(
+        payments_module.service,
+        "construct_webhook_event",
+        lambda *a, **kw: (_ for _ in ()).throw(Exception("boom")),
+    )
     import app as flask_app
     monkeypatch.setattr(flask_app, "STRIPE_WEBHOOK_SECRET", "test-secret")
     rv = client.post(
