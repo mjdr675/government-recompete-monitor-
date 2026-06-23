@@ -10,7 +10,7 @@ import pytest
 
 import db as db_module
 import users as users_module
-from db import insert_field_change
+from db import insert_field_changes
 from analytics import recent_updates_for_user
 
 
@@ -19,7 +19,7 @@ def pdb(tmp_path, monkeypatch):
     db_path = str(tmp_path / "test.db")
     monkeypatch.setattr(db_module, "DB_PATH", db_path)
     db_module.init_db()
-    db_module.init_contract_field_changes_table()
+    db_module.init_field_changes_table()
     users_module.create_user("feed@example.com", "password123")
     yield db_path
 
@@ -85,10 +85,15 @@ def test_returns_empty_when_no_user(pdb):
     assert recent_updates_for_user(None) == []
 
 
+def _fc(run_date, internal_id, field, old, new, kind="MODIFIED"):
+    insert_field_changes(run_date, [{"internal_id": internal_id, "field_name": field,
+                                      "old_value": old, "new_value": new, "change_kind": kind}])
+
+
 def test_returns_empty_when_nothing_tracked(pdb):
     uid = _uid(pdb)
     _add_contract(pdb, "C1")
-    insert_field_change("2026-06-19", "C1", "value", "100000.0", "150000.0")
+    _fc("2026-06-19", "C1", "value", "100000.0", "150000.0")
     # C1 not watched/in pipeline → not surfaced.
     assert recent_updates_for_user(uid) == []
 
@@ -97,10 +102,10 @@ def test_returns_update_for_watchlisted_contract(pdb):
     uid = _uid(pdb)
     _add_contract(pdb, "C1", award_id="AW-1")
     _watch(pdb, uid, "C1")
-    insert_field_change("2026-06-19", "C1", "value", "100000.0", "150000.0")
+    _fc("2026-06-19", "C1", "value", "100000.0", "150000.0")
     result = recent_updates_for_user(uid)
     assert len(result) == 1
-    assert result[0]["contract_id"] == "C1"
+    assert result[0]["internal_id"] == "C1"
     assert result[0]["field_name"] == "value"
     assert result[0]["old_value"] == "100000.0"
     assert result[0]["new_value"] == "150000.0"
@@ -111,9 +116,9 @@ def test_includes_pipeline_contract(pdb):
     uid = _uid(pdb)
     _add_contract(pdb, "P1")
     _add_pipeline(pdb, uid, "P1")
-    insert_field_change("2026-06-19", "P1", "priority", "MEDIUM", "HIGH")
+    _fc("2026-06-19", "P1", "priority", "MEDIUM", "HIGH")
     result = recent_updates_for_user(uid)
-    assert [r["contract_id"] for r in result] == ["P1"]
+    assert [r["internal_id"] for r in result] == ["P1"]
 
 
 def test_excludes_untracked_contract(pdb):
@@ -121,9 +126,9 @@ def test_excludes_untracked_contract(pdb):
     _add_contract(pdb, "C1")
     _add_contract(pdb, "C2")
     _watch(pdb, uid, "C1")
-    insert_field_change("2026-06-19", "C1", "value", "1", "2")
-    insert_field_change("2026-06-19", "C2", "value", "3", "4")
-    ids = {r["contract_id"] for r in recent_updates_for_user(uid)}
+    _fc("2026-06-19", "C1", "value", "1", "2")
+    _fc("2026-06-19", "C2", "value", "3", "4")
+    ids = {r["internal_id"] for r in recent_updates_for_user(uid)}
     assert ids == {"C1"}
 
 
@@ -131,9 +136,9 @@ def test_ordering_most_recent_first(pdb):
     uid = _uid(pdb)
     _add_contract(pdb, "C1")
     _watch(pdb, uid, "C1")
-    # Inserted oldest-first; feed should return newest-first (changed_at, id desc).
-    insert_field_change("2026-06-18", "C1", "value", "1", "2")
-    insert_field_change("2026-06-19", "C1", "priority", "LOW", "HIGH")
+    # Inserted oldest-first; feed should return newest-first (run_date desc).
+    _fc("2026-06-18", "C1", "value", "1", "2")
+    _fc("2026-06-19", "C1", "priority", "LOW", "HIGH")
     result = recent_updates_for_user(uid)
     assert result[0]["field_name"] == "priority"
     assert result[-1]["field_name"] == "value"
@@ -143,8 +148,9 @@ def test_respects_limit(pdb):
     uid = _uid(pdb)
     _add_contract(pdb, "C1")
     _watch(pdb, uid, "C1")
+    # Different run_dates to avoid UNIQUE(run_date, internal_id, field_name) conflicts.
     for i in range(15):
-        insert_field_change("2026-06-19", "C1", "value", str(i), str(i + 1))
+        _fc(f"2026-06-{i + 1:02d}", "C1", "value", str(i), str(i + 1))
     assert len(recent_updates_for_user(uid, limit=5)) == 5
 
 
@@ -156,17 +162,18 @@ def test_dashboard_renders_recent_updates(authed_client, pdb):
     uid = _uid(pdb)
     _add_contract(pdb, "C1", award_id="AW-1")
     _watch(pdb, uid, "C1")
-    insert_field_change("2026-06-19", "C1", "value", "100000.0", "150000.0")
+    _fc("2026-06-19", "C1", "value", "100000", "150000", kind="INCREASE")
     body = authed_client.get("/dashboard").get_data(as_text=True)
     assert "Recent Updates" in body
     assert "AW-1" in body
-    assert "150000.0" in body
+    assert "$150,000" in body
 
 
 def test_dashboard_no_section_when_no_updates(authed_client, pdb):
-    # Tracked contract but no field changes → no Recent Updates section.
+    # Section always shows for logged-in users; empty state message appears when no changes.
     uid = _uid(pdb)
     _add_contract(pdb, "C1")
     _watch(pdb, uid, "C1")
     body = authed_client.get("/dashboard").get_data(as_text=True)
-    assert "Recent Updates" not in body
+    assert "Recent Updates" in body
+    assert "No recent updates on your watchlist or pipeline contracts yet." in body

@@ -13,7 +13,7 @@ import sqlite3
 import pytest
 
 import db as db_module
-from db import save_snapshot, get_field_changes, init_contract_field_changes_table
+from db import save_snapshot, get_field_changes, init_field_changes_table as init_contract_field_changes_table
 from change_detector import detect_changes
 
 
@@ -66,14 +66,10 @@ def test_value_change_recorded(db):
     value_changes = [c for c in changes if c["field_name"] == "value"]
     assert len(value_changes) == 1
     c = value_changes[0]
-    assert c["contract_id"] == "C1"
+    assert c["internal_id"] == "C1"
     # save_snapshot stores value as REAL, so str() form is float-like.
     assert c["old_value"] == "100000.0"
     assert c["new_value"] == "150000.0"
-    # Snapshot references are populated.
-    assert c["old_snapshot_id"] is not None
-    assert c["new_snapshot_id"] is not None
-    assert c["old_snapshot_id"] != c["new_snapshot_id"]
 
 
 def test_all_tracked_fields_detected(db):
@@ -117,7 +113,7 @@ def test_multiple_contracts_each_recorded(db):
     ]
     td = _detect_between(yesterday, today)
     changes = get_field_changes(td)
-    assert {c["contract_id"] for c in changes} == {"C1"}
+    assert {c["internal_id"] for c in changes} == {"C1"}
 
 
 def test_idempotent_rerun_does_not_duplicate(db):
