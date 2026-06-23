@@ -65,7 +65,7 @@ from business_match import (
     profile_filter_for_sql,
 )
 from report_builder import build_report
-from views import SAVED_VIEWS, build_view_query, format_filter_summary
+from views import SAVED_VIEWS, build_view_query, format_filter_summary, active_filter_chips, quick_views
 import hubspot_service
 from users import (
     get_user_by_email,
@@ -679,6 +679,8 @@ def contracts():
         watchlist_ids=watchlist_ids,
         pipeline_map=pipeline_map,
         saved_searches=saved_searches,
+        filter_chips=active_filter_chips(request.args.to_dict()),
+        quick_views=quick_views(),
         for_my_business=for_my_business,
         in_pipeline=in_pipeline,
         has_profile=profile is not None,
