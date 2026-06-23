@@ -66,9 +66,15 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key_path: /github/runner_temp/deploy_key
           script: |
+            set -e
             cd /home/michael/government-recompete-monitor-
             git fetch origin
             git reset --hard origin/main
             git clean -fd
+            # Snapshot the database AFTER the code update (so this script is the
+            # current version) but BEFORE restart triggers init_db()/migrations.
+            # `set -e` above means a non-zero exit here ABORTS the deploy, so the
+            # restart (and thus migrations) never runs without a fresh snapshot.
+            bash scripts/backup_db.sh predeploy
             sudo systemctl restart recompete
             sudo systemctl status recompete --no-pager
