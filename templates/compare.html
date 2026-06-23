@@ -3,76 +3,159 @@
 
 {% block content %}
 <h1>Compare Contracts</h1>
+<p class="page-subtitle">Compare up to 5 contracts side-by-side. Enter contract IDs below.</p>
 
-{% if not id_a and not id_b %}
-  <p class="muted">Enter two contract IDs to compare.</p>
-  <form method="get">
-    <input name="a" placeholder="Contract ID A" style="width:220px;">
-    <input name="b" placeholder="Contract ID B" style="width:220px;">
-    <button type="submit">Compare</button>
-  </form>
+<form method="get" style="margin-bottom:24px">
+  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
+    {% for i in range(contracts|length if contracts else 2) %}
+    <div>
+      <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:3px">Contract {{ loop.index }}</label>
+      <input name="{{ slots[i] if i < slots|length else 'x' + i|string }}"
+             value="{{ raw_ids[i] if i < raw_ids|length else '' }}"
+             placeholder="Contract ID"
+             style="width:180px">
+    </div>
+    {% endfor %}
+    {% if contracts|length < 5 %}
+    <div>
+      <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:3px">Add another</label>
+      <input name="{{ slots[contracts|length] if contracts|length < slots|length else '' }}"
+             value=""
+             placeholder="Optional"
+             style="width:180px">
+    </div>
+    {% endif %}
+    <button type="submit" class="btn btn-primary" style="height:36px">Compare</button>
+    {% if contracts|length > 2 %}
+    <a href="/compare" class="btn btn-ghost" style="height:36px;line-height:36px">Reset</a>
+    {% endif %}
+  </div>
+</form>
 
-{% elif a is none or b is none %}
-  <p class="muted">
-    {% if a is none %}Contract <strong>{{ id_a }}</strong> not found.{% endif %}
-    {% if b is none %}Contract <strong>{{ id_b }}</strong> not found.{% endif %}
-  </p>
-  <a href="/compare">Try again</a>
+{% set found = contracts | selectattr("0") | list %}
+{% set missing = contracts | rejectattr("0") | selectattr("1") | list %}
 
-{% else %}
+{% if missing %}
+<div style="margin-bottom:12px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-left:3px solid #d97706;border-radius:var(--radius-sm);font-size:13px">
+  {% for row, rid in missing %}
+    Contract <strong>{{ rid }}</strong> not found.
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if found | length >= 2 %}
 
 {% macro pct(va, vb) %}
-  {% if va and vb and va != vb %}
-    <span class="muted" style="font-size:11px;">
+  {% if va is not none and vb is not none and va != vb %}
+    <span class="muted" style="font-size:11px">
       ({% if va > vb %}+{% endif %}{{ "{:+,.0f}".format(va - vb) }})
     </span>
   {% endif %}
 {% endmacro %}
 
-<table>
+{% set rows = found | map(attribute="0") | list %}
+
+<div style="overflow-x:auto">
+<table data-testid="compare-table">
+  <colgroup>
+    <col style="width:22%">
+    {% for _ in rows %}<col style="width:{{ (78 // rows|length) }}%">{% endfor %}
+  </colgroup>
+  <thead>
   <tr>
-    <th style="width:26%;">Field</th>
-    <th style="width:37%;"><a href="/contract/{{ a['internal_id'] }}">{{ a['award_id'] or a['internal_id'] }}</a></th>
-    <th style="width:37%;"><a href="/contract/{{ b['internal_id'] }}">{{ b['award_id'] or b['internal_id'] }}</a></th>
+    <th>Field</th>
+    {% for r in rows %}
+    <th><a href="/contract/{{ r['internal_id'] }}">{{ r['award_id'] or r['internal_id'] }}</a></th>
+    {% endfor %}
   </tr>
+  </thead>
+  <tbody>
   <tr>
     <td>Agency</td>
-    <td><a href="/agency/{{ a['agency']|urlencode }}">{{ a['agency'] }}</a></td>
-    <td><a href="/agency/{{ b['agency']|urlencode }}">{{ b['agency'] }}</a></td>
+    {% for r in rows %}<td><a href="/agency/{{ r['agency']|urlencode }}">{{ r['agency'] or '—' }}</a></td>{% endfor %}
   </tr>
   <tr>
-    <td>Vendor</td>
-    <td><a href="/vendor/{{ a['vendor']|urlencode }}">{{ a['vendor'] }}</a></td>
-    <td><a href="/vendor/{{ b['vendor']|urlencode }}">{{ b['vendor'] }}</a></td>
+    <td>Vendor / Incumbent</td>
+    {% for r in rows %}<td><a href="/vendor/{{ r['vendor']|urlencode }}">{{ r['vendor'] or '—' }}</a></td>{% endfor %}
   </tr>
   <tr>
     <td>Value</td>
-    <td>${{ "{:,.0f}".format(a['value'] or 0) }} {{ pct(a['value'], b['value']) }}</td>
-    <td>${{ "{:,.0f}".format(b['value'] or 0) }} {{ pct(b['value'], a['value']) }}</td>
+    {% for r in rows %}
+    <td>
+      ${{ "{:,.0f}".format(r['value'] or 0) }}
+      {% if rows|length == 2 and loop.index == 1 %}{{ pct(r['value'], rows[1]['value']) }}{% endif %}
+      {% if rows|length == 2 and loop.index == 2 %}{{ pct(r['value'], rows[0]['value']) }}{% endif %}
+    </td>
+    {% endfor %}
   </tr>
   <tr>
     <td>End Date</td>
-    <td>{{ a['end_date'] or '—' }}</td>
-    <td>{{ b['end_date'] or '—' }}</td>
+    {% for r in rows %}<td>{{ r['end_date'] or '—' }}</td>{% endfor %}
+  </tr>
+  <tr>
+    <td>Days Remaining</td>
+    {% for r in rows %}
+    <td>
+      {% if r['days_remaining'] is not none %}
+        {% if r['days_remaining'] <= 0 %}<span style="color:#b00020;font-weight:600">Expired</span>
+        {% elif r['days_remaining'] <= 30 %}<span style="color:#d97706;font-weight:600">{{ r['days_remaining'] }}</span>
+        {% else %}{{ r['days_remaining'] }}{% endif %}
+      {% else %}—{% endif %}
+    </td>
+    {% endfor %}
   </tr>
   <tr>
     <td>Priority</td>
-    <td><span class="priority-badge priority-{{ (a['priority'] or 'unknown').lower() }}">{{ a['priority'] or '—' }}</span></td>
-    <td><span class="priority-badge priority-{{ (b['priority'] or 'unknown').lower() }}">{{ b['priority'] or '—' }}</span></td>
+    {% for r in rows %}
+    <td><span class="priority-badge priority-{{ (r['priority'] or 'unknown').lower() }}">{{ r['priority'] or '—' }}</span></td>
+    {% endfor %}
   </tr>
   <tr>
     <td>Recompete Score</td>
-    <td>{{ a['recompete_score'] or '—' }} {{ pct(a['recompete_score'], b['recompete_score']) }}</td>
-    <td>{{ b['recompete_score'] or '—' }} {{ pct(b['recompete_score'], a['recompete_score']) }}</td>
+    {% for r in rows %}
+    <td>
+      {{ r['recompete_score'] or '—' }}
+      {% if rows|length == 2 and loop.index == 1 %}{{ pct(r['recompete_score'], rows[1]['recompete_score']) }}{% endif %}
+      {% if rows|length == 2 and loop.index == 2 %}{{ pct(r['recompete_score'], rows[0]['recompete_score']) }}{% endif %}
+    </td>
+    {% endfor %}
   </tr>
+  <tr>
+    <td>Competition Type</td>
+    {% for r in rows %}<td>{{ r['competition_type'] or '—' }}</td>{% endfor %}
+  </tr>
+  <tr>
+    <td>Sub-Agency</td>
+    {% for r in rows %}<td>{{ r['sub_agency'] or '—' }}</td>{% endfor %}
+  </tr>
+  <tr>
+    <td>Description</td>
+    {% for r in rows %}
+    <td style="font-size:12px;color:var(--text-muted)">
+      {% if r['description'] %}{{ r['description'][:120] }}{% if r['description']|length > 120 %}…{% endif %}{% else %}—{% endif %}
+    </td>
+    {% endfor %}
+  </tr>
+  </tbody>
 </table>
+</div>
 
-<p style="margin-top:8px;">
-  <a href="/contract/{{ a['internal_id'] }}">Full detail: {{ a['award_id'] or a['internal_id'] }}</a>
-  &nbsp;·&nbsp;
-  <a href="/contract/{{ b['internal_id'] }}">Full detail: {{ b['award_id'] or b['internal_id'] }}</a>
+<p style="margin-top:12px;font-size:13px">
+  {% for r in rows %}
+    <a href="/contract/{{ r['internal_id'] }}">Full detail: {{ r['award_id'] or r['internal_id'] }}</a>
+    {% if not loop.last %} &nbsp;·&nbsp; {% endif %}
+  {% endfor %}
 </p>
+
+{% elif found | length == 1 %}
+<p class="muted">Enter at least two contract IDs to compare.</p>
+
+{% elif contracts and not found %}
+{# All IDs were entered but none found #}
+
+{% else %}
+<p class="muted">Enter two or more contract IDs above to compare them side-by-side.</p>
 {% endif %}
 
-<p style="margin-top:18px;"><a href="/contracts">← Back to Contracts</a></p>
+<p style="margin-top:18px"><a href="/contracts">← Back to Contracts</a></p>
 {% endblock %}

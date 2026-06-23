@@ -163,7 +163,8 @@ class TestInPipelineFilter:
 
     def test_empty_when_pipeline_empty(self, alice):
         r = alice.get("/contracts?in_pipeline=1")
-        assert b"No contracts found" in r.data
+        # Empty state now says "No contracts match your current filters"
+        assert b"No contracts" in r.data
 
     def test_excludes_other_users_contracts(self, vis_db):
         add_opportunity(_uid(vis_db, "bob@example.com"), "CTR-002")

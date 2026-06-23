@@ -31,11 +31,13 @@ from db import (
     get_engine,
     init_db,
     list_saved_searches,
+    list_contract_states,
     save_company_profile,
     save_demo_request,
     save_early_access,
     save_snapshot,
     upsert_contract,
+    ALL_CATEGORIES,
     PIPELINE_STAGES,
     PIPELINE_TERMINAL_STAGES,
     add_opportunity,
@@ -46,10 +48,13 @@ from db import (
     update_opportunity,
     get_notification_preferences,
     update_notification_preferences,
+    infer_category,
+    extract_raw_field,
 )
 from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
 from analytics import dashboard_analytics, opportunity_recommendations, dashboard_recommended_actions, business_opportunities
+from analytics import suggested_matches as get_suggested_matches, my_contracts_summary
 from business_match import (
     business_match_score,
     business_match_reasons,
@@ -65,6 +70,7 @@ from users import (
     get_user_by_email,
     get_user_by_stripe_customer,
     set_subscription,
+    update_company_name,
     update_password,
     verify_password,
 )
@@ -110,6 +116,7 @@ if _sentry_dsn:
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
+STRIPE_PRICE_ID_YEARLY = os.getenv("STRIPE_PRICE_ID_YEARLY")
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("RAILWAY_ENVIRONMENT") == "production"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
@@ -348,6 +355,8 @@ def dashboard():
     dash_actions = dashboard_recommended_actions(user_id)
     has_profile = bool(profile)
     biz_opps = business_opportunities(user_id)
+    my_contracts = my_contracts_summary(user_id)
+    suggested = get_suggested_matches(user_id)
     p_completion = profile_completeness(profile) if profile else 0
     p_hints = profile_completion_hints(profile) if profile and p_completion < 100 else []
 
@@ -380,6 +389,9 @@ def dashboard():
         recommendations=recommendations,
         dash_actions=dash_actions,
         biz_opps=biz_opps,
+        my_contracts=my_contracts,
+        suggested_matches=suggested,
+        company_name=profile.get("company_name") if profile else None,
         has_profile=has_profile,
         profile_completion=p_completion,
         profile_hints=p_hints,
@@ -534,6 +546,9 @@ def contracts():
     sort = request.args.get("sort", "recompete_score")
     direction = request.args.get("dir", "desc")
     page = int(request.args.get("page", 1))
+    state = request.args.get("state", "")
+    category = request.args.get("category", "")
+    discover = request.args.get("discover", "")
 
     if status not in ("", "open", "expired"):
         status = ""
@@ -560,6 +575,13 @@ def contracts():
         for opp in list_opportunities(g.user["id"]):
             pipeline_map[opp["internal_id"]] = opp["id"]
 
+    # Discover mode: exclude pipeline contracts to surface only new opportunities.
+    discover_exclude_ids = None
+    if discover and g.user and pipeline_map:
+        discover_exclude_ids = list(pipeline_map.keys())
+    elif discover:
+        discover_exclude_ids = []
+
     # When ?in_pipeline=1, restrict to the user's own pipeline contracts.
     pipeline_ids: list | None = None
     if in_pipeline and g.user and pipeline_map:
@@ -567,6 +589,9 @@ def contracts():
     elif in_pipeline and g.user:
         # User has no pipeline — return empty results without hitting get_contracts.
         pipeline_ids = []
+
+    engine = get_engine()
+    all_states = list_contract_states(engine)
 
     if pipeline_ids is not None and len(pipeline_ids) == 0:
         result = {"contracts": [], "total": 0, "count": 0, "start": 0, "page": page}
@@ -584,13 +609,15 @@ def contracts():
             limit=25,
             profile_filter=pf,
             internal_ids=pipeline_ids,
+            state=state,
+            category=category,
+            exclude_ids=discover_exclude_ids,
         )
 
     _total = result["total"]
     _page_size = 25
     _total_pages = max(1, (_total + _page_size - 1) // _page_size)
 
-    engine = get_engine()
     watchlist_ids = set()
     saved_searches = []
     if g.user:
@@ -631,6 +658,8 @@ def contracts():
         has_next=result["start"] + result["count"] < _total,
         priorities=["CRITICAL", "HIGH", "MEDIUM", "LOW"],
         all_agencies=all_agencies,
+        all_states=all_states,
+        all_categories=ALL_CATEGORIES,
         q=q,
         agency=agency,
         priority=priority,
@@ -639,6 +668,9 @@ def contracts():
         status=status,
         sort=sort,
         direction=direction,
+        state=state,
+        category=category,
+        discover=discover,
         watchlist_ids=watchlist_ids,
         pipeline_map=pipeline_map,
         saved_searches=saved_searches,
@@ -1013,13 +1045,31 @@ def contract_detail(internal_id):
             biz_mismatch_reasons_list = business_mismatch_reasons(row, biz_profile)
         pipeline_opp = get_opportunity_by_contract(g.user["id"], internal_id)
 
+    category = infer_category(
+        description=row.get("description") or "",
+        naics_code=extract_raw_field(row, "sam_naics") or extract_raw_field(row, "naics_code") or "",
+        vendor=row.get("vendor") or "",
+    )
+    performance_state = (
+        row.get("place_of_performance_state")
+        or extract_raw_field(row, "performance_state")
+        or extract_raw_field(row, "recipient_state")
+        or ""
+    )
+    performance_city = extract_raw_field(row, "performance_city") or ""
+    psc_description = extract_raw_field(row, "psc_description") or ""
+
     return render_template("contract_detail.html", row=row, is_bookmarked=is_bookmarked,
                            notes=notes, next_step=guidance, action=action,
                            why_matters=matters, timeline=timeline,
                            biz_match_score=biz_match_score,
                            biz_match_reasons=biz_match_reasons_list,
                            biz_mismatch_reasons=biz_mismatch_reasons_list,
-                           pipeline_opp=pipeline_opp)
+                           pipeline_opp=pipeline_opp,
+                           category=category,
+                           performance_state=performance_state,
+                           performance_city=performance_city,
+                           psc_description=psc_description)
 
 
 @app.route("/watchlist/add", methods=["POST"])
@@ -1415,6 +1465,11 @@ def company_profile_page():
         states = [s for s in request.form.getlist("states") if s in _VALID_STATE_CODES]
         agencies = [a for a in request.form.getlist("agencies") if a in frozenset(all_agencies)]
         set_asides = [s for s in request.form.getlist("set_asides") if s in _VALID_SET_ASIDES]
+        keywords_raw = request.form.get("keywords", "")
+        keywords = [
+            k for part in keywords_raw.replace(",", "\n").splitlines()
+            for k in [part.strip()] if k
+        ]
 
         min_val = request.form.get("min_contract_value", "").strip()
         max_val = request.form.get("max_contract_value", "").strip()
@@ -1445,6 +1500,7 @@ def company_profile_page():
                 "states": states if geo_coverage == "states" else [],
                 "agencies": agencies,
                 "set_asides": set_asides,
+                "keywords": keywords,
             })
             success = "Profile saved."
 
@@ -1492,10 +1548,33 @@ def compare():
         con.close()
         return row
 
-    id_a = request.args.get("a", "").strip()
-    id_b = request.args.get("b", "").strip()
-    return render_template("compare.html", a=_fetch(id_a), b=_fetch(id_b),
-                           id_a=id_a, id_b=id_b)
+    # Support up to 5 contracts via params a–e; also accepts legacy ?a=X&b=Y.
+    _SLOTS = ["a", "b", "c", "d", "e"]
+    raw_ids = [request.args.get(s, "").strip() for s in _SLOTS]
+    # Drop empty trailing slots so the form stays minimal.
+    while raw_ids and not raw_ids[-1]:
+        raw_ids.pop()
+
+    # Always surface at least two slots for the form.
+    while len(raw_ids) < 2:
+        raw_ids.append("")
+
+    contracts = [(_fetch(rid) if rid else None, rid) for rid in raw_ids]
+
+    # Legacy two-contract template vars preserved for backward compatibility.
+    id_a = raw_ids[0] if raw_ids else ""
+    id_b = raw_ids[1] if len(raw_ids) > 1 else ""
+    a = contracts[0][0] if contracts else None
+    b = contracts[1][0] if len(contracts) > 1 else None
+
+    return render_template(
+        "compare.html",
+        contracts=contracts,
+        raw_ids=raw_ids,
+        slots=_SLOTS,
+        # Legacy vars — kept so existing bookmarks/links using ?a=&b= still work.
+        a=a, b=b, id_a=id_a, id_b=id_b,
+    )
 
 
 @app.route("/settings/account", methods=["GET", "POST"])
@@ -1519,6 +1598,17 @@ def settings_account():
             update_password(user["id"], new_pw)
             success = "Password updated successfully."
     return render_template("settings_account.html", user=user, error=error, success=success)
+
+
+@app.route("/settings/account/company", methods=["POST"])
+def settings_account_company():
+    user = g.get("user")
+    if not user:
+        return redirect(url_for("auth.login"))
+    company_name = request.form.get("company_name", "").strip()
+    update_company_name(user["id"], company_name)
+    flash("Company name updated.")
+    return redirect(url_for("settings_account"))
 
 
 @app.route("/settings/alerts", methods=["GET", "POST"])

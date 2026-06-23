@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — Recompete{% endblock %}
+{% block title %}{% if company_name %}{{ company_name }} — Dashboard{% else %}Dashboard — Recompete{% endif %}{% endblock %}
 
 {% block content %}
 <div class="dash-wrap">
@@ -181,52 +181,174 @@
   {# Left: primary tables #}
   <div class="db-main">
 
-    {# Phase 2: Opportunities For Your Business #}
-    {% if biz_opps %}
-    <div class="table-wrapper" style="margin-bottom:16px">
-      <div class="table-header">
-        <h2>Opportunities For Your Business</h2>
-        <span style="font-size:12px;color:var(--text-muted);font-weight:400">Matched to your <a href="/company-profile">Company Profile</a></span>
+    {# ── My Contracts / Discover tab bar ───────────────────────────────── #}
+    {% if g.user %}
+    <div style="margin-bottom:16px">
+      <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px">
+        <button id="tab-my-contracts" onclick="switchTab('my-contracts')"
+          style="padding:8px 18px;border:none;border-bottom:2px solid var(--accent);margin-bottom:-2px;background:none;font-size:14px;font-weight:600;color:var(--accent);cursor:pointer">My Contracts</button>
+        <button id="tab-discover" onclick="switchTab('discover')"
+          style="padding:8px 18px;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;background:none;font-size:14px;font-weight:400;color:var(--text-muted);cursor:pointer">Discover</button>
       </div>
-      <table>
-        <thead>
-          <tr>
-            <th>Contract</th>
-            <th>Vendor</th>
-            <th>Agency</th>
-            <th class="col-r">Value</th>
-            <th class="col-r">Days</th>
-            <th class="col-r" title="Business Match score based on your Company Profile">Match</th>
-            <th>Why it matches</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in biz_opps %}
-          <tr>
-            <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
-            <td>{{ r.vendor or '&mdash;' }}</td>
-            <td>{{ r.agency or '&mdash;' }}</td>
-            <td class="col-r">${{ "{:,.0f}".format(r.value or 0) }}</td>
-            <td class="col-r">{{ r.days_remaining if r.days_remaining is not none else '&mdash;' }}</td>
-            <td class="col-r" style="font-weight:600;color:var(--accent)">{{ r.match_score }}%</td>
-            <td style="font-size:12px;color:var(--text-muted)">{{ r.match_reasons | join(' · ') if r.match_reasons else '&mdash;' }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      <div style="padding:8px 12px;font-size:12px;color:var(--text-muted)">
-        <a href="/contracts?for_my_business=1">See all matching contracts →</a>
-      </div>
-    </div>
-    {% elif g.user and not has_profile %}
-    <div style="padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
-      <div>
-        <div style="font-weight:600;margin-bottom:4px">Opportunities For Your Business</div>
-        <div class="muted" style="font-size:13px">Tell us about your business to see contracts matched to your NAICS codes, preferred agencies, and contract size.</div>
-      </div>
-      <a href="/onboarding" class="btn btn-primary" style="white-space:nowrap">Set Up Your Profile</a>
-    </div>
-    {% endif %}
+
+      {# My Contracts panel #}
+      <div id="panel-my-contracts">
+        {% if my_contracts.total > 0 %}
+          {% if my_contracts.watchlist %}
+          <div class="table-wrapper" style="margin-bottom:12px">
+            <div class="table-header"><h2>Watchlist</h2></div>
+            <table>
+              <thead><tr>
+                <th>Contract</th><th>Vendor</th><th>Agency</th>
+                <th class="col-r">Value</th><th class="col-r">Days</th>
+              </tr></thead>
+              <tbody>
+                {% for r in my_contracts.watchlist %}
+                <tr>
+                  <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
+                  <td>{{ r.vendor or '&mdash;' }}</td>
+                  <td>{{ r.agency or '&mdash;' }}</td>
+                  <td class="col-r">${{ "{:,.0f}".format(r.value or 0) }}</td>
+                  <td class="col-r">{{ r.days_remaining if r.days_remaining is not none else '&mdash;' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+          {% if my_contracts.pipeline %}
+          <div class="table-wrapper" style="margin-bottom:12px">
+            <div class="table-header"><h2>Active Pipeline</h2></div>
+            <table>
+              <thead><tr>
+                <th>Contract</th><th>Vendor</th><th>Agency</th>
+                <th class="col-r">Value</th><th>Stage</th><th class="col-r">Days</th>
+              </tr></thead>
+              <tbody>
+                {% for r in my_contracts.pipeline %}
+                <tr>
+                  <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
+                  <td>{{ r.vendor or '&mdash;' }}</td>
+                  <td>{{ r.agency or '&mdash;' }}</td>
+                  <td class="col-r">${{ "{:,.0f}".format(r.value or 0) }}</td>
+                  <td>{{ r.stage or '&mdash;' }}</td>
+                  <td class="col-r">{{ r.days_remaining if r.days_remaining is not none else '&mdash;' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+        {% else %}
+        <div style="padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:16px;text-align:center">
+          <div style="font-weight:600;margin-bottom:6px">No contracts tracked yet</div>
+          <div class="muted" style="font-size:13px;margin-bottom:12px">Click ☆ on any contract to add it to your watchlist, or add items to your pipeline to track them here.</div>
+          <a href="/contracts" class="btn btn-primary" style="font-size:13px">Browse Contracts</a>
+        </div>
+        {% endif %}
+
+        {# Suggested matches #}
+        {% if suggested_matches %}
+        <div class="table-wrapper" style="margin-bottom:12px">
+          <div class="table-header">
+            <h2>Suggested for You</h2>
+            <span style="font-size:12px;color:var(--text-muted);font-weight:400">For review only — not confirmed as your contracts</span>
+          </div>
+          <table>
+            <thead><tr>
+              <th>Contract</th><th>Vendor</th><th>Agency</th>
+              <th class="col-r">Value</th><th class="col-r">Days</th><th>Why suggested</th>
+            </tr></thead>
+            <tbody>
+              {% for r in suggested_matches %}
+              <tr>
+                <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
+                <td>{{ r.vendor or '&mdash;' }}</td>
+                <td>{{ r.agency or '&mdash;' }}</td>
+                <td class="col-r">${{ "{:,.0f}".format(r.value or 0) }}</td>
+                <td class="col-r">{{ r.days_remaining if r.days_remaining is not none else '&mdash;' }}</td>
+                <td style="font-size:12px;color:var(--text-muted)">{{ r.suggestion_reason }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+      </div>{# /panel-my-contracts #}
+
+      {# Discover panel #}
+      <div id="panel-discover" style="display:none">
+        {# Recommended for your company (profile-matched) #}
+        {% if biz_opps %}
+        <div class="table-wrapper" style="margin-bottom:16px">
+          <div class="table-header">
+            <h2>Recommended for your company</h2>
+            <span style="font-size:12px;color:var(--text-muted);font-weight:400">
+              Matched to your <a href="/company-profile">Company Profile</a>
+              &middot; <span title="Matched by deterministic rules: NAICS codes, agencies, contract value, set-asides, and keywords">deterministic rules</span>
+            </span>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Contract</th>
+                <th>Vendor</th>
+                <th>Agency</th>
+                <th class="col-r">Value</th>
+                <th class="col-r">Days</th>
+                <th class="col-r" title="Business Match score based on your Company Profile">Match</th>
+                <th>Why it matches</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in biz_opps %}
+              <tr>
+                <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
+                <td>{{ r.vendor or '&mdash;' }}</td>
+                <td>{{ r.agency or '&mdash;' }}</td>
+                <td class="col-r">${{ "{:,.0f}".format(r.value or 0) }}</td>
+                <td class="col-r">{{ r.days_remaining if r.days_remaining is not none else '&mdash;' }}</td>
+                <td class="col-r" style="font-weight:600;color:var(--accent)">{{ r.match_score }}%</td>
+                <td style="font-size:12px;color:var(--text-muted)">{{ r.match_reasons | join(' · ') if r.match_reasons else '&mdash;' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <div style="padding:8px 12px;font-size:12px;color:var(--text-muted)">
+            <a href="/contracts?for_my_business=1">See all matching contracts →</a>
+          </div>
+        </div>
+        {% elif g.user and not has_profile %}
+        <div style="padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+          <div>
+            <div style="font-weight:600;margin-bottom:4px">Recommended for your company</div>
+            <div class="muted" style="font-size:13px">Tell us about your business to see contracts matched to your NAICS codes, preferred agencies, and contract size.</div>
+          </div>
+          <a href="/onboarding" class="btn btn-primary" style="white-space:nowrap">Set Up Your Profile</a>
+        </div>
+        {% endif %}
+      </div>{# /panel-discover #}
+    </div>{# /tab container #}
+
+    <script>
+    function switchTab(name) {
+      var panels = ['my-contracts', 'discover'];
+      panels.forEach(function(p) {
+        document.getElementById('panel-' + p).style.display = (p === name) ? '' : 'none';
+        var btn = document.getElementById('tab-' + p);
+        if (p === name) {
+          btn.style.borderBottomColor = 'var(--accent)';
+          btn.style.fontWeight = '600';
+          btn.style.color = 'var(--accent)';
+        } else {
+          btn.style.borderBottomColor = 'transparent';
+          btn.style.fontWeight = '400';
+          btn.style.color = 'var(--text-muted)';
+        }
+      });
+    }
+    </script>
+    {% endif %}{# /g.user #}
 
     {# Phase 3: Profile completion hints #}
     {% if g.user and has_profile and profile_hints %}
