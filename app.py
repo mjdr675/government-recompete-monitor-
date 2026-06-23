@@ -55,6 +55,13 @@ from db import (
     get_or_create_workspace_for_user,
     update_workspace,
     list_workspace_members,
+    get_workspace_billing,
+    update_workspace_subscription_status,
+    is_workspace_active,
+    is_workspace_in_trial,
+    get_workspace_by_stripe_customer,
+    record_workspace_billing_event,
+    VALID_PLANS,
 )
 from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
@@ -123,6 +130,12 @@ if _sentry_dsn:
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
 STRIPE_PRICE_ID_YEARLY = os.getenv("STRIPE_PRICE_ID_YEARLY")
+# Workspace plan tiers → Stripe price ids (set per environment).
+STRIPE_PRICE_IDS = {
+    "starter": os.getenv("STRIPE_PRICE_ID_STARTER", ""),
+    "growth": os.getenv("STRIPE_PRICE_ID_GROWTH", ""),
+    "pro": os.getenv("STRIPE_PRICE_ID_PRO", ""),
+}
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("RAILWAY_ENVIRONMENT") == "production"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
@@ -260,6 +273,7 @@ _PUBLIC_PATHS = frozenset({
 _SUBSCRIPTION_EXEMPT = frozenset({
     "/subscribe",
     "/billing/portal",
+    "/settings/billing",
     "/logout",
     "/create-checkout-session",
     "/success",
@@ -295,6 +309,32 @@ def require_login():
                     trial_end = trial_end.replace(tzinfo=timezone.utc)
                 if datetime.now(timezone.utc) > trial_end:
                     return redirect(url_for("subscribe", expired="1"))
+
+
+# Paths gated by workspace billing state. Kept to the core product surfaces the
+# task specifies — narrow by design to avoid disturbing other routes.
+_WORKSPACE_GATED_PREFIXES = ("/dashboard", "/contracts", "/compare", "/pipeline")
+
+
+@app.before_request
+def require_active_workspace():
+    """Redirect to /settings/billing when the user's workspace is inactive.
+
+    Registered after require_login, so the existing user-level gate runs first
+    and short-circuits where it applies. Only enforces once a workspace billing
+    record exists; brand-new users (no workspace yet) are not blocked here.
+    """
+    if "user_id" not in session:
+        return None
+    path = request.path
+    if not any(path == p or path.startswith(p + "/") for p in _WORKSPACE_GATED_PREFIXES):
+        return None
+    user = g.get("user")
+    if not user:
+        return None
+    workspace = get_workspace_for_user(user["id"])
+    if workspace and not is_workspace_active(workspace["id"]):
+        return redirect(url_for("settings_billing", expired="1"))
 
 
 @app.context_processor
@@ -837,6 +877,54 @@ def billing_portal():
         return redirect(url_for("dashboard"))
 
 
+def _apply_workspace_billing_event(event):
+    """Update workspace billing from a Stripe event (additive to user-level).
+
+    No-ops when the event carries no workspace linkage, so existing user-level
+    webhook behavior is unaffected.
+    """
+    etype = event.get("type")
+    obj = event.get("data", {}).get("object", {}) or {}
+    event_id = event.get("id")
+
+    if etype == "checkout.session.completed":
+        # create_workspace_checkout_session sets client_reference_id=workspace_id.
+        ref = obj.get("client_reference_id") or (obj.get("metadata") or {}).get("workspace_id")
+        if not ref:
+            return
+        try:
+            workspace_id = int(ref)
+        except (ValueError, TypeError):
+            return
+        plan = (obj.get("metadata") or {}).get("plan")
+        update_workspace_subscription_status(
+            workspace_id,
+            "active",
+            plan=plan if plan in VALID_PLANS else None,
+            stripe_customer_id=obj.get("customer") or None,
+            stripe_subscription_id=obj.get("subscription") or None,
+        )
+        record_workspace_billing_event(workspace_id, etype, event_id, json.dumps(obj, default=str))
+
+    elif etype in ("customer.subscription.updated", "customer.subscription.deleted"):
+        customer = obj.get("customer") or ""
+        if not customer:
+            return
+        workspace = get_workspace_by_stripe_customer(customer)
+        if not workspace:
+            return
+        if etype == "customer.subscription.deleted":
+            status = "canceled"
+        else:
+            status = obj.get("status") or "active"
+        update_workspace_subscription_status(
+            workspace["id"],
+            status,
+            stripe_subscription_id=obj.get("id") or None,
+        )
+        record_workspace_billing_event(workspace["id"], etype, event_id, json.dumps(obj, default=str))
+
+
 @app.route("/stripe/webhook", methods=["POST"])
 @csrf.exempt
 def stripe_webhook():
@@ -886,6 +974,13 @@ def stripe_webhook():
             user = get_user_by_stripe_customer(stripe_customer_id)
             if user:
                 set_subscription(user["id"], stripe_customer_id, "canceled")
+
+    # Workspace-level billing update (additive; no-ops without workspace linkage).
+    try:
+        _apply_workspace_billing_event(event)
+    except Exception as exc:
+        sentry_sdk.capture_exception(exc)
+        logging.exception("Workspace billing webhook update failed: %s", exc)
 
     return "", 200
 
@@ -1696,6 +1791,120 @@ def settings_workspace():
         members=members,
         error=error,
         success=success,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Workspace billing — Stripe foundation
+# ---------------------------------------------------------------------------
+
+def create_workspace_stripe_customer(workspace):
+    """Create (and persist) a Stripe customer for a workspace if absent.
+
+    Returns the stripe_customer_id. Reuses an existing one when present.
+    """
+    billing = get_workspace_billing(workspace["id"])
+    if billing and billing.get("stripe_customer_id"):
+        return billing["stripe_customer_id"]
+    customer = stripe.Customer.create(
+        name=workspace.get("name") or f"Workspace {workspace['id']}",
+        metadata={"workspace_id": str(workspace["id"])},
+    )
+    update_workspace_subscription_status(
+        workspace["id"],
+        billing.get("subscription_status") if billing else "trialing",
+        stripe_customer_id=customer["id"],
+    )
+    return customer["id"]
+
+
+def create_workspace_checkout_session(workspace, plan):
+    """Create a Stripe Checkout session to subscribe a workspace to a plan."""
+    price_id = STRIPE_PRICE_IDS.get(plan)
+    if not price_id:
+        raise ValueError(f"No Stripe price configured for plan '{plan}'")
+    customer_id = create_workspace_stripe_customer(workspace)
+    return stripe.checkout.Session.create(
+        mode="subscription",
+        customer=customer_id,
+        client_reference_id=str(workspace["id"]),
+        line_items=[{"price": price_id, "quantity": 1}],
+        metadata={"workspace_id": str(workspace["id"]), "plan": plan},
+        success_url=url_for("settings_billing", _external=True) + "?upgraded=1",
+        cancel_url=url_for("settings_billing", _external=True),
+    )
+
+
+def create_workspace_billing_portal_session(workspace):
+    """Create a Stripe billing-portal session for a workspace's customer."""
+    billing = get_workspace_billing(workspace["id"])
+    customer_id = billing.get("stripe_customer_id") if billing else None
+    if not customer_id:
+        return None
+    return stripe.billing_portal.Session.create(
+        customer=customer_id,
+        return_url=url_for("settings_billing", _external=True),
+    )
+
+
+def _workspace_trial_days_remaining(billing):
+    """Whole days left in the workspace trial, or None when not on trial."""
+    if not billing or not billing.get("trial_end_at"):
+        return None
+    try:
+        trial_end = datetime.fromisoformat(billing["trial_end_at"])
+    except (ValueError, TypeError):
+        return None
+    if trial_end.tzinfo is None:
+        trial_end = trial_end.replace(tzinfo=timezone.utc)
+    delta = trial_end - datetime.now(timezone.utc)
+    return max(0, delta.days + (1 if delta.seconds or delta.microseconds else 0))
+
+
+@app.route("/settings/billing", methods=["GET", "POST"])
+def settings_billing():
+    user = g.get("user")
+    if not user:
+        return redirect(url_for("auth.login"))
+    workspace = get_or_create_workspace_for_user(user["id"])
+    error = None
+
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        if action == "portal":
+            try:
+                portal = create_workspace_billing_portal_session(workspace)
+            except Exception as exc:
+                sentry_sdk.capture_exception(exc)
+                portal = None
+            if portal:
+                return redirect(portal.url, code=303)
+            error = "No billing account yet. Choose a plan to get started."
+        elif action == "upgrade":
+            plan = request.form.get("plan", "")
+            if plan not in VALID_PLANS:
+                error = "Unknown plan."
+            else:
+                try:
+                    checkout = create_workspace_checkout_session(workspace, plan)
+                    return redirect(checkout.url, code=303)
+                except Exception as exc:
+                    sentry_sdk.capture_exception(exc)
+                    error = "Could not start checkout. Please try again."
+
+    billing = get_workspace_billing(workspace["id"])
+    return render_template(
+        "settings_billing.html",
+        user=user,
+        workspace=workspace,
+        billing=billing,
+        plans=VALID_PLANS,
+        in_trial=is_workspace_in_trial(workspace["id"]),
+        trial_days_remaining=_workspace_trial_days_remaining(billing),
+        active=is_workspace_active(workspace["id"]),
+        expired=request.args.get("expired") == "1",
+        upgraded=request.args.get("upgraded") == "1",
+        error=error,
     )
 
 
