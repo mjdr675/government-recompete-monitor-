@@ -25,8 +25,14 @@ python app.py          # Flask dev server
 ## Tests
 ```bash
 cd /home/michael/government-recompete-monitor-
-python -m pytest tests/ -x -q        # full suite (~9s, 87 tests)
+.venv/bin/pytest                      # full suite (~1681 tests, ~2 min)
+python3 -m compileall . -q            # compile smoke check
 ```
+
+## Deployment
+Production runs on **Railway** (auto-deploy from `main`). Full details, env vars,
+health check commands, deploy checklist, and rollback procedure are in:
+→ [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
 
 ## Discord Notifications
 All Recompete.us product work should report to Discord using the wrapper script.
