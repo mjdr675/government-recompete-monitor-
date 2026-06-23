@@ -55,6 +55,7 @@ from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
 from analytics import dashboard_analytics, opportunity_recommendations, dashboard_recommended_actions, business_opportunities
 from analytics import suggested_matches as get_suggested_matches, my_contracts_summary, personalized_for_business
+from analytics import recent_updates_for_user
 from business_match import (
     business_match_score,
     business_match_reasons,
@@ -358,6 +359,7 @@ def dashboard():
     my_contracts = my_contracts_summary(user_id)
     suggested = get_suggested_matches(user_id)
     for_business = personalized_for_business(user_id, profile) if profile else []
+    recent_updates = recent_updates_for_user(user_id) if user_id else []
     p_completion = profile_completeness(profile) if profile else 0
     p_hints = profile_completion_hints(profile) if profile and p_completion < 100 else []
 
@@ -393,6 +395,7 @@ def dashboard():
         my_contracts=my_contracts,
         suggested_matches=suggested,
         for_business=for_business,
+        recent_updates=recent_updates,
         company_name=profile.get("company_name") if profile else None,
         has_profile=has_profile,
         profile_completion=p_completion,
