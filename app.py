@@ -1,3 +1,6 @@
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
 import csv
 import io
 import json
@@ -98,7 +101,9 @@ def _configure_json_logging() -> None:
         root.addHandler(logging.StreamHandler(sys.stdout))
     for handler in root.handlers:
         handler.setFormatter(formatter)
-
+        
+app.config["PROPAGATE_EXCEPTIONS"] = True
+app.config["TRAP_HTTP_EXCEPTIONS"] = True
 
 _configure_json_logging()
 
