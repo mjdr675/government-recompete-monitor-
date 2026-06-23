@@ -322,20 +322,21 @@ def index():
 
 import traceback
 
-try:
-    ...
-except Exception as e:
-    print(traceback.format_exc())
-    raise
-    
 @app.route("/dashboard")
 def dashboard():
-    user_id = g.user["id"] if g.user else None
-    profile = get_company_profile(user_id) if user_id else None
+    try:
+        user_id = g.user["id"] if g.user else None
+        profile = get_company_profile(user_id) if user_id else None
 
-    # First-login redirect: authenticated user with no profile → onboarding wizard.
-    if user_id and not profile and not session.get("onboarding_skipped"):
-        return redirect(url_for("onboarding"))
+        if user_id and not profile and not session.get("onboarding_skipped"):
+            return redirect(url_for("onboarding"))
+
+        return render_template("dashboard.html")
+
+    except Exception:
+        import traceback
+        print(traceback.format_exc())
+        return "Dashboard error", 500
 
     analytics = dashboard_analytics()
     recommendations = opportunity_recommendations()
