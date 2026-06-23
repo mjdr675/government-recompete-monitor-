@@ -3,7 +3,7 @@ import json
 import os
 import re
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
 
@@ -133,6 +133,14 @@ _MIGRATION_PROBES: dict = {
     "012_contract_field_changes.sql": (
         "SELECT COUNT(*) FROM information_schema.tables "
         "WHERE table_schema = 'public' AND table_name = 'contract_field_changes'"
+    ),
+    "013_workspaces.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'workspaces'"
+    ),
+    "014_workspace_billing.sql": (
+        "SELECT COUNT(*) FROM information_schema.columns "
+        "WHERE table_name = 'workspaces' AND column_name = 'subscription_status'"
     ),
 }
 
@@ -718,6 +726,59 @@ def init_db():
             UNIQUE(profile_id, keyword)
         )
         """))
+        # Customer Workspace foundation. A workspace is the company-level entity;
+        # workspace_members links users to it (role present for future use, not
+        # enforced — no permissions in this phase).
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS workspaces (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            name        TEXT,
+            logo_path   TEXT,
+            created_at  TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        )
+        """))
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS workspace_members (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+            user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            role         TEXT NOT NULL DEFAULT 'owner',
+            created_at   TEXT NOT NULL,
+            UNIQUE(workspace_id, user_id)
+        )
+        """))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_workspace_members_user"
+            " ON workspace_members(user_id)"
+        ))
+        # Workspace billing layer (additive — does not alter Phase 1 columns).
+        for col in (
+            "plan TEXT NOT NULL DEFAULT 'starter'",
+            "subscription_status TEXT NOT NULL DEFAULT 'trialing'",
+            "trial_start_at TEXT",
+            "trial_end_at TEXT",
+            "stripe_customer_id TEXT",
+            "stripe_subscription_id TEXT",
+        ):
+            try:
+                conn.execute(text(f"ALTER TABLE workspaces ADD COLUMN {col}"))
+            except Exception:
+                pass
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS workspace_billing_events (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            workspace_id    INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
+            event_type      TEXT,
+            stripe_event_id TEXT,
+            payload_json    TEXT,
+            created_at      TEXT NOT NULL
+        )
+        """))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_workspace_billing_events_ws"
+            " ON workspace_billing_events(workspace_id)"
+        ))
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS opportunities (
             id                    INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -996,6 +1057,241 @@ def save_company_profile(user_id, data):
             )
 
     return profile_id
+
+
+# ---------------------------------------------------------------------------
+# Customer Workspace
+# ---------------------------------------------------------------------------
+
+def get_workspace_for_user(user_id):
+    """Return the workspace dict for a user via membership, or None.
+
+    Read-only: does not create a workspace. Returned keys: id, name, logo_path,
+    created_at, updated_at, role (the caller's membership role).
+    """
+    if not user_id:
+        return None
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT w.id, w.name, w.logo_path, w.created_at, w.updated_at, m.role
+            FROM workspaces w
+            JOIN workspace_members m ON m.workspace_id = w.id
+            WHERE m.user_id = :uid
+            ORDER BY m.id ASC
+            LIMIT 1
+        """), {"uid": user_id}).mappings().fetchone()
+    return dict(row) if row else None
+
+
+def get_or_create_workspace_for_user(user_id):
+    """Return the user's workspace, lazily creating one on first access.
+
+    A new workspace is seeded from the user's company_name and the user is added
+    as the owner member. This provisions a workspace for every existing
+    single-user account without re-keying any existing per-user data.
+    """
+    if not user_id:
+        return None
+    existing = get_workspace_for_user(user_id)
+    if existing:
+        return existing
+
+    engine = get_engine()
+    now = datetime.now(timezone.utc).isoformat()
+    with engine.begin() as conn:
+        name = conn.execute(
+            text("SELECT company_name FROM users WHERE id = :uid"),
+            {"uid": user_id},
+        ).scalar()
+        result = conn.execute(text(
+            "INSERT INTO workspaces (name, logo_path, created_at, updated_at)"
+            " VALUES (:name, NULL, :now, :now)"
+        ), {"name": name or None, "now": now})
+        # SQLite exposes lastrowid; PostgreSQL needs RETURNING.
+        workspace_id = result.lastrowid if result.lastrowid else conn.execute(
+            text("SELECT id FROM workspaces ORDER BY id DESC LIMIT 1")
+        ).scalar()
+        conn.execute(text(
+            "INSERT INTO workspace_members (workspace_id, user_id, role, created_at)"
+            " VALUES (:wid, :uid, 'owner', :now)"
+            " ON CONFLICT(workspace_id, user_id) DO NOTHING"
+        ), {"wid": workspace_id, "uid": user_id, "now": now})
+    # Start the 7-day trial at workspace creation time.
+    create_workspace_billing_record(workspace_id)
+    return get_workspace_for_user(user_id)
+
+
+def update_workspace(workspace_id, name=None, logo_path=None):
+    """Update workspace name and/or logo_path. None args are left unchanged."""
+    if not workspace_id:
+        return
+    sets = ["updated_at = :now"]
+    params = {"wid": workspace_id, "now": datetime.now(timezone.utc).isoformat()}
+    if name is not None:
+        sets.append("name = :name")
+        params["name"] = name.strip() or None
+    if logo_path is not None:
+        sets.append("logo_path = :logo_path")
+        params["logo_path"] = logo_path or None
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(
+            text(f"UPDATE workspaces SET {', '.join(sets)} WHERE id = :wid"),
+            params,
+        )
+
+
+def list_workspace_members(workspace_id):
+    """Return members of a workspace (foundation for team management)."""
+    if not workspace_id:
+        return []
+    engine = get_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT m.user_id, m.role, m.created_at, u.email
+            FROM workspace_members m
+            JOIN users u ON u.id = m.user_id
+            WHERE m.workspace_id = :wid
+            ORDER BY m.id ASC
+        """), {"wid": workspace_id}).mappings().fetchall()
+    return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Workspace Billing (subscription tiers + 7-day trial)
+# ---------------------------------------------------------------------------
+
+TRIAL_DAYS = 7
+VALID_PLANS = ("starter", "growth", "pro")
+
+
+def create_workspace_billing_record(workspace_id, trial_days=TRIAL_DAYS):
+    """Initialise a workspace's trial window. Idempotent: only seeds the trial
+    when trial_start_at is not already set, so re-runs never reset the clock."""
+    if not workspace_id:
+        return
+    engine = get_engine()
+    now = datetime.now(timezone.utc)
+    trial_end = now + timedelta(days=trial_days)
+    with engine.begin() as conn:
+        conn.execute(text("""
+            UPDATE workspaces
+            SET trial_start_at = COALESCE(trial_start_at, :start),
+                trial_end_at   = COALESCE(trial_end_at, :end),
+                subscription_status = COALESCE(subscription_status, 'trialing'),
+                plan = COALESCE(plan, 'starter'),
+                updated_at = :now
+            WHERE id = :wid
+        """), {
+            "start": now.isoformat(),
+            "end": trial_end.isoformat(),
+            "now": now.isoformat(),
+            "wid": workspace_id,
+        })
+
+
+def get_workspace_billing(workspace_id):
+    """Return the workspace's billing fields, or None if the workspace is absent."""
+    if not workspace_id:
+        return None
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT id, plan, subscription_status, trial_start_at, trial_end_at,
+                   stripe_customer_id, stripe_subscription_id
+            FROM workspaces WHERE id = :wid
+        """), {"wid": workspace_id}).mappings().fetchone()
+    return dict(row) if row else None
+
+
+def update_workspace_subscription_status(workspace_id, status, plan=None,
+                                         stripe_customer_id=None,
+                                         stripe_subscription_id=None):
+    """Update a workspace's subscription status and optional Stripe linkage.
+
+    Only non-None arguments are written; the rest are left unchanged.
+    """
+    if not workspace_id:
+        return
+    sets = ["subscription_status = :status", "updated_at = :now"]
+    params = {
+        "status": status,
+        "now": datetime.now(timezone.utc).isoformat(),
+        "wid": workspace_id,
+    }
+    if plan is not None:
+        sets.append("plan = :plan")
+        params["plan"] = plan
+    if stripe_customer_id is not None:
+        sets.append("stripe_customer_id = :cust")
+        params["cust"] = stripe_customer_id
+    if stripe_subscription_id is not None:
+        sets.append("stripe_subscription_id = :sub")
+        params["sub"] = stripe_subscription_id
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(
+            text(f"UPDATE workspaces SET {', '.join(sets)} WHERE id = :wid"),
+            params,
+        )
+
+
+def is_workspace_in_trial(workspace_id):
+    """True when the workspace's trial window has not yet elapsed."""
+    billing = get_workspace_billing(workspace_id)
+    if not billing or not billing.get("trial_end_at"):
+        return False
+    try:
+        trial_end = datetime.fromisoformat(billing["trial_end_at"])
+    except (ValueError, TypeError):
+        return False
+    if trial_end.tzinfo is None:
+        trial_end = trial_end.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) <= trial_end
+
+
+def is_workspace_active(workspace_id):
+    """True when the workspace may be accessed: active subscription OR live trial."""
+    billing = get_workspace_billing(workspace_id)
+    if not billing:
+        return False
+    if billing.get("subscription_status") == "active":
+        return True
+    return is_workspace_in_trial(workspace_id)
+
+
+def get_workspace_by_stripe_customer(stripe_customer_id):
+    """Return the workspace linked to a Stripe customer id, or None."""
+    if not stripe_customer_id:
+        return None
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT id, plan, subscription_status, trial_start_at, trial_end_at,
+                   stripe_customer_id, stripe_subscription_id
+            FROM workspaces WHERE stripe_customer_id = :cust
+            ORDER BY id ASC LIMIT 1
+        """), {"cust": stripe_customer_id}).mappings().fetchone()
+    return dict(row) if row else None
+
+
+def record_workspace_billing_event(workspace_id, event_type, stripe_event_id=None,
+                                   payload_json=None):
+    """Append an audit row to workspace_billing_events."""
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(text("""
+            INSERT INTO workspace_billing_events
+                (workspace_id, event_type, stripe_event_id, payload_json, created_at)
+            VALUES (:wid, :etype, :eid, :payload, :now)
+        """), {
+            "wid": workspace_id,
+            "etype": event_type,
+            "eid": stripe_event_id,
+            "payload": payload_json,
+            "now": datetime.now(timezone.utc).isoformat(),
+        })
 
 
 # ---------------------------------------------------------------------------
@@ -1471,7 +1767,6 @@ def insert_change(run_date, change_type, internal_id,
             "new_priority": new_priority,
             "description": description,
         })
-
 
 
 def change_summary(run_date):

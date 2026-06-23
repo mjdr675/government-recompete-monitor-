@@ -362,3 +362,70 @@ def compare_insights(rows):
         },
         "highlights": highlights,
     }
+
+
+# ---------------------------------------------------------------------------
+# Recent Updates feed (Auto Contract Updates lane)
+#
+# Pure presentation over a contract_field_changes row dict (no DB / AI). Turns a
+# stored field-level change into a compact, human-readable dashboard feed item.
+# Part of the authoritative (internal_id) contract_field_changes read path.
+# ---------------------------------------------------------------------------
+
+_UPDATE_FIELD_LABELS = {
+    "value": "Value",
+    "end_date": "Recompete date",
+    "days_remaining": "Days remaining",
+    "vendor": "Vendor",
+    "competition_type": "Competition type",
+    "recompete_score": "Recompete score",
+    "priority": "Priority",
+}
+
+
+def _format_update_value(field, raw):
+    """Render a stored old/new value for display ('—' when blank)."""
+    if raw is None or raw == "":
+        return "—"
+    if field == "value":
+        try:
+            return "${:,.0f}".format(float(raw))
+        except (TypeError, ValueError):
+            return str(raw)
+    return str(raw)
+
+
+def format_contract_update(row):
+    """Turn a contract_field_changes row into a display dict for the feed.
+
+    Input keys used: field_name, change_kind, old_value, new_value, run_date,
+    created_at, award_id, internal_id. Returns a dict with a human-readable
+    ``headline`` plus the contract label, formatted old/new values, and the
+    timestamp — everything the dashboard card needs, no template logic required.
+    """
+    field = row.get("field_name") or ""
+    kind = (row.get("change_kind") or "").upper()
+    label = _UPDATE_FIELD_LABELS.get(field, field.replace("_", " ").title() or "Field")
+
+    if kind == "INCREASE":
+        headline = f"{label} increased"
+    elif kind == "DECREASE":
+        headline = f"{label} decreased"
+    elif kind == "SET":
+        headline = f"{label} set"
+    elif kind == "CLEARED":
+        headline = f"{label} cleared"
+    else:
+        headline = f"{label} changed"
+
+    return {
+        "internal_id": row.get("internal_id"),
+        "contract": row.get("award_id") or row.get("internal_id"),
+        "headline": headline,
+        "field_name": field,
+        "change_kind": kind,
+        "old_value": _format_update_value(field, row.get("old_value")),
+        "new_value": _format_update_value(field, row.get("new_value")),
+        "run_date": row.get("run_date"),
+        "created_at": row.get("created_at"),
+    }

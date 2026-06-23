@@ -460,21 +460,6 @@ def my_contracts_summary(user_id):
     }
 
 
-def recent_updates_for_user(user_id, limit=10):
-    """Recent field-level updates for contracts the user watches or has in pipeline.
-
-    Powers the compact dashboard "Recent Updates" feed. Joins
-    contract_field_changes (Commit 1) to the user's tracked contracts and
-    returns the most recent changes first. Returns [] when user_id is None or
-    nothing the user tracks has changed.
-    """
-    if not user_id:
-        return []
-    from db import init_field_changes_table, get_recent_updates_for_user as _db_get
-    init_field_changes_table()
-    return _db_get(user_id, limit=limit)
-
-
 def agency_summary(run_date, limit=10):
     engine = get_engine()
     with engine.connect() as conn:
