@@ -65,29 +65,29 @@ def connect():
 # applied without re-executing — most critically, avoiding the unnecessary
 # search_vector rebuild from 005 on every subsequent startup.
 _MIGRATION_PROBES: dict = {
-    "001_initial_pg.sql": (
+    "001_initial_schema.sql": (
         "SELECT COUNT(*) FROM information_schema.tables "
         "WHERE table_schema = 'public' AND table_name = 'contracts'"
     ),
-    "002_subscription_and_alerts.sql": (
-        "SELECT COUNT(*) FROM information_schema.columns "
-        "WHERE table_name = 'users' AND column_name = 'stripe_customer_id'"
-    ),
-    "003_company_name.sql": (
-        "SELECT COUNT(*) FROM information_schema.columns "
-        "WHERE table_name = 'users' AND column_name = 'company_name'"
-    ),
-    "004_contracts_days_remaining_index.sql": (
-        "SELECT COUNT(*) FROM pg_indexes "
-        "WHERE indexname = 'idx_contracts_days_remaining'"
-    ),
-    "005_contracts_description_search.sql": (
-        "SELECT COUNT(*) FROM information_schema.columns "
-        "WHERE table_name = 'contracts' AND column_name = 'description'"
-    ),
-    "006_company_profile.sql": (
+    "002_contract_snapshots.sql": (
         "SELECT COUNT(*) FROM information_schema.tables "
-        "WHERE table_schema = 'public' AND table_name = 'company_profiles'"
+        "WHERE table_schema = 'public' AND table_name = 'contract_snapshots'"
+    ),
+    "003_changes.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'changes'"
+    ),
+    "004_saved_views.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'saved_views'"
+    ),
+    "005_users.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'users'"
+    ),
+    "006_user_companies.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'user_companies'"
     ),
     "007_opportunities.sql": (
         "SELECT COUNT(*) FROM information_schema.tables "
@@ -102,9 +102,6 @@ _MIGRATION_PROBES: dict = {
         "WHERE table_name = 'contracts' AND column_name = 'place_of_performance_state'"
     ),
     "010_discovery_columns.sql": (
-        "SELECT COUNT(*) FROM information_schema.columns "
-        "WHERE table_name = 'contracts' AND column_name = 'place_of_performance_state'"
-    ),
         "SELECT COUNT(*) FROM information_schema.columns "
         "WHERE table_name = 'contracts' AND column_name = 'place_of_performance_state'"
     ),
