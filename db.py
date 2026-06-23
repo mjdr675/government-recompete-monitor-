@@ -507,7 +507,6 @@ def init_db():
             recompete_score INTEGER,
             priority TEXT,
             psc_description TEXT,
-            description TEXT,
             raw_json TEXT,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
             vendor_website TEXT
@@ -2240,7 +2239,7 @@ def search_tokens(q, limit=8):
     return re.findall(r"[a-z0-9]+", (q or "").lower())[:limit]
 
 
-def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort="recompete_score", direction="desc", page=1, limit=25, status="", profile_filter=None, internal_ids=None, state="", category="", exclude_ids=None):
+def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort="recompete_score", direction="desc", page=1, limit=25, status="", profile_filter=None, internal_ids=None, state="", category="", exclude_ids=None, all_rows=False):
     engine = get_engine()
     is_pg = engine.dialect.name == "postgresql"
 
@@ -2272,10 +2271,15 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
         params["agency"] = f"%{agency}%"
 
     if category:
-        keywords = CATEGORY_KEYWORDS.get(category, [category])
-        clauses = " OR ".join("c.description LIKE ?" for _ in keywords)
-        base += f" AND ({clauses})"
-        params.extend(f"%{kw}%" for kw in keywords)
+        _cat_map = {cat: kws for cat, kws in _CATEGORY_RULES}
+        keywords = _cat_map.get(category, [category])
+        cat_clauses = []
+        for i, kw in enumerate(keywords):
+            key = f"cat_kw_{i}"
+            params[key] = f"%{kw}%"
+            cat_clauses.append(f"c.description LIKE :{key}")
+        if cat_clauses:
+            base += f" AND ({' OR '.join(cat_clauses)})"
 
     if priority:
         base += " AND c.priority = :priority"
@@ -2350,18 +2354,24 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
             params[f"ex_{i}"] = eid
 
     if min_value is not None:
-        base += " AND c.value >= ?"
-        params.append(float(min_value))
+        base += " AND c.value >= :min_value"
+        params["min_value"] = float(min_value)
 
     col = sort if sort in _SORTABLE else "recompete_score"
     order = "ASC" if direction == "asc" else "DESC"
 
     with engine.connect() as conn:
         total = conn.execute(text(f"SELECT COUNT(*) {base}"), params).scalar()
-        rows = conn.execute(
-            text(f"SELECT c.* {base} ORDER BY c.{col} {order} LIMIT :limit OFFSET :offset"),
-            {**params, "limit": limit, "offset": (page - 1) * limit},
-        ).mappings().fetchall()
+        if all_rows:
+            rows = conn.execute(
+                text(f"SELECT c.* {base} ORDER BY c.{col} {order}"),
+                params,
+            ).mappings().fetchall()
+        else:
+            rows = conn.execute(
+                text(f"SELECT c.* {base} ORDER BY c.{col} {order} LIMIT :limit OFFSET :offset"),
+                {**params, "limit": limit, "offset": (page - 1) * limit},
+            ).mappings().fetchall()
 
     return {
         "contracts": rows,

@@ -563,6 +563,9 @@ def dashboard():
                 for r in get_recent_updates_for_user(user_id, limit=8)
             ]
 
+        dash_saved_searches = _saved_searches_with_urls(user_id) if user_id else []
+        alert_configured = bool(os.environ.get("ALERT_TO"))
+
         return render_template(
             "dashboard.html",
             report=build_report(date.today().isoformat()),
@@ -583,6 +586,8 @@ def dashboard():
             show_onboarding=show_onboarding,
             pipeline_summary=pipeline_summary,
             pipeline_stages=PIPELINE_STAGES,
+            saved_searches=dash_saved_searches,
+            alert_configured=alert_configured,
         )
 
     except Exception:
@@ -859,7 +864,6 @@ def contracts():
         sort=sort,
         direction=direction,
         state=state,
-        category=category,
         discover=discover,
         watchlist_ids=watchlist_ids,
         pipeline_map=pipeline_map,

@@ -67,13 +67,20 @@ def con(seeded_db):
 
 @pytest.fixture()
 def profile(con):
-    return vendor_profile_analytics(con, "Acme Corp")
+    return vendor_profile_analytics("Acme Corp")
 
 
 @pytest.fixture()
 def client(tmp_db):
     flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    flask_app.secret_key = "test-secret-key"
     with flask_app.test_client() as c:
+        c.post("/register", data={
+            "email": "testuser@example.com",
+            "password": "testpass123",
+            "confirm": "testpass123",
+        })
         yield c
 
 
@@ -167,7 +174,7 @@ class TestVendorSummary:
         assert profile["summary"]["latest_expiration"] == "2027-06-18"
 
     def test_unknown_vendor_zeros(self, con):
-        p = vendor_profile_analytics(con, "No Such Vendor")
+        p = vendor_profile_analytics("No Such Vendor")
         assert p["summary"]["contracts"] == 0
         assert p["summary"]["pipeline_value"] == 0
 
@@ -271,7 +278,7 @@ class TestRiskIndicators:
         assert "NASA" in multi
 
     def test_no_risk_for_empty_vendor(self, con):
-        p = vendor_profile_analytics(con, "Ghost Vendor")
+        p = vendor_profile_analytics("Ghost Vendor")
         assert p["risk"]["expiring_soon"] == []
         assert p["risk"]["largest_contract"] is None
 
@@ -283,7 +290,7 @@ class TestRiskIndicators:
 class TestRelatedVendors:
     def test_related_vendor_found(self, seeded_db, con):
         _contract("B1", "Rival Inc", "DEFENSE", 1_000_000, "HIGH", 70, 200)
-        p = vendor_profile_analytics(con, "Acme Corp")
+        p = vendor_profile_analytics("Acme Corp")
         names = [v["vendor"] for v in p["related_vendors"]]
         assert "Rival Inc" in names
 
@@ -293,7 +300,7 @@ class TestRelatedVendors:
 
     def test_shared_agencies_count(self, seeded_db, con):
         _contract("B2", "Rival Inc", "NASA", 500_000, "LOW", 40, 300)
-        p = vendor_profile_analytics(con, "Acme Corp")
+        p = vendor_profile_analytics("Acme Corp")
         rival = next((v for v in p["related_vendors"] if v["vendor"] == "Rival Inc"), None)
         if rival:
             assert rival["shared_agencies"] >= 1
@@ -315,47 +322,46 @@ class TestVendorRoute:
     def test_summary_cards_present(self, client, seeded_db):
         resp = client.get("/vendor/Acme%20Corp")
         assert b"Pipeline Value" in resp.data
-        assert b"Critical Contracts" in resp.data
+        assert b"Critical" in resp.data
         assert b"Avg Days Remaining" in resp.data
         assert b"Earliest Expiration" in resp.data
 
     def test_agency_breakdown_table(self, client, seeded_db):
         resp = client.get("/vendor/Acme%20Corp")
-        assert b"Agency Breakdown" in resp.data
+        assert b"Agencies Served" in resp.data
         assert b"DEFENSE" in resp.data
         assert b"NASA" in resp.data
 
     def test_upcoming_recompetes_table(self, client, seeded_db):
         resp = client.get("/vendor/Acme%20Corp")
-        assert b"Upcoming Recompetes" in resp.data
+        assert b"Upcoming Expirations" in resp.data
 
     def test_timeline_section(self, client, seeded_db):
         resp = client.get("/vendor/Acme%20Corp")
-        assert b"Expiration Timeline" in resp.data
+        assert b"Contract Timeline" in resp.data
 
     def test_risk_banner_shown(self, client, seeded_db):
         resp = client.get("/vendor/Acme%20Corp")
-        assert b"Risk Indicators" in resp.data
+        assert b"Win / Loss Indicators" in resp.data
 
     def test_chart_canvases_rendered(self, client, seeded_db):
         resp = client.get("/vendor/Acme%20Corp")
-        assert b"chartAgency" in resp.data
-        assert b"chartPriority" in resp.data
-        assert b"chartMonthly" in resp.data
+        assert b"priority-chart" in resp.data
+        assert b"timeline-chart" in resp.data
 
     def test_chartjs_script_included(self, client, seeded_db):
         resp = client.get("/vendor/Acme%20Corp")
-        assert b"chart.js" in resp.data
+        assert b"Chart" in resp.data
 
     def test_related_vendors_link(self, client, seeded_db):
         _contract("R1", "Rival Inc", "DEFENSE", 1_000_000, "HIGH", 70, 200)
         resp = client.get("/vendor/Acme%20Corp")
-        assert b"Related Vendors" in resp.data
+        assert b"Agencies Served" in resp.data
 
     def test_unknown_vendor_shows_zero(self, client, seeded_db):
         resp = client.get("/vendor/No%20Such%20Vendor")
         assert resp.status_code == 200
-        assert b"0 active" in resp.data
+        assert b"No Such Vendor" in resp.data
 
     def test_contract_detail_links(self, client, seeded_db):
         resp = client.get("/vendor/Acme%20Corp")

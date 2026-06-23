@@ -193,59 +193,90 @@
 
       {# My Contracts panel #}
       <div id="panel-my-contracts">
-        {% if my_contracts.total > 0 %}
+        {# Watchlist — always visible #}
+        <div class="table-wrapper" style="margin-bottom:12px">
+          <div class="table-header"><h2>Watchlist</h2></div>
           {% if my_contracts.watchlist %}
-          <div class="table-wrapper" style="margin-bottom:12px">
-            <div class="table-header"><h2>Watchlist</h2></div>
-            <table>
-              <thead><tr>
-                <th>Contract</th><th>Vendor</th><th>Agency</th>
-                <th class="col-r">Value</th><th class="col-r">Days</th>
-              </tr></thead>
-              <tbody>
-                {% for r in my_contracts.watchlist %}
-                <tr>
-                  <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
-                  <td>{{ r.vendor or '&mdash;' }}</td>
-                  <td>{{ r.agency or '&mdash;' }}</td>
-                  <td class="col-r">${{ "{:,.0f}".format(r.value or 0) }}</td>
-                  <td class="col-r">{{ r.days_remaining if r.days_remaining is not none else '&mdash;' }}</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
+          <table>
+            <thead><tr>
+              <th>Contract</th><th>Vendor</th><th>Agency</th>
+              <th class="col-r">Value</th><th class="col-r">Days</th>
+            </tr></thead>
+            <tbody>
+              {% for r in my_contracts.watchlist %}
+              <tr>
+                <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
+                <td>{{ r.vendor or '&mdash;' }}</td>
+                <td>{{ r.agency or '&mdash;' }}</td>
+                <td class="col-r">${{ "{:,.0f}".format(r.value or 0) }}</td>
+                <td class="col-r">{{ r.days_remaining if r.days_remaining is not none else '&mdash;' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <div style="padding:16px 20px;text-align:center">
+            <div class="muted" style="font-size:13px;margin-bottom:8px">Nothing watched yet</div>
+            <a href="/contracts" class="btn btn-primary" style="font-size:13px">Browse contracts to watch</a>
           </div>
           {% endif %}
-          {% if my_contracts.pipeline %}
-          <div class="table-wrapper" style="margin-bottom:12px">
-            <div class="table-header"><h2>Active Pipeline</h2></div>
-            <table>
-              <thead><tr>
-                <th>Contract</th><th>Vendor</th><th>Agency</th>
-                <th class="col-r">Value</th><th>Stage</th><th class="col-r">Days</th>
-              </tr></thead>
-              <tbody>
-                {% for r in my_contracts.pipeline %}
-                <tr>
-                  <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
-                  <td>{{ r.vendor or '&mdash;' }}</td>
-                  <td>{{ r.agency or '&mdash;' }}</td>
-                  <td class="col-r">${{ "{:,.0f}".format(r.value or 0) }}</td>
-                  <td>{{ r.stage or '&mdash;' }}</td>
-                  <td class="col-r">{{ r.days_remaining if r.days_remaining is not none else '&mdash;' }}</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-          {% endif %}
-        {% else %}
-        <div style="padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:16px;text-align:center">
-          <div style="font-weight:600;margin-bottom:6px">No contracts tracked yet</div>
-          <div class="muted" style="font-size:13px;margin-bottom:12px">Click ☆ on any contract to add it to your watchlist, or add items to your pipeline to track them here.</div>
-          <a href="/contracts" class="btn btn-primary" style="font-size:13px">Browse Contracts</a>
+        </div>
+
+        {# Active Pipeline #}
+        {% if my_contracts.pipeline %}
+        <div class="table-wrapper" style="margin-bottom:12px">
+          <div class="table-header"><h2>Active Pipeline</h2></div>
+          <table>
+            <thead><tr>
+              <th>Contract</th><th>Vendor</th><th>Agency</th>
+              <th class="col-r">Value</th><th>Stage</th><th class="col-r">Days</th>
+            </tr></thead>
+            <tbody>
+              {% for r in my_contracts.pipeline %}
+              <tr>
+                <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
+                <td>{{ r.vendor or '&mdash;' }}</td>
+                <td>{{ r.agency or '&mdash;' }}</td>
+                <td class="col-r">${{ "{:,.0f}".format(r.value or 0) }}</td>
+                <td>{{ r.stage or '&mdash;' }}</td>
+                <td class="col-r">{{ r.days_remaining if r.days_remaining is not none else '&mdash;' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
         </div>
         {% endif %}
+
+        {# Saved Searches — always visible #}
+        <div class="table-wrapper" style="margin-bottom:12px">
+          <div class="table-header"><h2>Saved Searches</h2></div>
+          {% if saved_searches %}
+          <ul style="margin:0;padding:12px 20px;list-style:none">
+            {% for s in saved_searches %}
+            <li style="margin-bottom:6px"><a href="{{ s.url }}">{{ s.name }}</a></li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <div style="padding:16px 20px;text-align:center">
+            <div class="muted" style="font-size:13px;margin-bottom:8px">No saved searches yet</div>
+            <a href="/contracts" class="btn btn-ghost" style="font-size:13px">Search contracts to save</a>
+          </div>
+          {% endif %}
+        </div>
+
+        {# Email Alerts — always visible #}
+        <div class="table-wrapper" style="margin-bottom:12px">
+          <div class="table-header"><h2>Email Alerts</h2></div>
+          <div style="padding:16px 20px">
+            {% if alert_configured %}
+            <span style="color:var(--success,#16a34a);font-weight:500">Configured</span>
+            — alerts active. <a href="/settings/alerts">Manage settings</a>
+            {% else %}
+            <div class="muted" style="font-size:13px;margin-bottom:8px">Set up email alerts to get notified before contracts expire.</div>
+            <a href="/settings/alerts" class="btn btn-ghost" style="font-size:13px">Set up email alerts</a>
+            {% endif %}
+          </div>
+        </div>
 
 
         {# For My Business: personalized contracts based on profile #}
