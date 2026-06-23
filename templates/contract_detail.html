@@ -57,7 +57,15 @@
   {% if row["end_date"] %}It runs through <strong>{{ row["end_date"] }}</strong>{% if row["days_remaining"] is not none %} ({{ row["days_remaining"] }} days remaining){% endif %}.{% endif %}
   {% if row["competition_type"] %}Awarded via {{ row["competition_type"]|lower }}.{% endif %}
   {% if row["priority"] %}Recompete priority: <strong>{{ row["priority"] }}</strong> (score {{ row["recompete_score"] }}).{% endif %}
+  {% if row.get("place_of_performance_state") %}Work performed in <strong>{{ row["place_of_performance_state"] }}</strong>.{% endif %}
 </div>
+
+{% if row.get("description") %}
+<div style="margin-top:12px;padding:14px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);line-height:1.6">
+  <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Contract Description</div>
+  <div style="font-size:14px">{{ row["description"] }}</div>
+</div>
+{% endif %}
 
 {% if action %}
 <div style="margin-top:14px;padding:16px 18px;background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:var(--radius-sm);line-height:1.6">
@@ -157,6 +165,9 @@
       <tr><th>Vendor</th><td><a href="/vendor/{{ row["vendor"]|urlencode }}">{{ row["vendor"] }}</a></td></tr>
       <tr><th>Agency</th><td><a href="/agency/{{ row["agency"]|urlencode }}">{{ row["agency"] }}</a></td></tr>
       <tr><th>Sub-Agency</th><td>{{ row["sub_agency"] }}</td></tr>
+      {% if row.get("category") and row["category"] != "Other" %}<tr><th>Category</th><td><a href="/contracts?category={{ row['category'] }}">{{ row["category"] }}</a></td></tr>{% endif %}
+      {% if row.get("place_of_performance_state") %}<tr><th>State / Location</th><td><a href="/contracts?state={{ row['place_of_performance_state'] }}">{{ row["place_of_performance_state"] }}</a></td></tr>{% endif %}
+      {% if row.get("naics_code") %}<tr><th>NAICS Code</th><td>{{ row["naics_code"] }}</td></tr>{% endif %}
       <tr><th>Award ID</th><td>{{ row["award_id"] }}</td></tr>
       <tr><th>Solicitation ID</th><td>{{ row["solicitation_id"] }}</td></tr>
       <tr><th>Competition Type</th><td>{{ row["competition_type"] }}</td></tr>

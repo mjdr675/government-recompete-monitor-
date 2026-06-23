@@ -59,7 +59,39 @@ SAVED_VIEWS = {
         "filters": {
             "days": 90
         }
-    }
+    },
+    "facilities-contracts": {
+        "label": "Facilities Contracts",
+        "filters": {"category": "Facilities"}
+    },
+    "cleaning-contracts": {
+        "label": "Cleaning / Janitorial",
+        "filters": {"category": "Cleaning"}
+    },
+    "grounds-contracts": {
+        "label": "Grounds / Landscaping",
+        "filters": {"category": "Grounds"}
+    },
+    "it-contracts": {
+        "label": "IT Contracts",
+        "filters": {"category": "IT"}
+    },
+    "cybersecurity-contracts": {
+        "label": "Cybersecurity Contracts",
+        "filters": {"category": "Cybersecurity"}
+    },
+    "construction-contracts": {
+        "label": "Construction Contracts",
+        "filters": {"category": "Construction"}
+    },
+    "security-contracts": {
+        "label": "Physical Security",
+        "filters": {"category": "Security"}
+    },
+    "logistics-contracts": {
+        "label": "Logistics Contracts",
+        "filters": {"category": "Logistics"}
+    },
 }
 
 
