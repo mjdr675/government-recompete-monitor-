@@ -27,6 +27,7 @@ app = Flask(__name__)
 
 _AUTH_USER = os.environ.get("AUTH_USER", "")
 _AUTH_PASS = os.environ.get("AUTH_PASS", "")
+_CRON_SECRET = os.environ.get("CRON_SECRET", "")
 
 def _require_auth():
     if not _AUTH_USER or not _AUTH_PASS:
@@ -42,7 +43,7 @@ def _require_auth():
 
 @app.before_request
 def check_auth():
-    if request.path == "/health":
+    if request.path in ("/health", "/ingest/run"):
         return None
     return _require_auth()
 
@@ -50,6 +51,23 @@ def check_auth():
 @app.route("/health")
 def health():
     return {"status": "ok"}, 200
+
+
+@app.route("/ingest/run", methods=["POST"])
+def ingest_run():
+    """Cron trigger endpoint. Protected by CRON_SECRET bearer token."""
+    if _CRON_SECRET:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header != f"Bearer {_CRON_SECRET}":
+            return {"error": "unauthorized"}, 401
+
+    subprocess.Popen(
+        [sys.executable, "recompete_report.py"],
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return {"status": "started", "date": date.today().isoformat()}, 202
 
 
 @app.route("/")
