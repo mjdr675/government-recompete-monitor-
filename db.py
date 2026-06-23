@@ -396,6 +396,7 @@ def init_db():
             "subscription_status TEXT NOT NULL DEFAULT 'trialing'",
             "trial_ends_at TEXT",
             "company_name TEXT",
+            "billing_interval TEXT",
         ):
             try:
                 conn.execute(text(f"ALTER TABLE users ADD COLUMN {col}"))
