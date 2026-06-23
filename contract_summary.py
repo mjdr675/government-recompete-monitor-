@@ -5,6 +5,8 @@ Presentation logic for the contract detail page — kept OUT of recompete_report
 functions over already-stored fields only: no DB, no external/AI calls.
 """
 
+from domain.policies.contract_ranking import rank_contracts
+
 
 def _safe_int(v):
     try:
@@ -290,12 +292,9 @@ def compare_insights(rows):
         })
 
     # Recommended pick: highest score, then soonest active expiry, then value.
-    def rank_key(r):
-        urgency = active_days(r)
-        urgency = urgency if urgency is not None else 10 ** 9
-        return (-score_of(r), urgency, -value_of(r))
-
-    best = sorted(rows, key=rank_key)[0]
+    # Ordering policy lives in the shared domain module so pipeline/search/
+    # recommendation ranking can reuse the exact same rule.
+    best = rank_contracts(rows)[0]
     reason_parts = []
     if score_of(best) > 0:
         reason_parts.append("highest recompete score ({}/100)".format(score_of(best)))
