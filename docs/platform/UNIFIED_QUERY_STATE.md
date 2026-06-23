@@ -26,7 +26,7 @@ Search-related state is currently expressed by **three separately-implemented sy
 
 ### 2.1 `FilterSet`
 
-`FilterSet` is the canonical, serializable description of a query's **selection criteria**. It is derived 1:1 from today's `/contracts` parameters that affect *which* contracts match and *how they are ordered*:
+`FilterSet` is the canonical, serializable description of a query's **selection criteria**. It is derived 1:1 from today's `/contracts` parameters that affect *which* contracts match, *how they are ordered*, and *which result window* is returned (`page` is a result window, not part of selection or ordering):
 
 ```
 FilterSet {
@@ -45,7 +45,7 @@ FilterSet {
 ```
 
 **Excluded from `FilterSet` (deliberately):**
-- `for_my_business`, `in_pipeline`, `discover` — **user-scoped context modifiers**; their effect depends on *who* is asking, so they live in `context` (see §2.3) under the Boundary Contract (§2.4).
+- `for_my_business`, `in_pipeline`, `discover` — **context modifiers**; their effect depends on *who* is asking, so they live in `context` (see §2.3) under the Boundary Contract (§2.4).
 
 > **Boundary change (v2):** `page` is now part of `FilterSet`. Pagination is query-altering but **user-independent** (it only selects the result window), so by the §2.4 membership test it belongs to `FilterSet`. Earlier drafts excluded it as "request-only"; the §2.4 Boundary Contract is now authoritative.
 
@@ -57,7 +57,7 @@ UnifiedQueryState {
   name?:       string                              // user/preset label
   filters:     FilterSet
   scope:       "temporary" | "saved" | "quick"
-  context?:    { for_my_business?: bool,           // dataset modifiers (2.3)
+  context?:    { for_my_business?: bool,           // context modifiers (§2.3)
                  in_pipeline?: bool,
                  discover?: bool }
   pinned?:     boolean                             // quick-access flag
@@ -67,10 +67,10 @@ UnifiedQueryState {
 
 **Rules (normative):**
 - **R1.** All query state MUST be expressible as a `UnifiedQueryState`. No subsystem may carry query state in a parallel shape.
-- **R2.** `Filters` is no longer a standalone system — it is `scope: "temporary"`.
+- **R2.** *(Target state, Phase 3+.)* `Filters` is no longer a standalone system — it becomes `scope: "temporary"`. This describes the end state; it does **not** require any change to current execution behavior (cf. V3/V5).
 - **R3.** `Saved Views` = `scope: "saved"` (persisted, has `id`, `created_at`, `name`).
 - **R4.** `Quick Views` = `scope: "quick"` (predefined templates; `name` = label; not user-owned; `pinned` drives chip surfacing).
-- **R5.** Query execution (`db.get_contracts`) MUST consume a `UnifiedQueryState` (via its `filters` + `context`), never loose kwargs assembled elsewhere.
+- **R5.** *(Target state, Phase 3+.)* Query execution (`db.get_contracts`) will consume a `UnifiedQueryState` (via its `filters` + `context`) rather than loose kwargs assembled elsewhere. This is the end-state invariant achieved in Phases 3–4; Phase 2 leaves execution untouched (cf. §4.2, V3/V5).
 
 ### 2.3 `context` vs `filters`
 
@@ -81,7 +81,7 @@ UnifiedQueryState {
 The split between `FilterSet` and `context` is defined by **one rule**:
 
 - **`FilterSet`** = *every query-altering field that is independent of the requesting user.* This includes all explicit filters (`q`, `agency`, `category`, `state`, `priority`, `days`, `min_value`, `status`), the ordering fields (`sort`, `dir`), **and pagination (`page`)**. Two different users supplying the same `FilterSet` must receive the same result set.
-- **`context`** = *user-scoped modifiers only* — exactly three fields: `for_my_business`, `in_pipeline`, `discover`. Their meaning depends on *who* is asking (this user's profile / pipeline).
+- **`context`** = *context modifiers only* — exactly three fields: `for_my_business`, `in_pipeline`, `discover`. Their meaning depends on *who* is asking (this user's profile / pipeline).
 
 **Membership test:** "Does this field's effect depend on the identity of the requester?" → **Yes** = `context`; **No** = `FilterSet`.
 
@@ -126,6 +126,8 @@ And one mapping **out** for execution + URL building (replaces `build_view_query
 UnifiedQueryState → get_contracts(**filters, **context_kwargs)
 UnifiedQueryState → query_string (for redirects / saved-search reload URLs)
 ```
+
+> **Note (no logic change):** `context` fields are not passed to `get_contracts` by name — they are mapped to its execution-time parameters via a translation step (`for_my_business` → `profile_filter`, `in_pipeline` → `internal_ids`, `discover` → `exclude_ids`, resolved against the current user). This documents the existing translation; it implies no behavioral change.
 
 **Constraints (normative):** no UI behavior change; no removal of legacy systems; both representations coexist until Phase 4 validation passes.
 
