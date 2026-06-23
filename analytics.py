@@ -436,6 +436,19 @@ def vendor_profile_analytics(vendor):
         except Exception:
             change_events = []
 
+        # Vendor website — only populated by future enrichment; may be NULL for
+        # all contracts.  Return the first non-null value across any contract for
+        # this vendor so the profile page can display it when available.
+        try:
+            website_row = conn.execute(text(
+                "SELECT vendor_website FROM contracts"
+                " WHERE vendor = :vendor AND vendor_website IS NOT NULL"
+                " AND vendor_website != '' LIMIT 1"
+            ), {"vendor": vendor}).fetchone()
+            vendor_website = website_row[0] if website_row else None
+        except Exception:
+            vendor_website = None
+
     return {
         "summary": summary,
         "agencies": agencies,
@@ -446,6 +459,7 @@ def vendor_profile_analytics(vendor):
         "win_loss_summary": win_loss_summary,
         "change_events": change_events,
         "timeline": timeline,
+        "vendor_website": vendor_website,
     }
 
 def agency_profile(agency):
