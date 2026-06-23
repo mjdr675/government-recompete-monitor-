@@ -7,6 +7,12 @@ functions over already-stored fields only: no DB, no external/AI calls.
 
 from domain.policies.contract_ranking import rank_contracts
 
+def format_contract_update(contract):
+    return {
+        "title": contract.get("title"),
+        "summary": contract.get("summary"),
+        "updated": contract.get("updated_at"),
+    }
 
 def _safe_int(v):
     try:
