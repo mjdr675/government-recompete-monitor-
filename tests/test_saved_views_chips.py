@@ -13,6 +13,7 @@ from views import (
     QUICK_VIEW_KEYS,
     active_filter_chips,
     quick_views,
+    active_view_id,
     _format_chip_value,
 )
 
@@ -161,6 +162,47 @@ class TestQuickViews:
 
 
 # ---------------------------------------------------------------------------
+# active_view_id
+# ---------------------------------------------------------------------------
+
+class TestActiveViewId:
+    def test_no_filters_returns_none(self):
+        assert active_view_id({}) is None
+
+    def test_exact_match_returns_view_id(self):
+        # expiring-soon preset is {"days": 90}
+        assert active_view_id({"days": "90"}) == "expiring-soon"
+
+    def test_category_preset_match(self):
+        # cleaning-contracts preset is {"category": "Cleaning"}
+        assert active_view_id({"category": "Cleaning"}) == "cleaning-contracts"
+
+    def test_extra_filter_breaks_match(self):
+        # days=90 + an extra category is no longer exactly the expiring-soon preset
+        assert active_view_id({"days": "90", "category": "IT"}) is None
+
+    def test_partial_match_returns_none(self):
+        # dod-critical needs agency=DEFENSE AND priority=CRITICAL; only one set
+        assert active_view_id({"agency": "DEFENSE"}) is None
+
+    def test_multi_filter_preset_match(self):
+        # dod-critical preset is {"agency": "DEFENSE", "priority": "CRITICAL"}
+        assert active_view_id({"agency": "DEFENSE", "priority": "CRITICAL"}) == "dod-critical"
+
+    def test_sort_and_page_ignored(self):
+        assert active_view_id(
+            {"category": "Cleaning", "sort": "value", "dir": "asc", "page": "2"}
+        ) == "cleaning-contracts"
+
+    def test_min_value_preset_match(self):
+        # high-value-contracts preset is {"min_value": 1000000}
+        assert active_view_id({"min_value": "1000000"}) == "high-value-contracts"
+
+    def test_unmatched_filter_returns_none(self):
+        assert active_view_id({"state": "TX"}) is None
+
+
+# ---------------------------------------------------------------------------
 # /contracts integration
 # ---------------------------------------------------------------------------
 
@@ -214,3 +256,14 @@ class TestContractsPageIntegration:
         assert b"Active filters:" in rv.data
         body = rv.data.decode()
         assert "category=IT" in body
+
+    def test_active_view_chip_highlighted(self, client):
+        # Filtering by the cleaning preset's filters marks that quick-view active
+        rv = client.get("/contracts?category=Cleaning")
+        assert rv.status_code == 200
+        assert b'aria-current="true"' in rv.data
+
+    def test_no_active_view_when_no_preset_match(self, client):
+        rv = client.get("/contracts?state=TX")
+        assert rv.status_code == 200
+        assert b'aria-current="true"' not in rv.data

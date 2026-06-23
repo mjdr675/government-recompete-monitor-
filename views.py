@@ -141,6 +141,29 @@ def quick_views():
         if key in SAVED_VIEWS
     ]
 
+
+def active_view_id(args):
+    """Return the SAVED_VIEWS key whose filters exactly match the applied filters.
+
+    "Exactly" means every filter param currently set equals the preset's filters
+    and no extra filter params are set. Sort/paging/mode toggles are ignored.
+    Returns ``None`` when no preset matches, letting the contracts page highlight
+    the preset a user is currently inside (filter-state visibility).
+    """
+    applied = {
+        k: str(v).strip()
+        for k, v in args.items()
+        if k in _CHIP_LABELS and v is not None and str(v).strip() != ""
+    }
+    if not applied:
+        return None
+    for key, view in SAVED_VIEWS.items():
+        preset = {k: str(v) for k, v in view.get("filters", {}).items()}
+        if preset == applied:
+            return key
+    return None
+
+
 SAVED_VIEWS = {
     "dod-critical": {
         # "DoD" = U.S. Department of Defense. Label spelled out for clarity since it
