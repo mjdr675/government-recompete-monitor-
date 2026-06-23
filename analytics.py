@@ -363,23 +363,30 @@ def personalized_for_business(user_id, profile, limit=10):
         # This reuses the logic from infer_category
         category_matches = _categories_from_naics(naics_codes)
 
-        # Build placeholders
-        state_placeholders = ", ".join(f"'{s}'" for s in (states or []))
-        agency_placeholders = ", ".join(f"'{a}'" for a in (agencies or []))
-        category_placeholders = ", ".join(f"'{c}'" for c in category_matches)
+        # Bind every IN-clause value as a SQL parameter instead of interpolating
+        # it as a string literal.  states/agencies come from the user-controlled
+        # company profile, so the previous f-string interpolation was a SQL
+        # injection vector; category_matches is an internal allowlist but is
+        # bound too for consistency.  An empty list renders as `IN (NULL)`, which
+        # matches no rows — preserving the prior "__NOMATCH__" sentinel behavior.
+        def _bind_in(values, prefix):
+            if not values:
+                return "NULL"
+            placeholders = []
+            for i, v in enumerate(values):
+                key = f"{prefix}{i}"
+                params[key] = v
+                placeholders.append(f":{key}")
+            return ", ".join(placeholders)
 
-        # Handle empty lists in placeholders
-        if not state_placeholders:
-            state_placeholders = "'__NOMATCH__'"
-        if not category_placeholders:
-            category_placeholders = "'__NOMATCH__'"
-        if not agency_placeholders:
-            agency_placeholders = "'__NOMATCH__'"
+        state_in = _bind_in(states or [], "st")
+        agency_in = _bind_in(agencies or [], "ag")
+        category_in = _bind_in(category_matches, "cat")
 
         query = query.format(
-            state_in=state_placeholders,
-            category_in=category_placeholders,
-            agency_in=agency_placeholders
+            state_in=state_in,
+            category_in=category_in,
+            agency_in=agency_in,
         )
 
         rows = conn.execute(text(query), params).mappings().fetchall()
