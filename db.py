@@ -954,8 +954,8 @@ def save_company_profile(user_id, data):
     (naics_codes, states, agencies, set_asides) are replaced wholesale.
     Returns the profile id.
 
-    Compatible with both SQLite (≥ 3.24 for ON CONFLICT DO UPDATE,
-    ≥ 3.35 for RETURNING) and PostgreSQL.
+    Compatible with both SQLite (>= 3.24 for ON CONFLICT DO UPDATE,
+    >= 3.35 for RETURNING) and PostgreSQL.
     """
     now = datetime.now(timezone.utc).isoformat()
     engine = get_engine()
@@ -1549,7 +1549,6 @@ def upsert_contract(row):
             recompete_score=excluded.recompete_score,
             priority=excluded.priority,
             psc_description=excluded.psc_description,
-            description=excluded.description,
             raw_json=excluded.raw_json,
             updated_at=excluded.updated_at
         """), {
@@ -1651,7 +1650,6 @@ def save_snapshot(run_date, rows):
                 recompete_score=excluded.recompete_score,
                 priority=excluded.priority,
                 psc_description=excluded.psc_description,
-                description=excluded.description,
                 raw_json=excluded.raw_json,
                 updated_at=CURRENT_TIMESTAMP
             """), {
@@ -1946,7 +1944,7 @@ init_contract_field_changes_table = init_field_changes_table
 def get_recent_updates_for_user(user_id, limit=10):
     """Return recent field-level changes for the contracts a user tracks.
 
-    Tracked = watchlist contracts ∪ pipeline (opportunities) contracts. Returns
+    Tracked = watchlist contracts union pipeline (opportunities) contracts. Returns
     raw change rows (see get_field_changes_for_contracts); presentation/formatting
     is handled by contract_summary.format_contract_update. Returns [] for an
     anonymous user or one tracking nothing.
@@ -2149,46 +2147,6 @@ def delete_saved_search(search_id: int) -> bool:
 
 _SORTABLE = {"recompete_score", "value", "days_remaining", "end_date", "priority", "vendor", "agency"}
 
-_CATEGORY_RULES = [
-    ("Cybersecurity", ["cyber", "information security", "security operations", "soc "]),
-    ("IT", ["information technology", "help desk", "helpdesk", "software", "cloud ", "network ", "hardware", "data center", "systems integrat", "it support", "it service", "managed service"]),
-    ("Cleaning", ["janitorial", "cleaning", "custodial", "housekeeping", "sanitation"]),
-    ("Grounds", ["grounds", "landscaping", "lawn", "mowing", "turf "]),
-    ("Facilities", ["facility", "facilities", "hvac", "building maintenance", "operations and maintenance", "o&m", "maintenance and repair"]),
-    ("Construction", ["construction", "renovation", "roofing", "paving", "demolition", "structural"]),
-    ("Logistics", ["logistics", "supply chain", "transportation", "shipping", "warehousing", "distribution"]),
-    ("Security", ["security guard", "physical security", "guard service", "armed guard", "unarmed guard"]),
-    ("Administrative", ["administrative support", "administrative services", "program support", "clerical"]),
-]
-
-_NAICS_CATEGORY_MAP = [
-    ("5415", "IT"), ("5416", "IT"), ("5413", "IT"), ("7371", "IT"), ("7372", "IT"), ("7374", "IT"),
-    ("2381", "Construction"), ("2382", "Construction"), ("2383", "Construction"), ("2389", "Construction"),
-    ("56173", "Grounds"),
-    ("5617", "Cleaning"),
-    ("56161", "Security"), ("5616", "Security"),
-    ("4841", "Logistics"), ("4842", "Logistics"), ("4931", "Logistics"),
-]
-
-ALL_CATEGORIES = [
-    "Administrative", "Cleaning", "Construction", "Cybersecurity",
-    "Facilities", "Grounds", "IT", "Logistics", "Security",
-]
-
-
-def infer_category(description="", naics_code="", vendor="", agency=""):
-    text = " ".join(filter(None, [description, vendor])).lower()
-    for cat, keywords in _CATEGORY_RULES:
-        for kw in keywords:
-            if kw in text:
-                return cat
-    if naics_code:
-        nc = str(naics_code).strip()
-        for prefix, cat in _NAICS_CATEGORY_MAP:
-            if nc.startswith(prefix):
-                return cat
-    return "Other"
-
 
 def list_contract_states(engine=None):
     if engine is None:
@@ -2232,7 +2190,7 @@ def list_saved_searches(user_id):
 def search_tokens(q, limit=8):
     """Split a user search string into safe, lowercased word tokens.
 
-    Strips punctuation/FTS operators (&, commas, quotes, parens, …) so real-world
+    Strips punctuation/FTS operators (&, commas, quotes, parens, ...) so real-world
     queries like "AT&T" or "Booz, Allen" don't break the full-text query. Returns up
     to ``limit`` tokens; an all-punctuation query yields an empty list.
     """
@@ -2252,7 +2210,7 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
             # error, and never fall through to "show everything"
             base = "FROM contracts c WHERE 1=0"
         elif is_pg:
-            # prefix match each term so partial words work ("lockhe" → "Lockheed");
+            # prefix match each term so partial words work ("lockhe" -> "Lockheed");
             # tokens are alphanumeric only, so the tsquery is always valid + injection-safe
             base = "FROM contracts c WHERE c.search_vector @@ to_tsquery('english', :q)"
             params["q"] = " & ".join(f"{t}:*" for t in tokens)
