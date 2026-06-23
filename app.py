@@ -320,6 +320,7 @@ def index():
         return redirect(url_for("dashboard"))
     return render_template("landing.html")
 
+import traceback
 
 @app.route("/dashboard")
 def dashboard():
