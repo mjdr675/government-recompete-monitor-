@@ -65,6 +65,7 @@ from users import (
     get_user_by_email,
     get_user_by_stripe_customer,
     set_subscription,
+    update_company_name,
     update_password,
     verify_password,
 )
@@ -110,6 +111,7 @@ if _sentry_dsn:
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
+STRIPE_PRICE_ID_YEARLY = os.getenv("STRIPE_PRICE_ID_YEARLY")
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("RAILWAY_ENVIRONMENT") == "production"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
@@ -1519,6 +1521,17 @@ def settings_account():
             update_password(user["id"], new_pw)
             success = "Password updated successfully."
     return render_template("settings_account.html", user=user, error=error, success=success)
+
+
+@app.route("/settings/account/company", methods=["POST"])
+def settings_account_company():
+    user = g.get("user")
+    if not user:
+        return redirect(url_for("auth.login"))
+    company_name = request.form.get("company_name", "").strip()
+    update_company_name(user["id"], company_name)
+    flash("Company name updated.")
+    return redirect(url_for("settings_account"))
 
 
 @app.route("/settings/alerts", methods=["GET", "POST"])

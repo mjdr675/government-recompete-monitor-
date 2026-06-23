@@ -112,6 +112,16 @@ def update_password(user_id: int, new_password: str) -> None:
         )
 
 
+def update_company_name(user_id: int, company_name: str) -> None:
+    """Set or clear the company name for an existing user."""
+    value = (company_name or "").strip() or None
+    with get_engine().begin() as conn:
+        conn.execute(
+            text("UPDATE users SET company_name = :name WHERE id = :id"),
+            {"name": value, "id": user_id},
+        )
+
+
 def clear_reset_token(user_id: int) -> None:
     with get_engine().begin() as conn:
         conn.execute(
@@ -134,16 +144,31 @@ def set_trial(user_id: int, days: int = 14) -> str:
     return ends_at
 
 
-def set_subscription(user_id: int, stripe_customer_id: str, status: str) -> None:
-    """Update stripe_customer_id and subscription_status for a user."""
+def set_subscription(
+    user_id: int,
+    stripe_customer_id: str,
+    status: str,
+    billing_interval: str | None = None,
+) -> None:
+    """Update stripe_customer_id, subscription_status, and optionally billing_interval."""
     with get_engine().begin() as conn:
-        conn.execute(
-            text(
-                "UPDATE users SET stripe_customer_id = :cid, subscription_status = :status"
-                " WHERE id = :id"
-            ),
-            {"cid": stripe_customer_id, "status": status, "id": user_id},
-        )
+        if billing_interval:
+            conn.execute(
+                text(
+                    "UPDATE users SET stripe_customer_id = :cid, subscription_status = :status,"
+                    " billing_interval = :interval WHERE id = :id"
+                ),
+                {"cid": stripe_customer_id, "status": status,
+                 "interval": billing_interval, "id": user_id},
+            )
+        else:
+            conn.execute(
+                text(
+                    "UPDATE users SET stripe_customer_id = :cid, subscription_status = :status"
+                    " WHERE id = :id"
+                ),
+                {"cid": stripe_customer_id, "status": status, "id": user_id},
+            )
 
 
 def get_user_by_stripe_customer(stripe_customer_id: str) -> dict | None:
@@ -152,7 +177,7 @@ def get_user_by_stripe_customer(stripe_customer_id: str) -> dict | None:
         row = conn.execute(
             text(
                 "SELECT id, email, created_at, stripe_customer_id,"
-                " subscription_status, trial_ends_at"
+                " subscription_status, trial_ends_at, billing_interval"
                 " FROM users WHERE stripe_customer_id = :cid AND is_active = 1"
             ),
             {"cid": stripe_customer_id},
@@ -167,7 +192,7 @@ def get_user_by_id(user_id: int) -> dict | None:
         row = conn.execute(
             text(
                 "SELECT id, email, created_at, stripe_customer_id,"
-                " subscription_status, trial_ends_at, company_name"
+                " subscription_status, trial_ends_at, company_name, billing_interval"
                 " FROM users WHERE id = :id AND is_active = 1"
             ),
             {"id": user_id},
