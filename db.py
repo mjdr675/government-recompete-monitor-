@@ -24,10 +24,16 @@ def init_db():
             solicitation_id TEXT,
             recompete_score INTEGER,
             priority TEXT,
+            psc_description TEXT,
             raw_json TEXT,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
         """)
+        # Add psc_description column to existing DBs that predate this change
+        try:
+            con.execute("ALTER TABLE contracts ADD COLUMN psc_description TEXT")
+        except Exception:
+            pass
         con.execute("CREATE INDEX IF NOT EXISTS idx_contracts_vendor ON contracts(vendor)")
         con.execute("CREATE INDEX IF NOT EXISTS idx_contracts_agency ON contracts(agency)")
         con.execute("CREATE INDEX IF NOT EXISTS idx_contracts_priority ON contracts(priority)")
@@ -73,9 +79,9 @@ def upsert_contract(row):
         INSERT INTO contracts (
             internal_id, award_id, vendor, agency, sub_agency, value,
             start_date, end_date, days_remaining, competition_type,
-            solicitation_id, recompete_score, priority, raw_json, updated_at
+            solicitation_id, recompete_score, priority, psc_description, raw_json, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(internal_id) DO UPDATE SET
             award_id=excluded.award_id,
             vendor=excluded.vendor,
@@ -89,6 +95,7 @@ def upsert_contract(row):
             solicitation_id=excluded.solicitation_id,
             recompete_score=excluded.recompete_score,
             priority=excluded.priority,
+            psc_description=excluded.psc_description,
             raw_json=excluded.raw_json,
             updated_at=excluded.updated_at
         """, (
@@ -105,6 +112,7 @@ def upsert_contract(row):
             row.get("solicitation_id"),
             int(row.get("score") or row.get("recompete_score") or 0),
             row.get("priority"),
+            row.get("psc_description") or row.get("category") or "",
             json.dumps(row, default=str),
             now,
         ))
@@ -150,9 +158,9 @@ def save_snapshot(run_date, rows):
             INSERT INTO contracts (
                 internal_id, award_id, vendor, agency, sub_agency, value,
                 start_date, end_date, days_remaining, competition_type,
-                solicitation_id, recompete_score, priority, raw_json, updated_at
+                solicitation_id, recompete_score, priority, psc_description, raw_json, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(internal_id) DO UPDATE SET
                 award_id=excluded.award_id,
                 vendor=excluded.vendor,
@@ -166,6 +174,7 @@ def save_snapshot(run_date, rows):
                 solicitation_id=excluded.solicitation_id,
                 recompete_score=excluded.recompete_score,
                 priority=excluded.priority,
+                psc_description=excluded.psc_description,
                 raw_json=excluded.raw_json,
                 updated_at=CURRENT_TIMESTAMP
             """, (
@@ -182,6 +191,7 @@ def save_snapshot(run_date, rows):
                 row.get("solicitation_id"),
                 int(row.get("recompete_score") or row.get("score") or 0),
                 row.get("priority"),
+                row.get("psc_description") or row.get("category") or "",
                 json.dumps(row, default=str),
             ))
 
@@ -423,7 +433,7 @@ def delete_saved_search(search_id: int) -> bool:
 
 _SORTABLE = {"recompete_score", "value", "days_remaining", "end_date", "priority", "vendor", "agency"}
 
-def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort="recompete_score", direction="desc", page=1, limit=25, all_rows=False):
+def get_contracts(q="", agency="", category="", priority="", days=None, min_value=None, sort="recompete_score", direction="desc", page=1, limit=25, all_rows=False):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
@@ -442,6 +452,10 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
     if agency:
         base += " AND c.agency LIKE ?"
         params.append(f"%{agency}%")
+
+    if category:
+        base += " AND c.psc_description LIKE ?"
+        params.append(f"%{category}%")
 
     if priority:
         base += " AND c.priority = ?"
