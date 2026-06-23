@@ -69,6 +69,7 @@ def dashboard():
 def contracts():
     q = request.args.get("q", "")
     agency = request.args.get("agency", "")
+    category = request.args.get("category", "")
     priority = request.args.get("priority", "")
     days = request.args.get("days", None)
     min_value = request.args.get("min_value", None)
@@ -79,6 +80,7 @@ def contracts():
     result = get_contracts(
         q=q,
         agency=agency,
+        category=category,
         priority=priority,
         days=int(days) if days else None,
         min_value=float(min_value) if min_value else None,
@@ -100,6 +102,7 @@ def contracts():
         priorities=["CRITICAL", "HIGH", "MEDIUM", "LOW"],
         q=q,
         agency=agency,
+        category=category,
         priority=priority,
         days=days or "",
         min_value=min_value or "",
@@ -203,6 +206,7 @@ def saved_searches_save():
         k: v for k, v in {
             "q": request.form.get("q", ""),
             "agency": request.form.get("agency", ""),
+            "category": request.form.get("category", ""),
             "priority": request.form.get("priority", ""),
             "days": request.form.get("days", ""),
             "sort": request.form.get("sort", ""),
@@ -267,6 +271,7 @@ def alerts_page():
 def contracts_csv():
     q = request.args.get("q", "")
     agency = request.args.get("agency", "")
+    category = request.args.get("category", "")
     priority = request.args.get("priority", "")
     days = request.args.get("days", None)
     min_value = request.args.get("min_value", None)
@@ -276,6 +281,7 @@ def contracts_csv():
     result = get_contracts(
         q=q,
         agency=agency,
+        category=category,
         priority=priority,
         days=int(days) if days else None,
         min_value=float(min_value) if min_value else None,
@@ -286,7 +292,7 @@ def contracts_csv():
 
     fields = ["internal_id", "award_id", "vendor", "agency", "sub_agency",
               "value", "start_date", "end_date", "days_remaining",
-              "competition_type", "solicitation_id", "recompete_score", "priority"]
+              "competition_type", "solicitation_id", "recompete_score", "priority", "psc_description"]
 
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
