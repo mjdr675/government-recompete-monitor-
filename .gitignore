@@ -37,3 +37,6 @@ logs/
 .env
 .venv/
 .env
+
+# Uploaded company logos (user content / test artifacts)
+static/uploads/

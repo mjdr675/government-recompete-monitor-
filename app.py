@@ -18,6 +18,7 @@ from flask import Flask, flash, g, jsonify, redirect, render_template, request, 
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
+from werkzeug.utils import secure_filename
 
 from auth import bp as auth_bp
 from email_service import send_email
@@ -50,6 +51,10 @@ from db import (
     update_notification_preferences,
     infer_category,
     extract_raw_field,
+    get_workspace_for_user,
+    get_or_create_workspace_for_user,
+    update_workspace,
+    list_workspace_members,
 )
 from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
@@ -122,6 +127,11 @@ app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("RAILWAY_ENVIRONMENT") == "production"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+# Company logo uploads: cap request size and define the storage location under
+# the served static/ tree. Kept small — logos are tiny.
+app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2 MB
+WORKSPACE_LOGO_DIR = os.path.join(app.static_folder, "uploads", "logos")
+ALLOWED_LOGO_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp", "svg"}
 csrf = CSRFProtect(app)
 limiter = Limiter(app=app, key_func=get_remote_address, default_limits=[])
 app.register_blueprint(auth_bp)
@@ -285,6 +295,19 @@ def require_login():
                     trial_end = trial_end.replace(tzinfo=timezone.utc)
                 if datetime.now(timezone.utc) > trial_end:
                     return redirect(url_for("subscribe", expired="1"))
+
+
+@app.context_processor
+def inject_workspace():
+    """Expose the current user's workspace (name + logo) to every template so
+    company branding renders app-wide. Read-only; never raises for anon users."""
+    user = g.get("user")
+    if not user:
+        return {"workspace": None}
+    try:
+        return {"workspace": get_workspace_for_user(user["id"])}
+    except Exception:
+        return {"workspace": None}
 
 
 @app.context_processor
@@ -1614,6 +1637,66 @@ def settings_account_company():
     update_company_name(user["id"], company_name)
     flash("Company name updated.")
     return redirect(url_for("settings_account"))
+
+
+def _save_workspace_logo(workspace_id, file_storage):
+    """Validate and persist an uploaded logo. Returns (logo_path, error).
+
+    logo_path is the static-relative path on success, else None with an error
+    string. Rejects empty uploads, disallowed extensions, and oversized files.
+    """
+    filename = (file_storage.filename or "").strip()
+    if not filename:
+        return None, "No file selected."
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext not in ALLOWED_LOGO_EXTENSIONS:
+        return None, "Logo must be a PNG, JPG, GIF, WEBP, or SVG image."
+    os.makedirs(WORKSPACE_LOGO_DIR, exist_ok=True)
+    # Deterministic per-workspace name avoids collisions and stale files.
+    stored_name = secure_filename(f"workspace_{workspace_id}.{ext}")
+    abs_path = os.path.join(WORKSPACE_LOGO_DIR, stored_name)
+    file_storage.save(abs_path)
+    if os.path.getsize(abs_path) == 0:
+        os.remove(abs_path)
+        return None, "Uploaded file was empty."
+    # Path relative to the static folder, for url_for('static', ...).
+    return f"uploads/logos/{stored_name}", None
+
+
+@app.route("/settings/workspace", methods=["GET", "POST"])
+def settings_workspace():
+    user = g.get("user")
+    if not user:
+        return redirect(url_for("auth.login"))
+    workspace = get_or_create_workspace_for_user(user["id"])
+    error = None
+    success = None
+    if request.method == "POST":
+        action = request.form.get("action", "save")
+        if action == "remove_logo":
+            update_workspace(workspace["id"], logo_path="")
+            flash("Logo removed.")
+            return redirect(url_for("settings_workspace"))
+
+        name = request.form.get("workspace_name", "").strip()
+        logo_path = None
+        upload = request.files.get("logo")
+        if upload and (upload.filename or "").strip():
+            logo_path, error = _save_workspace_logo(workspace["id"], upload)
+        if not error:
+            update_workspace(workspace["id"], name=name, logo_path=logo_path)
+            success = "Workspace updated."
+            workspace = get_workspace_for_user(user["id"])
+
+    members = list_workspace_members(workspace["id"]) if workspace else []
+    return render_template(
+        "settings_workspace.html",
+        user=user,
+        workspace=workspace,
+        members=members,
+        error=error,
+        success=success,
+    )
 
 
 @app.route("/settings/alerts", methods=["GET", "POST"])

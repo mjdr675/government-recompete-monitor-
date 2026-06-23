@@ -134,6 +134,10 @@ _MIGRATION_PROBES: dict = {
         "SELECT COUNT(*) FROM information_schema.tables "
         "WHERE table_schema = 'public' AND table_name = 'contract_field_changes'"
     ),
+    "013_workspaces.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'workspaces'"
+    ),
 }
 
 
@@ -718,6 +722,32 @@ def init_db():
             UNIQUE(profile_id, keyword)
         )
         """))
+        # Customer Workspace foundation. A workspace is the company-level entity;
+        # workspace_members links users to it (role present for future use, not
+        # enforced — no permissions in this phase).
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS workspaces (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            name        TEXT,
+            logo_path   TEXT,
+            created_at  TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        )
+        """))
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS workspace_members (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+            user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            role         TEXT NOT NULL DEFAULT 'owner',
+            created_at   TEXT NOT NULL,
+            UNIQUE(workspace_id, user_id)
+        )
+        """))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_workspace_members_user"
+            " ON workspace_members(user_id)"
+        ))
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS opportunities (
             id                    INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -996,6 +1026,103 @@ def save_company_profile(user_id, data):
             )
 
     return profile_id
+
+
+# ---------------------------------------------------------------------------
+# Customer Workspace
+# ---------------------------------------------------------------------------
+
+def get_workspace_for_user(user_id):
+    """Return the workspace dict for a user via membership, or None.
+
+    Read-only: does not create a workspace. Returned keys: id, name, logo_path,
+    created_at, updated_at, role (the caller's membership role).
+    """
+    if not user_id:
+        return None
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT w.id, w.name, w.logo_path, w.created_at, w.updated_at, m.role
+            FROM workspaces w
+            JOIN workspace_members m ON m.workspace_id = w.id
+            WHERE m.user_id = :uid
+            ORDER BY m.id ASC
+            LIMIT 1
+        """), {"uid": user_id}).mappings().fetchone()
+    return dict(row) if row else None
+
+
+def get_or_create_workspace_for_user(user_id):
+    """Return the user's workspace, lazily creating one on first access.
+
+    A new workspace is seeded from the user's company_name and the user is added
+    as the owner member. This provisions a workspace for every existing
+    single-user account without re-keying any existing per-user data.
+    """
+    if not user_id:
+        return None
+    existing = get_workspace_for_user(user_id)
+    if existing:
+        return existing
+
+    engine = get_engine()
+    now = datetime.now(timezone.utc).isoformat()
+    with engine.begin() as conn:
+        name = conn.execute(
+            text("SELECT company_name FROM users WHERE id = :uid"),
+            {"uid": user_id},
+        ).scalar()
+        result = conn.execute(text(
+            "INSERT INTO workspaces (name, logo_path, created_at, updated_at)"
+            " VALUES (:name, NULL, :now, :now)"
+        ), {"name": name or None, "now": now})
+        # SQLite exposes lastrowid; PostgreSQL needs RETURNING.
+        workspace_id = result.lastrowid if result.lastrowid else conn.execute(
+            text("SELECT id FROM workspaces ORDER BY id DESC LIMIT 1")
+        ).scalar()
+        conn.execute(text(
+            "INSERT INTO workspace_members (workspace_id, user_id, role, created_at)"
+            " VALUES (:wid, :uid, 'owner', :now)"
+            " ON CONFLICT(workspace_id, user_id) DO NOTHING"
+        ), {"wid": workspace_id, "uid": user_id, "now": now})
+    return get_workspace_for_user(user_id)
+
+
+def update_workspace(workspace_id, name=None, logo_path=None):
+    """Update workspace name and/or logo_path. None args are left unchanged."""
+    if not workspace_id:
+        return
+    sets = ["updated_at = :now"]
+    params = {"wid": workspace_id, "now": datetime.now(timezone.utc).isoformat()}
+    if name is not None:
+        sets.append("name = :name")
+        params["name"] = name.strip() or None
+    if logo_path is not None:
+        sets.append("logo_path = :logo_path")
+        params["logo_path"] = logo_path or None
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(
+            text(f"UPDATE workspaces SET {', '.join(sets)} WHERE id = :wid"),
+            params,
+        )
+
+
+def list_workspace_members(workspace_id):
+    """Return members of a workspace (foundation for team management)."""
+    if not workspace_id:
+        return []
+    engine = get_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT m.user_id, m.role, m.created_at, u.email
+            FROM workspace_members m
+            JOIN users u ON u.id = m.user_id
+            WHERE m.workspace_id = :wid
+            ORDER BY m.id ASC
+        """), {"wid": workspace_id}).mappings().fetchall()
+    return [dict(r) for r in rows]
 
 
 # ---------------------------------------------------------------------------
