@@ -638,6 +638,41 @@
     </div>
     {% endif %}
 
+    {# Recent Updates — field-level changes on the user's tracked contracts #}
+    {% if g.user %}
+    <div class="table-wrapper" style="margin-bottom:16px" data-testid="recent-updates">
+      <div class="table-header">
+        <h2>Recent Updates</h2>
+      </div>
+      {% if recent_updates %}
+      <table>
+        <thead>
+          <tr>
+            <th>Contract</th>
+            <th>Update</th>
+            <th>Change</th>
+            <th>When</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in recent_updates %}
+          <tr>
+            <td style="font-size:12.5px"><a href="/contract/{{ u.internal_id }}">{{ u.contract }}</a></td>
+            <td style="font-size:12.5px">{{ u.headline }}</td>
+            <td style="font-size:12px;color:var(--text-muted)">{{ u.old_value }} &rarr; {{ u.new_value }}</td>
+            <td style="font-size:12px;color:var(--text-muted)">{{ u.run_date }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state" style="font-size:12.5px">
+        No recent updates on your watchlist or pipeline contracts yet.
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
     {# Recommended Opportunities (compact) — hidden on mobile #}
     <div class="table-wrapper m-hide">
       <div class="table-header">

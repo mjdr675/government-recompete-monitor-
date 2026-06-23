@@ -1625,6 +1625,30 @@ def get_field_changes_for_contracts(internal_ids, limit=50):
     return [dict(r) for r in rows]
 
 
+def get_recent_updates_for_user(user_id, limit=10):
+    """Return recent field-level changes for the contracts a user tracks.
+
+    Tracked = watchlist contracts ∪ pipeline (opportunities) contracts. Returns
+    raw change rows (see get_field_changes_for_contracts); presentation/formatting
+    is handled by contract_summary.format_contract_update. Returns [] for an
+    anonymous user or one tracking nothing.
+    """
+    if not user_id:
+        return []
+    engine = get_engine()
+    with engine.connect() as conn:
+        wl = conn.execute(
+            text("SELECT internal_id FROM user_watchlist WHERE user_id = :uid"),
+            {"uid": user_id},
+        ).fetchall()
+        pl = conn.execute(
+            text("SELECT internal_id FROM opportunities WHERE user_id = :uid"),
+            {"uid": user_id},
+        ).fetchall()
+    tracked = {r[0] for r in wl} | {r[0] for r in pl}
+    return get_field_changes_for_contracts(tracked, limit=limit)
+
+
 def init_demo_table():
     with get_engine().begin() as conn:
         conn.execute(text("""
