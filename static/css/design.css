@@ -1956,3 +1956,79 @@ tbody tr:hover > th { background: var(--accent-light) !important; }
 .table-empty-state .empty-icon { margin-bottom: 14px; }
 .table-empty-state .empty-title { margin-bottom: 4px; }
 .table-empty-state .empty-desc { margin-bottom: 16px; }
+
+/* ─────────────────────────────────────────────────
+   MOBILE PASS 2 — collapsible filter, compare, polish
+   Desktop layout is never altered; all behavioural
+   changes are scoped inside the 768px media query.
+───────────────────────────────────────────────── */
+
+/* Collapsible contract filter: on desktop the toggle is hidden and the
+   fields are always shown (native <details> hiding is overridden). */
+.mobile-filter > summary { display: none; }
+.mobile-filter > .mobile-filter-body { display: block; }
+
+@media (max-width: 768px) {
+  /* ── Collapsible filter drawer ── */
+  .mobile-filter > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    cursor: pointer;
+    list-style: none;
+    min-height: 44px;
+    padding: 11px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-primary);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mobile-filter > summary::-webkit-details-marker { display: none; }
+  .mobile-filter > summary::after {
+    content: '▾';
+    color: var(--text-faint);
+    font-size: 12px;
+    transition: transform 0.15s;
+  }
+  .mobile-filter[open] > summary::after { transform: rotate(180deg); }
+  .mobile-filter:not([open]) > .mobile-filter-body { display: none; }
+  .mobile-filter[open] > .mobile-filter-body { margin-top: 10px; }
+  .mobile-filter-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    border-radius: 9px;
+    background: var(--accent);
+    color: #fff;
+  }
+
+  /* ── Compare: sticky field column so labels stay visible while the
+        contract columns scroll horizontally inside .table-wrapper ── */
+  .compare-table { font-size: 12.5px; }
+  .compare-table th:first-child,
+  .compare-table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--surface);
+    box-shadow: 1px 0 0 var(--border);
+  }
+
+  /* ── Mobile card title can show two lines before truncating ── */
+  .mobile-card-title {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+}

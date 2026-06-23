@@ -10,7 +10,8 @@
 </div>
 
 {% if contracts %}
-<div class="table-wrapper">
+{# ── Desktop table (hidden on mobile) ──────────────────────── #}
+<div class="table-wrapper m-hide">
   <table>
     <thead>
       <tr>
@@ -43,6 +44,34 @@
     </tbody>
   </table>
 </div>
+
+{# ── Mobile cards (hidden on desktop) ──────────────────────── #}
+<div class="m-show">
+  {% for r in contracts %}
+  {% set days = r["days_remaining"] %}
+  <div class="mobile-card" id="wl-card-{{ r['internal_id'] }}">
+    <div class="mobile-card-head">
+      <a href="/contract/{{ r['internal_id'] }}" class="mobile-card-title">{{ r["vendor"] or r["internal_id"] }}</a>
+      <span class="priority-badge priority-{{ (r['priority'] or 'unknown').lower().replace(' ', '-').replace('_', '-') }}">{{ r["priority"] }}</span>
+    </div>
+    <div class="mobile-card-agency">{{ r["agency"] or '—' }}</div>
+    <div class="mobile-card-meta">
+      <span class="mobile-card-value">${{ "{:,.0f}".format(r["value"] or 0) }}</span>
+      <span class="sep">·</span>
+      {% if days is none or days == "" %}<span class="muted">—d</span>
+      {% elif days|int <= 30 %}<span class="days-critical">{{ days }}d</span>
+      {% elif days|int <= 90 %}<span class="days-warning">{{ days }}d</span>
+      {% else %}<span>{{ days }}d</span>{% endif %}
+      <span class="sep">·</span>
+      <span class="muted">Score {{ r["recompete_score"] or '—' }}</span>
+    </div>
+    <div class="mobile-card-actions">
+      <a href="/contract/{{ r['internal_id'] }}" class="btn btn-ghost">View</a>
+      <button class="mobile-bm-btn bm-btn" data-id="{{ r['internal_id'] }}" onclick="bookmarkToggle(this)" title="Remove bookmark">★</button>
+    </div>
+  </div>
+  {% endfor %}
+</div>
 {% else %}
 <div class="empty-state-rich">
   <div class="empty-icon">
@@ -65,8 +94,13 @@ function bookmarkToggle(btn) {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({internal_id: id, csrf_token: token})
   }).then(function(r) { return r.json(); }).then(function() {
+    // Remove whichever layout the click came from (desktop row or mobile card),
+    // plus its counterpart in the other layout if present.
+    var id = btn.dataset.id;
     var row = btn.closest('tr');
     if (row) row.remove();
+    var card = document.getElementById('wl-card-' + id);
+    if (card) card.remove();
     var countEl = document.querySelector('.page-meta');
     if (countEl) {
       var match = countEl.textContent.match(/^(\d+)/);

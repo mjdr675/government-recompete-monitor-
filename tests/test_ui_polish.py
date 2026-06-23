@@ -369,3 +369,104 @@ class TestScoreModal:
         rv = client.get("/contract/MODAL-001")
         for tier in (b"CRITICAL", b"HIGH", b"MEDIUM", b"LOW"):
             assert tier in rv.data
+
+
+# ── mobile pass 2: cards, collapsible filter, secondary pages ───────────────
+
+class TestMobilePass2:
+    """Mobile-first improvements: watchlist/searches mobile cards, a collapsible
+    contract filter, sticky compare column, and scroll-contained secondary tables."""
+
+    def _contract(self, test_db, iid="MOB-1", vendor="Globex", agency="DEFENSE", score=80):
+        from sqlalchemy import text
+        engine = db_module._cached_engine(f"sqlite:///{test_db}")
+        with engine.begin() as conn:
+            conn.execute(text("""
+                INSERT INTO contracts
+                  (internal_id, vendor, agency, value, end_date,
+                   priority, recompete_score, competition_type)
+                VALUES (:i, :v, :a, 1500000, '2026-12-31', 'HIGH', :s, 'FULL AND OPEN')
+            """), {"i": iid, "v": vendor, "a": agency, "s": score})
+        return iid
+
+    # --- Watchlist mobile cards ---
+
+    def test_watchlist_has_both_layouts(self, client, test_db):
+        iid = self._contract(test_db, "WL-1")
+        client.post("/watchlist/add", json={"internal_id": iid})
+        rv = client.get("/watchlist")
+        assert b"table-wrapper m-hide" in rv.data   # desktop table hidden on mobile
+        assert b'class="m-show"' in rv.data          # mobile cards shown on mobile
+        assert b"mobile-card" in rv.data
+        assert b"wl-card-WL-1" in rv.data
+
+    def test_watchlist_mobile_card_has_actions(self, client, test_db):
+        iid = self._contract(test_db, "WL-2")
+        client.post("/watchlist/add", json={"internal_id": iid})
+        rv = client.get("/watchlist")
+        assert b"mobile-card-actions" in rv.data
+        assert b"mobile-bm-btn" in rv.data
+
+    # --- Searches mobile cards ---
+
+    def test_searches_has_both_layouts(self, client):
+        client.post("/searches/save", json={"name": "S1", "params": {"agency": "DEFENSE"}})
+        rv = client.get("/searches")
+        assert b"table-wrapper m-hide" in rv.data
+        assert b'class="m-show"' in rv.data
+        assert b"search-card-" in rv.data
+
+    def test_searches_mobile_card_keeps_human_filter_summary(self, client):
+        client.post("/searches/save", json={"name": "S2", "params": {"priority": "CRITICAL"}})
+        rv = client.get("/searches")
+        # Human-readable summary must still render (no raw JSON), now via shared macro.
+        assert b"Priority: Critical" in rv.data
+        assert b'{"priority"' not in rv.data
+
+    # --- Collapsible mobile filter ---
+
+    def test_contracts_has_collapsible_filter(self, client):
+        rv = client.get("/contracts")
+        assert b'class="mobile-filter"' in rv.data
+        assert b"mobile-filter-summary" in rv.data
+        assert b"mobile-filter-body" in rv.data
+
+    def test_contracts_filter_count_badge_when_active(self, client):
+        rv = client.get("/contracts?priority=CRITICAL")
+        assert b"mobile-filter-count" in rv.data
+        # An active filter also auto-opens the drawer.
+        assert b'class="mobile-filter" open' in rv.data
+
+    def test_contracts_filter_no_badge_when_inactive(self, client):
+        rv = client.get("/contracts")
+        assert b"mobile-filter-count" not in rv.data
+
+    def test_contracts_filter_does_not_break_desktop_table(self, client):
+        # The desktop table + mobile cards must still be present alongside the drawer.
+        rv = client.get("/contracts")
+        assert b"m-hide" in rv.data
+        assert b"m-show" in rv.data
+
+    # --- Compare sticky column ---
+
+    def test_compare_table_wrapped_and_sticky(self, client, test_db):
+        a = self._contract(test_db, "CMP-A", "Acme", "DEFENSE")
+        b = self._contract(test_db, "CMP-B", "Globex", "ENERGY")
+        rv = client.get(f"/compare?a={a}&b={b}")
+        assert rv.status_code == 200
+        assert b"compare-table" in rv.data
+        assert b"table-wrapper" in rv.data
+
+    # --- Secondary analytics pages: scroll-contained tables ---
+
+    def test_vendor_tables_wrapped(self, client, test_db):
+        self._contract(test_db, "VEN-1", "WrapVendor", "DEFENSE")
+        rv = client.get("/vendor/WrapVendor")
+        assert rv.status_code == 200
+        assert b"table-wrapper" in rv.data
+
+    def test_agency_tables_wrapped(self, client, test_db):
+        self._contract(test_db, "AGN-1", "Acme", "WrapAgency")
+        rv = client.get("/agency/WrapAgency")
+        assert rv.status_code == 200
+        assert b"table-wrapper" in rv.data

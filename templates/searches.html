@@ -1,6 +1,19 @@
 {% extends "base.html" %}
 {% block title %}Saved Searches — Recompete{% endblock %}
 
+{% macro filter_summary(p) %}
+  {%- if p -%}
+    {%- set parts = [] -%}
+    {%- if p.get('q') %}{% set _ = parts.append('Search: ' ~ p.q) %}{% endif -%}
+    {%- if p.get('agency') %}{% set _ = parts.append('Agency: ' ~ p.agency) %}{% endif -%}
+    {%- if p.get('priority') %}{% set _ = parts.append('Priority: ' ~ (p.priority | title)) %}{% endif -%}
+    {%- if p.get('days') %}{% set _ = parts.append('Expiring within: ' ~ p.days ~ ' days') %}{% endif -%}
+    {%- if p.get('min_value') %}{% set _ = parts.append('Min value: $' ~ '{:,}'.format(p.min_value | int)) %}{% endif -%}
+    {%- if p.get('status') and p.status %}{% set _ = parts.append('Status: ' ~ p.status) %}{% endif -%}
+    {%- if parts %}{{ parts | join(' · ') }}{% else %}All contracts{% endif -%}
+  {%- else -%}All contracts{%- endif -%}
+{% endmacro %}
+
 {% block content %}
 <div style="margin-bottom:16px">
   <h1>Saved Searches</h1>
@@ -9,7 +22,8 @@
 </div>
 
 {% if searches %}
-<div class="table-wrapper">
+{# ── Desktop table (hidden on mobile) ──────────────────────── #}
+<div class="table-wrapper m-hide">
   <table>
     <thead>
       <tr>
@@ -23,19 +37,7 @@
       {% for s in searches %}
       <tr id="search-row-{{ s.id }}">
         <td><a href="{{ s.url }}">{{ s.name }}</a></td>
-        <td class="muted saved-search-filters" style="font-size:12px">
-          {% if s.params %}
-            {% set p = s.params %}
-            {% set parts = [] %}
-            {% if p.get('q') %}{% set _ = parts.append('Search: ' ~ p.q) %}{% endif %}
-            {% if p.get('agency') %}{% set _ = parts.append('Agency: ' ~ p.agency) %}{% endif %}
-            {% if p.get('priority') %}{% set _ = parts.append('Priority: ' ~ (p.priority | title)) %}{% endif %}
-            {% if p.get('days') %}{% set _ = parts.append('Expiring within: ' ~ p.days ~ ' days') %}{% endif %}
-            {% if p.get('min_value') %}{% set _ = parts.append('Min value: $' ~ '{:,}'.format(p.min_value | int)) %}{% endif %}
-            {% if p.get('status') and p.status %}{% set _ = parts.append('Status: ' ~ p.status) %}{% endif %}
-            {% if parts %}{{ parts | join(' · ') }}{% else %}All contracts{% endif %}
-          {% else %}All contracts{% endif %}
-        </td>
+        <td class="muted saved-search-filters" style="font-size:12px">{{ filter_summary(s.params) }}</td>
         <td class="muted">{{ s.created_at[:10] }}</td>
         <td>
           <a href="{{ s.url }}" class="btn btn-ghost" style="padding:3px 8px;font-size:12px">Run</a>
@@ -45,6 +47,25 @@
       {% endfor %}
     </tbody>
   </table>
+</div>
+
+{# ── Mobile cards (hidden on desktop) ──────────────────────── #}
+<div class="m-show">
+  {% for s in searches %}
+  <div class="mobile-card" id="search-card-{{ s.id }}">
+    <div class="mobile-card-head">
+      <a href="{{ s.url }}" class="mobile-card-title">{{ s.name }}</a>
+    </div>
+    <div class="mobile-card-agency saved-search-filters">{{ filter_summary(s.params) }}</div>
+    <div class="mobile-card-meta">
+      <span class="muted">Saved {{ s.created_at[:10] }}</span>
+    </div>
+    <div class="mobile-card-actions">
+      <a href="{{ s.url }}" class="btn btn-ghost">Run search</a>
+      <button onclick="deleteSearch({{ s.id }}, this)" class="mobile-bm-btn" title="Delete search" aria-label="Delete search">✕</button>
+    </div>
+  </div>
+  {% endfor %}
 </div>
 {% else %}
 <div class="empty-state-rich">
@@ -68,6 +89,8 @@ function deleteSearch(id, btn) {
       if (data.ok) {
         var row = document.getElementById('search-row-' + id);
         if (row) row.remove();
+        var card = document.getElementById('search-card-' + id);
+        if (card) card.remove();
         var countEl = document.querySelector('.page-meta');
         if (countEl) {
           var match = countEl.textContent.match(/^(\d+)/);

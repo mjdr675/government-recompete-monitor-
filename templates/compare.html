@@ -55,8 +55,8 @@
 
 {% set rows = found | map(attribute="0") | list %}
 
-<div style="overflow-x:auto">
-<table data-testid="compare-table">
+<div class="table-wrapper" style="overflow-x:auto">
+<table class="compare-table" data-testid="compare-table">
   <colgroup>
     <col style="width:22%">
     {% for _ in rows %}<col style="width:{{ (78 // rows|length) }}%">{% endfor %}

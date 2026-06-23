@@ -11,6 +11,13 @@
 </div>
 
 <form method="get" class="filter-bar">
+  {# Count applied filters so the mobile drawer can show a badge and auto-open. #}
+  {% set active_filters = [q, agency, category, state, priority, days, min_value, status]|select|list|length %}
+  <details class="mobile-filter"{% if active_filters %} open{% endif %}>
+    <summary class="mobile-filter-summary">
+      <span>Filters{% if active_filters %} <span class="mobile-filter-count">{{ active_filters }}</span>{% endif %}</span>
+    </summary>
+    <div class="mobile-filter-body">
   <div class="filter-row">
     <div class="filter-field grow">
       <label>Search</label>
@@ -94,6 +101,8 @@
     <a href="/contracts/export.csv?{{ request.query_string.decode() }}">Export CSV</a>
   </div>
   {% endif %}
+    </div>{# /.mobile-filter-body #}
+  </details>
 </form>
 
 {% if g.user %}

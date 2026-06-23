@@ -45,6 +45,7 @@
 <h2 id="active-contracts">Active Contracts</h2>
 {% if profile.active %}
 <div style="overflow-x:auto">
+<div class="table-wrapper">
 <table>
 <tr>
 <th>Priority</th>
@@ -70,6 +71,7 @@
 {% endfor %}
 </table>
 </div>
+</div>
 {% else %}
 <p class="muted">No active contracts found for this vendor.</p>
 {% endif %}
@@ -92,6 +94,7 @@
 {% if profile.change_events %}
 <h3 style="margin-top:0">Recent Events</h3>
 <div style="overflow-x:auto">
+<div class="table-wrapper">
 <table>
 <tr><th>Event</th><th>Date</th><th>Contract</th><th>Agency</th><th>Value</th><th>Priority</th></tr>
 {% for e in profile.change_events %}
@@ -112,11 +115,13 @@
 {% endfor %}
 </table>
 </div>
+</div>
 {% endif %}
 
 <h2>Recompete Score Analysis</h2>
 <p class="muted">Vendor avg: <strong>{{ "{:.1f}".format(profile.summary.avg_score or 0) }}</strong> &nbsp;|&nbsp; Platform avg: <strong>{{ "{:.1f}".format(profile.summary.platform_avg_score or 0) }}</strong></p>
 <div style="overflow-x:auto">
+<div class="table-wrapper">
 <table>
 <tr><th>Score Bucket</th><th>Contracts</th></tr>
 {% for r in profile.score_distribution %}
@@ -124,12 +129,14 @@
 {% endfor %}
 </table>
 </div>
+</div>
 
 <h2>Pipeline by Priority</h2>
 <div style="max-width:360px;margin-bottom:20px">
   <canvas id="priority-chart"></canvas>
 </div>
 <div style="overflow-x:auto">
+<div class="table-wrapper">
 <table>
 <tr><th>Priority</th><th>Contracts</th><th>Total Value</th><th>Avg Value</th></tr>
 {% for r in profile.pipeline_by_priority %}
@@ -142,9 +149,11 @@
 {% endfor %}
 </table>
 </div>
+</div>
 
 <h2>Agencies Served</h2>
 <div style="overflow-x:auto">
+<div class="table-wrapper">
 <table>
 <tr><th>Agency</th><th>Contracts</th><th>Active</th><th>Pipeline Value</th><th>Share</th><th>Top Score</th></tr>
 {% for a in profile.agencies %}
@@ -159,9 +168,11 @@
 {% endfor %}
 </table>
 </div>
+</div>
 
 <h2>Upcoming Expirations</h2>
 <div style="overflow-x:auto">
+<div class="table-wrapper">
 <table>
 <tr>
 <th>Priority</th>
@@ -201,6 +212,7 @@
 </tr>
 {% endfor %}
 </table>
+</div>
 </div>
 {% endblock %}
 
