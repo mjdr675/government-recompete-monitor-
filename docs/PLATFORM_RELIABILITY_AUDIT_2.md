@@ -104,6 +104,27 @@ No database change can be deployed without a recoverable snapshot existing first
 the deploy aborts (`set -e` + non-zero exit) before restart/migrations if the backup fails,
 and any snapshot is restorable via `scripts/restore_db.sh`.
 
+## Addendum — Backup Integrity Verification (valid-backup guarantee)
+
+The original layer guaranteed *backup-attempt success* (the producer exited 0). It did
+**not** prove the archive was *restorable*. Hardened so a backup is "successful" only
+after it is proven restorable:
+
+- **`backup_db.sh` `verify_backup()`** runs immediately after the archive is written,
+  before exit:
+  - **gzip layer:** `gzip -t` on the archive (detects truncation/corruption).
+  - **SQLite:** decompress to a temp file → `PRAGMA integrity_check` must equal `ok`.
+  - **PostgreSQL:** `gzip -t` + the `pg_dump | gzip` pipe already gated by `pipefail`.
+  - Any failure → `exit 1`, which the deploy's `set -e` turns into a hard stop **before
+    restart/migrations**.
+- **`.last_backup_ok` audit marker** (timestamp · path · sha256) written only after
+  verification passes. Audit-only; does not gate the deploy (behavior unchanged).
+- **`deploy.yml` `script_stop: true`** added as belt-and-suspenders for the inline `set -e`.
+
+Verified locally: corrupt-gzip and non-restorable-SQLite archives are detected and exit 1;
+a valid archive passes; wipe→restore round-trip recovers all rows. No migration logic,
+DB schema, or application code paths changed.
+
 ## Follow-ups (not in this lane)
 - **D1:** Reconcile `docs/DEPLOYMENT.md` (Railway claims vs. actual VPS deploy).
 - Off-host backup retention (copy snapshots to object storage) for full disaster recovery.

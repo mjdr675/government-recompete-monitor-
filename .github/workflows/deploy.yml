@@ -65,6 +65,9 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key_path: /github/runner_temp/deploy_key
+          # script_stop: belt-and-suspenders — the action aborts on any non-zero
+          # command even if the inline `set -e` below is ever removed.
+          script_stop: true
           script: |
             set -e
             cd /home/michael/government-recompete-monitor-

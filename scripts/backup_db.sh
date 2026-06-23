@@ -44,6 +44,42 @@ LABEL_RAW="${1:-${RECOMPETE_MIGRATION_LABEL:-}}"
 log() { printf '[backup_db] %s\n' "$*"; }
 fail() { log "ERROR: $*"; exit 1; }
 
+# A backup is "successful" ONLY if it is proven restorable. Args: <archive> <engine>
+#   - gzip -t              : archive is not truncated/corrupt at the compression layer
+#   - SQLite: PRAGMA integrity_check on the decompressed copy must return exactly "ok"
+#   - Postgres: gzip -t + the pg_dump pipe already gated by `set -o pipefail`
+# Any failure → exit 1, which the deploy's `set -e` turns into a hard stop.
+verify_backup() {
+    local archive="$1" engine="$2"
+    gzip -t "$archive" || fail "gzip integrity check failed (corrupt/truncated archive): $archive"
+    if [ "$engine" = "sqlite" ]; then
+        if command -v sqlite3 >/dev/null 2>&1; then
+            local tmp ic
+            tmp="$(mktemp)"
+            if ! gunzip -c "$archive" >"$tmp" 2>/dev/null; then
+                rm -f "$tmp"; fail "could not decompress for verification: $archive"
+            fi
+            ic="$(sqlite3 "$tmp" 'PRAGMA integrity_check;' 2>/dev/null | head -n1 || true)"
+            rm -f "$tmp"
+            [ "$ic" = "ok" ] || fail "SQLite integrity_check failed (got: '${ic:-<empty>}'): $archive"
+            log "Integrity verified: gzip OK + PRAGMA integrity_check=ok"
+        else
+            log "WARNING: sqlite3 unavailable — verified gzip layer only (no integrity_check)"
+        fi
+    else
+        log "Integrity verified: gzip OK + pg_dump pipe exit (pipefail)"
+    fi
+}
+
+# Audit marker only (does NOT gate the deploy — set -e gating is unchanged).
+write_marker() {
+    local sha=""
+    command -v sha256sum >/dev/null 2>&1 && sha="$(sha256sum "$1" | awk '{print $1}')"
+    printf '%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "${sha:-nohash}" \
+        >"$BACKUP_DIR/.last_backup_ok"
+    log "Wrote audit marker .last_backup_ok (sha256=${sha:-nohash})"
+}
+
 # Timestamp + git hash + optional label → filename stem.
 date_part="$(date -u +%Y-%m-%d)"
 time_part="$(date -u +%H%M%S)"
@@ -67,6 +103,7 @@ if [ -n "${DATABASE_URL:-}" ]; then
     # ---- PostgreSQL ----
     command -v pg_dump >/dev/null 2>&1 || fail "DATABASE_URL set but pg_dump not on PATH"
     out="$BACKUP_DIR/$stem.sql.gz"
+    engine="pg"
     log "Backing up PostgreSQL → $out"
     pg_dump "$DATABASE_URL" | gzip >"$out" || fail "pg_dump failed"
     log "PostgreSQL backup complete ($(du -h "$out" | cut -f1))"
@@ -87,8 +124,13 @@ else
     fi
     gzip "$raw" || fail "gzip failed"
     out="$raw.gz"
+    engine="sqlite"
     log "SQLite backup complete ($(du -h "$out" | cut -f1))"
 fi
+
+# ---- A backup counts as successful ONLY after integrity validation passes ----
+verify_backup "$out" "$engine"
+write_marker "$out"
 
 # ---- Rotation: keep newest $RETAIN, prune the rest ----
 log "Pruning $BACKUP_DIR (retain $RETAIN)"
