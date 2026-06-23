@@ -32,6 +32,138 @@ def format_filter_summary(filters: dict) -> str:
         parts.append(f"{label}: {formatted}")
     return ", ".join(parts)
 
+
+# Filter keys that show up as removable chips on the contracts page, in display
+# order. Labels here favour brevity (chips are small); they intentionally differ
+# from _FILTER_LABELS in a couple of spots ("Search", "State", "Category").
+_CHIP_LABELS = {
+    "q": "Search",
+    "agency": "Agency",
+    "category": "Category",
+    "state": "State",
+    "priority": "Priority",
+    "days": "Expiring within",
+    "min_value": "Min value",
+    "status": "Status",
+}
+
+# Params that are not filters but must survive when a chip is removed (so sort
+# order / mode toggles aren't lost). "page" is deliberately excluded: removing a
+# filter changes the result set, so we reset to page 1.
+_PRESERVED_PARAMS = ("sort", "dir", "for_my_business", "in_pipeline", "discover")
+
+_STATUS_CHIP_VALUES = {"open": "Open only", "expired": "Expired"}
+
+
+def _format_chip_value(key, value):
+    """Human-readable value for a filter chip (shorter than the views summary)."""
+    if key == "days":
+        return f"{value} days"
+    if key == "priority":
+        return str(value).title()
+    if key == "status":
+        return _STATUS_CHIP_VALUES.get(str(value), str(value))
+    if key == "min_value":
+        try:
+            v = int(float(value))
+        except (ValueError, TypeError):
+            return str(value)
+        if v >= 1_000_000:
+            n = v / 1_000_000
+            return f"${n:.0f}M+" if n == int(n) else f"${n:g}M+"
+        if v >= 1_000:
+            return f"${v // 1000}K+"
+        return f"${v:,}+"
+    return str(value)
+
+
+def active_filter_chips(args):
+    """Build removable active-filter chips from request args.
+
+    ``args`` is any mapping of query params (e.g. ``request.args.to_dict()``).
+    Returns a list of ``{key, label, value, remove_url}`` — one per applied
+    filter, in a stable display order. ``remove_url`` points back at
+    ``/contracts`` with that single filter dropped, all other filters and the
+    preserved params (sort/dir/mode toggles) kept, and pagination reset.
+
+    Empty/blank filter values produce no chip. Non-filter params never appear as
+    chips but are preserved in every ``remove_url``.
+    """
+    # Normalise to plain str values, ignoring blanks.
+    present = {
+        k: str(v).strip()
+        for k, v in args.items()
+        if v is not None and str(v).strip() != ""
+    }
+
+    chips = []
+    for key, label in _CHIP_LABELS.items():
+        if key not in present:
+            continue
+        value = present[key]
+        # Everything still applied EXCEPT this one filter, plus preserved params.
+        remaining = {
+            k: val for k, val in present.items()
+            if k != key and (k in _CHIP_LABELS or k in _PRESERVED_PARAMS)
+        }
+        remove_url = "/contracts" + ("?" + urlencode(remaining) if remaining else "")
+        chips.append({
+            "key": key,
+            "label": label,
+            "value": _format_chip_value(key, value),
+            "remove_url": remove_url,
+        })
+    return chips
+
+
+# Curated subset of SAVED_VIEWS surfaced as one-click chips on the contracts
+# page. Keeps the most common research starting points within reach without
+# duplicating the full /views catalogue.
+QUICK_VIEW_KEYS = [
+    "expiring-soon",
+    "high-value-contracts",
+    "cleaning-contracts",
+    "grounds-contracts",
+    "it-contracts",
+    "cybersecurity-contracts",
+]
+
+
+def quick_views():
+    """Return ``[{id, label}]`` for the curated quick-access presets.
+
+    Skips any key missing from SAVED_VIEWS so the list never breaks if a preset
+    is renamed or removed.
+    """
+    return [
+        {"id": key, "label": SAVED_VIEWS[key]["label"]}
+        for key in QUICK_VIEW_KEYS
+        if key in SAVED_VIEWS
+    ]
+
+
+def active_view_id(args):
+    """Return the SAVED_VIEWS key whose filters exactly match the applied filters.
+
+    "Exactly" means every filter param currently set equals the preset's filters
+    and no extra filter params are set. Sort/paging/mode toggles are ignored.
+    Returns ``None`` when no preset matches, letting the contracts page highlight
+    the preset a user is currently inside (filter-state visibility).
+    """
+    applied = {
+        k: str(v).strip()
+        for k, v in args.items()
+        if k in _CHIP_LABELS and v is not None and str(v).strip() != ""
+    }
+    if not applied:
+        return None
+    for key, view in SAVED_VIEWS.items():
+        preset = {k: str(v) for k, v in view.get("filters", {}).items()}
+        if preset == applied:
+            return key
+    return None
+
+
 SAVED_VIEWS = {
     "dod-critical": {
         # "DoD" = U.S. Department of Defense. Label spelled out for clarity since it

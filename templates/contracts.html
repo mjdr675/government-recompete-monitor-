@@ -96,6 +96,21 @@
   {% endif %}
 </form>
 
+{% if quick_views %}
+<div class="quick-views" style="margin:-4px 0 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+  <span class="muted" style="font-size:12px">Quick views:</span>
+  {% for v in quick_views %}
+    {% if v.id == active_view %}
+    <a href="/views/{{ v.id }}" class="saved-search-chip" aria-current="true"
+       style="background:var(--accent);color:#fff;border-color:var(--accent)">&#10003; {{ v.label }}</a>
+    {% else %}
+    <a href="/views/{{ v.id }}" class="saved-search-chip">{{ v.label }}</a>
+    {% endif %}
+  {% endfor %}
+  <a href="/views" class="muted" style="font-size:12px;text-decoration:underline">All views &rarr;</a>
+</div>
+{% endif %}
+
 {% if g.user %}
 <div style="margin:-8px 0 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
   {% if for_my_business %}
@@ -139,6 +154,21 @@
     <a href="{{ s.url }}" title="{{ s.name }}" class="saved-search-chip">{{ s.name }}</a>
   {% endfor %}
   <a href="/searches" class="muted" style="font-size:12px;text-decoration:underline;">Manage</a>
+</div>
+{% endif %}
+
+{% if filter_chips %}
+<div class="active-filters" style="margin:0 0 14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+  <span class="muted" style="font-size:12px">Active filters:</span>
+  {% for chip in filter_chips %}
+    <a href="{{ chip.remove_url }}" class="active-filter-chip"
+       title="Remove {{ chip.label }} filter"
+       style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:3px 10px;background:var(--surface);border:1px solid var(--border);border-radius:999px;text-decoration:none;color:var(--text)">
+      <span>{{ chip.label }}: <strong>{{ chip.value }}</strong></span>
+      <span aria-hidden="true" style="color:var(--text-muted);font-weight:600">&times;</span>
+    </a>
+  {% endfor %}
+  <a href="/contracts" class="muted" style="font-size:12px;text-decoration:underline">Clear all</a>
 </div>
 {% endif %}
 

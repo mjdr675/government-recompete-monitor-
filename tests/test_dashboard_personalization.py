@@ -578,3 +578,103 @@ class TestPersonalizedForBusiness:
         body = rv.get_data(as_text=True)
         assert "For My Business" in body
         assert "A1" in body
+
+
+class TestPersonalizedForBusinessSqlSafety:
+    """personalized_for_business() must bind profile values as SQL parameters,
+    never interpolate them as literals.  These tests prove apostrophes don't
+    break the query and that injection-shaped strings are matched literally.
+    """
+
+    def test_apostrophe_in_agency_does_not_break_query(self, pdb):
+        from analytics import personalized_for_business
+        from db import upsert_contract
+        uid = _uid(pdb)
+        # Agency value containing an apostrophe — would break naive f-string SQL.
+        save_company_profile(uid, {"company_name": "Co", "agencies": ["O'Brien Dept"]})
+        profile = get_company_profile(uid)
+        upsert_contract({
+            "internal_id": "C1", "award_id": "A1", "vendor": "Test",
+            "agency": "O'Brien Dept", "description": "", "value": 100000,
+            "days_remaining": 90, "recompete_score": 50, "priority": "MEDIUM",
+            "category": "IT", "naics_code": "541512", "place_of_performance_state": "TX"
+        })
+        # Must not raise, and must match the contract by its literal agency value.
+        result = personalized_for_business(uid, profile, limit=10)
+        ids = [r["internal_id"] for r in result]
+        assert "C1" in ids
+        assert "O'Brien Dept contract" in result[0]["match_reason"]
+
+    def test_apostrophe_in_state_does_not_break_query(self, pdb):
+        from analytics import personalized_for_business
+        import sqlite3
+        uid = _uid(pdb)
+        save_company_profile(uid, {"company_name": "Co", "states": ["A'B"]})
+        profile = get_company_profile(uid)
+        # Insert directly so the apostrophe state value is stored verbatim
+        # (upsert_contract normalizes state to a 2-char abbreviation).
+        con = sqlite3.connect(pdb)
+        con.execute(
+            "INSERT INTO contracts (internal_id, award_id, vendor, agency, value, "
+            "days_remaining, recompete_score, priority, category, naics_code, "
+            "place_of_performance_state) VALUES "
+            "('C1', 'A1', 'Test', 'GSA', 100000, 90, 50, 'MEDIUM', 'IT', '541512', \"A'B\")"
+        )
+        con.commit()
+        con.close()
+        result = personalized_for_business(uid, profile, limit=10)
+        assert [r["internal_id"] for r in result] == ["C1"]
+        assert "Work in A'B" in result[0]["match_reason"]
+
+    def test_injection_string_treated_as_literal_value(self, pdb):
+        from analytics import personalized_for_business
+        from db import upsert_contract
+        uid = _uid(pdb)
+        # Classic IN-clause injection payload as an agency value.
+        payload = "GSA' OR '1'='1"
+        save_company_profile(uid, {"company_name": "Co", "agencies": [payload]})
+        profile = get_company_profile(uid)
+        # A normal contract that an injection would wrongly expose...
+        upsert_contract({
+            "internal_id": "REAL", "award_id": "AR", "vendor": "Test",
+            "agency": "GSA", "description": "", "value": 100000,
+            "days_remaining": 90, "recompete_score": 50, "priority": "MEDIUM",
+            "category": "IT", "naics_code": "541512", "place_of_performance_state": "TX"
+        })
+        # ...and one whose agency literally equals the payload string.
+        upsert_contract({
+            "internal_id": "LITERAL", "award_id": "AL", "vendor": "Test",
+            "agency": payload, "description": "", "value": 100000,
+            "days_remaining": 90, "recompete_score": 50, "priority": "MEDIUM",
+            "category": "IT", "naics_code": "541512", "place_of_performance_state": "TX"
+        })
+        result = personalized_for_business(uid, profile, limit=10)
+        ids = {r["internal_id"] for r in result}
+        # Bound as a literal: only the exact-match row is returned; the "OR 1=1"
+        # is NOT interpreted as SQL, so the plain GSA contract is excluded.
+        assert ids == {"LITERAL"}
+
+    def test_malicious_state_does_not_alter_database(self, pdb):
+        from analytics import personalized_for_business
+        from db import upsert_contract
+        import sqlite3
+        uid = _uid(pdb)
+        save_company_profile(uid, {
+            "company_name": "Co",
+            "states": ["TX'); DROP TABLE contracts; --"],
+        })
+        profile = get_company_profile(uid)
+        upsert_contract({
+            "internal_id": "C1", "award_id": "A1", "vendor": "Test",
+            "agency": "GSA", "description": "", "value": 100000,
+            "days_remaining": 90, "recompete_score": 50, "priority": "MEDIUM",
+            "category": "IT", "naics_code": "541512", "place_of_performance_state": "TX"
+        })
+        # Must not raise; payload matches nothing (treated as a literal state).
+        result = personalized_for_business(uid, profile, limit=10)
+        assert result == []
+        # The contracts table is intact and still holds the row.
+        con = sqlite3.connect(pdb)
+        count = con.execute("SELECT COUNT(*) FROM contracts").fetchone()[0]
+        con.close()
+        assert count == 1

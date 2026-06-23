@@ -363,23 +363,30 @@ def personalized_for_business(user_id, profile, limit=10):
         # This reuses the logic from infer_category
         category_matches = _categories_from_naics(naics_codes)
 
-        # Build placeholders
-        state_placeholders = ", ".join(f"'{s}'" for s in (states or []))
-        agency_placeholders = ", ".join(f"'{a}'" for a in (agencies or []))
-        category_placeholders = ", ".join(f"'{c}'" for c in category_matches)
+        # Bind every IN-clause value as a SQL parameter instead of interpolating
+        # it as a string literal.  states/agencies come from the user-controlled
+        # company profile, so the previous f-string interpolation was a SQL
+        # injection vector; category_matches is an internal allowlist but is
+        # bound too for consistency.  An empty list renders as `IN (NULL)`, which
+        # matches no rows — preserving the prior "__NOMATCH__" sentinel behavior.
+        def _bind_in(values, prefix):
+            if not values:
+                return "NULL"
+            placeholders = []
+            for i, v in enumerate(values):
+                key = f"{prefix}{i}"
+                params[key] = v
+                placeholders.append(f":{key}")
+            return ", ".join(placeholders)
 
-        # Handle empty lists in placeholders
-        if not state_placeholders:
-            state_placeholders = "'__NOMATCH__'"
-        if not category_placeholders:
-            category_placeholders = "'__NOMATCH__'"
-        if not agency_placeholders:
-            agency_placeholders = "'__NOMATCH__'"
+        state_in = _bind_in(states or [], "st")
+        agency_in = _bind_in(agencies or [], "ag")
+        category_in = _bind_in(category_matches, "cat")
 
         query = query.format(
-            state_in=state_placeholders,
-            category_in=category_placeholders,
-            agency_in=agency_placeholders
+            state_in=state_in,
+            category_in=category_in,
+            agency_in=agency_in,
         )
 
         rows = conn.execute(text(query), params).mappings().fetchall()
@@ -451,6 +458,40 @@ def my_contracts_summary(user_id):
         "pipeline": [dict(r) for r in pipeline],
         "total": len(watchlist) + len(pipeline),
     }
+
+
+def recent_updates_for_user(user_id, limit=10):
+    """Recent field-level updates for contracts the user watches or has in pipeline.
+
+    Powers the compact dashboard "Recent Updates" feed. Joins
+    contract_field_changes (Commit 1) to the user's tracked contracts and
+    returns the most recent changes first. Returns [] when user_id is None or
+    nothing the user tracks has changed.
+    """
+    if not user_id:
+        return []
+    # Idempotent — guarantees the table exists on fresh installs that have not
+    # yet run an ingest/detect cycle, so the dashboard never 500s.
+    from db import init_contract_field_changes_table
+    init_contract_field_changes_table()
+
+    engine = get_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT f.contract_id, f.field_name, f.old_value, f.new_value,
+                   f.changed_at, f.run_date,
+                   c.award_id, c.vendor, c.agency
+            FROM contract_field_changes f
+            JOIN contracts c ON c.internal_id = f.contract_id
+            WHERE f.contract_id IN (
+                SELECT internal_id FROM user_watchlist WHERE user_id = :uid
+                UNION
+                SELECT internal_id FROM opportunities WHERE user_id = :uid
+            )
+            ORDER BY f.changed_at DESC, f.id DESC
+            LIMIT :lim
+        """), {"uid": user_id, "lim": limit}).mappings().fetchall()
+    return [dict(r) for r in rows]
 
 
 def agency_summary(run_date, limit=10):
