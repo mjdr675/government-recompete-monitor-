@@ -291,6 +291,134 @@ def suggested_matches(user_id, limit=5):
     return results
 
 
+def personalized_for_business(user_id, profile, limit=10):
+    """Find contracts matching company profile: NAICS, states, agencies, value range.
+
+    Returns list of contracts with match reasons. Excludes already-tracked contracts.
+    Returns empty list if profile is missing required fields.
+    """
+    if not user_id or not profile:
+        return []
+
+    engine = get_engine()
+
+    # Get tracked contract IDs to exclude them
+    tracked_ids = set()
+    with engine.connect() as conn:
+        tracked_rows = conn.execute(text("""
+            SELECT DISTINCT c.internal_id FROM contracts c
+            JOIN user_watchlist w ON w.internal_id = c.internal_id WHERE w.user_id = :uid
+            UNION
+            SELECT DISTINCT c.internal_id FROM contracts c
+            JOIN opportunities o ON o.internal_id = c.internal_id WHERE o.user_id = :uid
+        """), {"uid": user_id}).fetchall()
+        tracked_ids = {r[0] for r in tracked_rows}
+
+    # Build match criteria from profile
+    naics_codes = profile.get("naics_codes", [])
+    states = profile.get("states", [])
+    agencies = profile.get("agencies", [])
+    keywords = profile.get("keywords", [])
+    min_val = profile.get("min_contract_value")
+    max_val = profile.get("max_contract_value")
+
+    # Need at least one search criterion
+    if not any([naics_codes, states, agencies]):
+        return []
+
+    with engine.connect() as conn:
+        # Query contracts matching profile criteria
+        # Score by number of matching dimensions
+        query = """
+            WITH scored_contracts AS (
+                SELECT
+                    c.internal_id, c.award_id, c.vendor, c.agency, c.value,
+                    c.end_date, c.days_remaining, c.priority, c.recompete_score,
+                    c.category, c.naics_code, c.place_of_performance_state,
+                    c.description,
+                    COALESCE(
+                        (CASE WHEN c.place_of_performance_state IN ({state_in}) THEN 1 ELSE 0 END) +
+                        (CASE WHEN c.category IN ({category_in}) THEN 2 ELSE 0 END) +
+                        (CASE WHEN c.agency IN ({agency_in}) THEN 1 ELSE 0 END),
+                        0
+                    ) as match_score
+                FROM contracts c
+                WHERE c.days_remaining > 0
+        """
+
+        params = {}
+
+        # Add value range filter if specified
+        if min_val is not None:
+            query += " AND (c.value IS NULL OR c.value >= :min_val)"
+            params["min_val"] = min_val
+        if max_val is not None:
+            query += " AND (c.value IS NULL OR c.value <= :max_val)"
+            params["max_val"] = max_val
+
+        query += " ) SELECT * FROM scored_contracts WHERE match_score > 0 ORDER BY match_score DESC, recompete_score DESC LIMIT :lim"
+        params["lim"] = limit
+
+        # Determine NAICS-based categories (map NAICS prefixes to categories)
+        # This reuses the logic from infer_category
+        category_matches = _categories_from_naics(naics_codes)
+
+        # Build placeholders
+        state_placeholders = ", ".join(f"'{s}'" for s in (states or []))
+        agency_placeholders = ", ".join(f"'{a}'" for a in (agencies or []))
+        category_placeholders = ", ".join(f"'{c}'" for c in category_matches)
+
+        # Handle empty lists in placeholders
+        if not state_placeholders:
+            state_placeholders = "'__NOMATCH__'"
+        if not category_placeholders:
+            category_placeholders = "'__NOMATCH__'"
+        if not agency_placeholders:
+            agency_placeholders = "'__NOMATCH__'"
+
+        query = query.format(
+            state_in=state_placeholders,
+            category_in=category_placeholders,
+            agency_in=agency_placeholders
+        )
+
+        rows = conn.execute(text(query), params).mappings().fetchall()
+
+    results = []
+    for row in rows:
+        r = dict(row)
+        if r["internal_id"] in tracked_ids:
+            continue
+
+        # Build reason
+        reasons = []
+        if row["place_of_performance_state"] and row["place_of_performance_state"] in (states or []):
+            reasons.append(f"Work in {row['place_of_performance_state']}")
+        if row["category"] and row["category"] in category_matches:
+            reasons.append(f"{row['category']} category")
+        if row["agency"] and row["agency"] in (agencies or []):
+            reasons.append(f"{row['agency']} contract")
+
+        r["match_reason"] = ", ".join(reasons) if reasons else "Profile match"
+        results.append(r)
+        if len(results) >= limit:
+            break
+
+    return results
+
+
+def _categories_from_naics(naics_codes):
+    """Map NAICS codes to categories using the infer_category logic."""
+    from db import _NAICS_CATEGORY_MAP
+    categories = set()
+    for nc in (naics_codes or []):
+        for prefix, cat in _NAICS_CATEGORY_MAP:
+            if str(nc).startswith(prefix):
+                categories.add(cat)
+                break
+    return list(categories)
+
+
 def my_contracts_summary(user_id):
     """Return the user's explicitly tracked contracts for the dashboard."""
     if not user_id:
