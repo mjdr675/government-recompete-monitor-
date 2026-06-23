@@ -40,12 +40,14 @@ FilterSet {
   status?:     "" | "open" | "expired"
   sort?:       string        // default "recompete_score"
   dir?:        "asc" | "desc" // default "desc"
+  page?:       integer        // pagination window — query-altering, user-independent (§2.4)
 }
 ```
 
 **Excluded from `FilterSet` (deliberately):**
-- `page` — pagination, not query identity. Lives on the request, never persisted in a saved/quick state.
-- `for_my_business`, `in_pipeline`, `discover` — these are **context/scope modifiers** (they reshape the *dataset*, not the *filter criteria*). They are represented separately as `context` (see 2.3) so a saved query stays portable across users and datasets.
+- `for_my_business`, `in_pipeline`, `discover` — **user-scoped context modifiers**; their effect depends on *who* is asking, so they live in `context` (see §2.3) under the Boundary Contract (§2.4).
+
+> **Boundary change (v2):** `page` is now part of `FilterSet`. Pagination is query-altering but **user-independent** (it only selects the result window), so by the §2.4 membership test it belongs to `FilterSet`. Earlier drafts excluded it as "request-only"; the §2.4 Boundary Contract is now authoritative.
 
 ### 2.2 `UnifiedQueryState`
 
@@ -72,7 +74,21 @@ UnifiedQueryState {
 
 ### 2.3 `context` vs `filters`
 
-`filters` answers *"which contracts match"* (portable, shareable). `context` answers *"relative to whom / what subset"* (`for_my_business` = this user's profile; `in_pipeline` = this user's pipeline; `discover` = exclude this user's pipeline). Keeping them separate is what makes **saved views fully replayable** (R3 / validation V3) without leaking one user's pipeline into another's saved query.
+`filters` answers *"which contracts match"* (portable, shareable). `context` answers *"relative to whom / what subset"* (`for_my_business` = this user's profile; `in_pipeline` = this user's pipeline; `discover` = exclude this user's pipeline). Keeping them separate is what makes **saved views fully replayable** (R3 / validation V3) without leaking one user's pipeline into another's saved query — but see §4.1 for the *current* (non-portable) reality.
+
+### 2.4 Boundary Contract (normative)
+
+The split between `FilterSet` and `context` is defined by **one rule**:
+
+- **`FilterSet`** = *every query-altering field that is independent of the requesting user.* This includes all explicit filters (`q`, `agency`, `category`, `state`, `priority`, `days`, `min_value`, `status`), the ordering fields (`sort`, `dir`), **and pagination (`page`)**. Two different users supplying the same `FilterSet` must receive the same result set.
+- **`context`** = *user-scoped modifiers only* — exactly three fields: `for_my_business`, `in_pipeline`, `discover`. Their meaning depends on *who* is asking (this user's profile / pipeline).
+
+**Membership test:** "Does this field's effect depend on the identity of the requester?" → **Yes** = `context`; **No** = `FilterSet`.
+
+#### Known implementation divergence — `_PRESERVED_PARAMS`
+`views.py` defines `_PRESERVED_PARAMS = ("sort", "dir", "for_my_business", "in_pipeline", "discover")` (used to build active-filter-chip removal URLs). This **conflates the boundary**: it bundles `FilterSet` ordering fields (`sort`, `dir`) together with `context` modifiers in a single bucket, and it omits `page` (chips intentionally reset pagination on filter removal).
+
+This is **intentional legacy behavior** and **MUST NOT be changed in Phase 2.** `_PRESERVED_PARAMS` exists to keep chip-removal URLs stable; reclassifying its members to match this Boundary Contract is a **Phase 3** structural correction, never an adapter concern.
 
 ---
 
@@ -113,6 +129,21 @@ UnifiedQueryState → query_string (for redirects / saved-search reload URLs)
 
 **Constraints (normative):** no UI behavior change; no removal of legacy systems; both representations coexist until Phase 4 validation passes.
 
+### 4.1 Saved-search portability — current reality (normative record)
+
+The current implementation **stores raw request params verbatim**: `POST /searches/save` persists the client-supplied params dict into `user_saved_searches.query_params_json`, and the browser's `saveSearch()` captures **all** current query params. Those stored params therefore include **user-scoped `context` flags** (`for_my_business`, `in_pipeline`, `discover`) whenever they were active at save time.
+
+**Consequence:** saved searches are **NOT fully portable across users in the current implementation.** A search saved with `in_pipeline=1` or `discover=1` replays those user-relative modifiers, so its result set is requester-dependent. This **diverges from target V3** (fully replayable, user-independent saved views).
+
+**Phase 2 rule:** adapters **MUST preserve this raw behavior** — read `query_params_json` as-is into `filters` + `context` **without normalizing, splitting, or stripping** context flags. Correcting saved-query portability (separating embedded context, migrating stored rows) is deferred to **Phase 3**.
+
+### 4.2 Phase 2 Migration Contract (strict)
+
+1. **Adapters MUST be read-only mappings.** They read legacy representations and emit `UnifiedQueryState`; they never write, migrate, or mutate legacy state.
+2. **No behavioral normalization is allowed.** Output must reproduce today's behavior exactly — same filters applied, same context replayed, same results. The `_PRESERVED_PARAMS` conflation (§2.4) and the saved-search context embedding (§4.1) are **carried through unchanged**.
+3. **All structural corrections are deferred to Phase 3.** This includes: separating `FilterSet` from `context` at the `_PRESERVED_PARAMS` boundary, normalizing/splitting saved-query context, and removing duplicate serialization paths.
+4. **Coexistence:** legacy systems remain authoritative during Phase 2; the unified mapping is additive and observation-only.
+
 ---
 
 ## 5. Phased plan & lane ownership
@@ -133,7 +164,7 @@ UnifiedQueryState → query_string (for redirects / saved-search reload URLs)
 
 - **V1.** Every search request resolves to exactly one `UnifiedQueryState` before execution.
 - **V2.** Switching to a saved/quick view preserves unrelated `context` (e.g. an active `in_pipeline` toggle) unless the view explicitly sets it.
-- **V3.** A saved view is a **fully replayable query** — reloading it reproduces identical `filters` and results, independent of who saved it.
+- **V3.** A saved view is a **fully replayable query** — reloading it reproduces identical `filters` and results, independent of who saved it. *(Target state. The current implementation does **not** satisfy V3 — see §4.1; achieving it is a Phase 3 task, and Phase 2 must not attempt it.)*
 - **V4.** Quick views behave as **presets only** (templates), never as user-owned persisted state.
 - **V5.** After Phase 4, no duplicate query-state assembly remains: `get_contracts` has exactly one caller-side construction path, and `build_view_query`/raw kwarg assembly are gone.
 
