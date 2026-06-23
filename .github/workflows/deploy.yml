@@ -22,12 +22,11 @@ jobs:
           pip install -r requirements.txt
           pip install pytest
 
-      - name: Stub ae CLI (fix CI dependency)
+      - name: Stub ae CLI
         run: |
-          mkdir -p $HOME/bin
-          echo -e '#!/bin/bash\necho "ae stub running"' > $HOME/bin/ae
-          chmod +x $HOME/bin/ae
-          export PATH="$HOME/bin:$PATH"
+          sudo mkdir -p /usr/local/bin
+          echo -e '#!/bin/bash\necho "ae stub running"' | sudo tee /usr/local/bin/ae
+          sudo chmod +x /usr/local/bin/ae
 
       - name: Run tests
         run: pytest -q
