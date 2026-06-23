@@ -100,7 +100,12 @@
 <div class="quick-views" style="margin:-4px 0 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
   <span class="muted" style="font-size:12px">Quick views:</span>
   {% for v in quick_views %}
+    {% if v.id == active_view %}
+    <a href="/views/{{ v.id }}" class="saved-search-chip" aria-current="true"
+       style="background:var(--accent);color:#fff;border-color:var(--accent)">&#10003; {{ v.label }}</a>
+    {% else %}
     <a href="/views/{{ v.id }}" class="saved-search-chip">{{ v.label }}</a>
+    {% endif %}
   {% endfor %}
   <a href="/views" class="muted" style="font-size:12px;text-decoration:underline">All views &rarr;</a>
 </div>

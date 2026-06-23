@@ -1591,6 +1591,142 @@ def get_changes(run_date, change_type):
         }).mappings().fetchall()
 
 
+# ---------------------------------------------------------------------------
+# Generic field-level contract change history (Auto Contract Updates lane)
+#
+# Separate from the priority-coupled `changes` table so existing change_detector
+# / report_builder / vendor change_events behavior is preserved. Stores one row
+# per (run_date, internal_id, field_name) — idempotent via clear-by-run_date plus
+# the UNIQUE constraint.
+# ---------------------------------------------------------------------------
+
+def init_field_changes_table():
+    with get_engine().begin() as conn:
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS contract_field_changes (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_date    TEXT NOT NULL,
+            internal_id TEXT NOT NULL,
+            field_name  TEXT NOT NULL,
+            old_value   TEXT,
+            new_value   TEXT,
+            change_kind TEXT NOT NULL,
+            created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(run_date, internal_id, field_name)
+        )
+        """))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_field_changes_run_date"
+            " ON contract_field_changes(run_date)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_field_changes_internal_id"
+            " ON contract_field_changes(internal_id)"
+        ))
+
+
+def clear_field_changes_for_date(run_date):
+    """Delete any field-change rows for run_date so detection is idempotent."""
+    init_field_changes_table()
+    with get_engine().begin() as conn:
+        conn.execute(
+            text("DELETE FROM contract_field_changes WHERE run_date = :run_date"),
+            {"run_date": run_date},
+        )
+
+
+def insert_field_changes(run_date, records):
+    """Bulk-insert field-change records for run_date.
+
+    *records* is an iterable of dicts with keys: internal_id, field_name,
+    old_value, new_value, change_kind. Ignores duplicates (UNIQUE constraint)
+    so a re-run after a partial failure is safe.
+    """
+    records = list(records)
+    if not records:
+        return 0
+    init_field_changes_table()
+    engine = get_engine()
+    is_pg = engine.dialect.name == "postgresql"
+    conflict = "ON CONFLICT(run_date, internal_id, field_name) DO NOTHING"
+    with engine.begin() as conn:
+        for rec in records:
+            conn.execute(text(f"""
+                INSERT INTO contract_field_changes
+                    (run_date, internal_id, field_name, old_value, new_value, change_kind)
+                VALUES (:run_date, :internal_id, :field_name, :old_value, :new_value, :change_kind)
+                {conflict}
+            """), {
+                "run_date": run_date,
+                "internal_id": rec["internal_id"],
+                "field_name": rec["field_name"],
+                "old_value": rec.get("old_value"),
+                "new_value": rec.get("new_value"),
+                "change_kind": rec["change_kind"],
+            })
+    return len(records)
+
+
+def get_field_changes_for_contracts(internal_ids, limit=50):
+    """Return recent field changes for the given contract internal_ids.
+
+    Joined to contracts for display (award_id, vendor). Ordered newest-first.
+    Returns [] when internal_ids is empty. Used by the dashboard Recent Updates
+    feed (scoped to a user's watchlist + pipeline contracts).
+    """
+    internal_ids = list(internal_ids or [])
+    if not internal_ids:
+        return []
+    init_field_changes_table()
+    engine = get_engine()
+    with engine.connect() as conn:
+        placeholders = ", ".join(f":iid_{i}" for i in range(len(internal_ids)))
+        params = {f"iid_{i}": iid for i, iid in enumerate(internal_ids)}
+        params["limit"] = limit
+        rows = conn.execute(text(f"""
+            SELECT
+                fc.run_date,
+                fc.internal_id,
+                fc.field_name,
+                fc.old_value,
+                fc.new_value,
+                fc.change_kind,
+                fc.created_at,
+                c.award_id,
+                c.vendor
+            FROM contract_field_changes fc
+            LEFT JOIN contracts c ON c.internal_id = fc.internal_id
+            WHERE fc.internal_id IN ({placeholders})
+            ORDER BY fc.run_date DESC, fc.created_at DESC, fc.internal_id
+            LIMIT :limit
+        """), params).mappings().fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_recent_updates_for_user(user_id, limit=10):
+    """Return recent field-level changes for the contracts a user tracks.
+
+    Tracked = watchlist contracts ∪ pipeline (opportunities) contracts. Returns
+    raw change rows (see get_field_changes_for_contracts); presentation/formatting
+    is handled by contract_summary.format_contract_update. Returns [] for an
+    anonymous user or one tracking nothing.
+    """
+    if not user_id:
+        return []
+    engine = get_engine()
+    with engine.connect() as conn:
+        wl = conn.execute(
+            text("SELECT internal_id FROM user_watchlist WHERE user_id = :uid"),
+            {"uid": user_id},
+        ).fetchall()
+        pl = conn.execute(
+            text("SELECT internal_id FROM opportunities WHERE user_id = :uid"),
+            {"uid": user_id},
+        ).fetchall()
+    tracked = {r[0] for r in wl} | {r[0] for r in pl}
+    return get_field_changes_for_contracts(tracked, limit=limit)
+
+
 def init_demo_table():
     with get_engine().begin() as conn:
         conn.execute(text("""
