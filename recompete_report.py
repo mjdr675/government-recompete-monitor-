@@ -3,6 +3,7 @@ import sys
 import time
 from sam_lookup import lookup_solicitation
 from change_detector import detect_changes
+from update_detector import detect_field_changes
 from db import init_db, upsert_contract, save_snapshot
 import requests
 from datetime import date, datetime, timedelta
@@ -289,6 +290,7 @@ def main():
 
     save_snapshot(str(TODAY), rows)
     detect_changes(str(TODAY))
+    detect_field_changes(str(TODAY))
 
     print(f"Saved {len(rows)} rows to contracts.db")
     print(f"Saved snapshot for {TODAY}")

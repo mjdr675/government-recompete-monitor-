@@ -22,6 +22,7 @@ from flask_wtf.csrf import CSRFProtect
 from auth import bp as auth_bp
 from email_service import send_email
 from change_detector import detect_changes
+from update_detector import detect_field_changes
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from db import (
@@ -935,6 +936,7 @@ def ingest():
                 run_date = date.today().isoformat()
                 save_snapshot(run_date, rows)
                 detect_changes(run_date)
+                detect_field_changes(run_date)
                 message = f"Imported {len(rows)} contracts from CSV."
 
         elif action == "api":

@@ -2,6 +2,7 @@ import csv
 import time
 from sam_lookup import lookup_solicitation
 from change_detector import detect_changes
+from update_detector import detect_field_changes
 from db import save_snapshot
 import requests
 from datetime import date, datetime, timedelta
@@ -285,6 +286,7 @@ def main():
     run_date = str(TODAY)
     save_snapshot(run_date, rows)
     detect_changes(run_date)
+    detect_field_changes(run_date)
 
     print("Saved", len(rows), "upcoming recompete opportunities.")
     print(f"Persisted {len(rows)} rows to the contracts database (snapshot {run_date}).")
