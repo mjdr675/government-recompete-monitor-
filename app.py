@@ -22,6 +22,7 @@ from flask_wtf.csrf import CSRFProtect
 from auth import bp as auth_bp
 from email_service import send_email
 from change_detector import detect_changes
+from update_detector import detect_field_changes
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from db import (
@@ -50,6 +51,7 @@ from db import (
     update_notification_preferences,
     infer_category,
     extract_raw_field,
+    get_recent_updates_for_user,
 )
 from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
@@ -385,6 +387,16 @@ def dashboard():
             "top": top_opps,
         }
 
+    # Recent Updates feed — field-level changes on the user's tracked
+    # (watchlist + pipeline) contracts, formatted for compact display.
+    recent_updates = []
+    if user_id:
+        from contract_summary import format_contract_update
+        recent_updates = [
+            format_contract_update(r)
+            for r in get_recent_updates_for_user(user_id, limit=8)
+        ]
+
     return render_template(
         "dashboard.html",
         report=build_report(date.today().isoformat()),
@@ -405,6 +417,7 @@ def dashboard():
         show_onboarding=show_onboarding,
         pipeline_summary=pipeline_summary,
         pipeline_stages=PIPELINE_STAGES,
+        recent_updates=recent_updates,
     )
 
 
@@ -941,6 +954,7 @@ def ingest():
                 run_date = date.today().isoformat()
                 save_snapshot(run_date, rows)
                 detect_changes(run_date)
+                detect_field_changes(run_date)
                 message = f"Imported {len(rows)} contracts from CSV."
 
         elif action == "api":

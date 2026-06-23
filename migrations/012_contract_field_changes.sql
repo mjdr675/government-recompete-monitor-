@@ -1,19 +1,29 @@
 -- migrations/012_contract_field_changes.sql
--- Auto Updates Commit 1 — field-level change detection foundation.
--- Records diffs of tracked contract fields between consecutive snapshots.
--- Idempotent: IF NOT EXISTS guards make it safe to re-run.
+-- Generic field-level contract change history (Auto Contract Updates lane).
+--
+-- Records one row per (run_date, internal_id, field_name) describing how a
+-- tracked field changed between the two most recent contract_snapshots runs.
+-- Kept separate from the priority-coupled `changes` table so existing
+-- change_detector / report_builder / vendor change_events behavior is preserved.
+--
+-- SQLite (dev) also creates this lazily via db.init_field_changes_table();
+-- this file is the PostgreSQL (prod) path, applied by _apply_migrations().
+--
+-- All statements are idempotent (IF NOT EXISTS guards).
+
 CREATE TABLE IF NOT EXISTS contract_field_changes (
-    id              SERIAL PRIMARY KEY,
-    run_date        TEXT NOT NULL,
-    contract_id     TEXT NOT NULL,
-    field_name      TEXT NOT NULL,
-    old_value       TEXT,
-    new_value       TEXT,
-    old_snapshot_id INTEGER,
-    new_snapshot_id INTEGER,
-    changed_at      TIMESTAMP DEFAULT NOW()
+    id          SERIAL PRIMARY KEY,
+    run_date    TEXT NOT NULL,
+    internal_id TEXT NOT NULL,
+    field_name  TEXT NOT NULL,
+    old_value   TEXT,
+    new_value   TEXT,
+    change_kind TEXT NOT NULL,
+    created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(run_date, internal_id, field_name)
 );
+
 CREATE INDEX IF NOT EXISTS idx_field_changes_run_date
     ON contract_field_changes(run_date);
-CREATE INDEX IF NOT EXISTS idx_field_changes_contract
-    ON contract_field_changes(contract_id);
+CREATE INDEX IF NOT EXISTS idx_field_changes_internal_id
+    ON contract_field_changes(internal_id);
