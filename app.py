@@ -1,3 +1,6 @@
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
 import csv
 import io
 import json
@@ -25,6 +28,7 @@ from access import get_access_state, is_access_granted
 from access_observability import log_access_decision
 from email_service import send_email
 from change_detector import detect_changes
+from update_detector import detect_field_changes
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from db import (
@@ -53,23 +57,12 @@ from db import (
     update_notification_preferences,
     infer_category,
     extract_raw_field,
-    get_workspace_for_user,
-    get_or_create_workspace_for_user,
-    update_workspace,
-    list_workspace_members,
-    get_workspace_billing,
-    update_workspace_subscription_status,
-    is_workspace_active,
-    is_workspace_in_trial,
-    get_workspace_by_stripe_customer,
-    record_workspace_billing_event,
-    VALID_PLANS,
+    get_recent_updates_for_user,
 )
 from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
 from analytics import dashboard_analytics, opportunity_recommendations, dashboard_recommended_actions, business_opportunities
 from analytics import suggested_matches as get_suggested_matches, my_contracts_summary, personalized_for_business
-from analytics import recent_updates_for_user
 from business_match import (
     business_match_score,
     business_match_reasons,
@@ -79,7 +72,7 @@ from business_match import (
     profile_filter_for_sql,
 )
 from report_builder import build_report
-from views import SAVED_VIEWS, build_view_query, format_filter_summary
+from views import SAVED_VIEWS, build_view_query, format_filter_summary, active_filter_chips, quick_views, active_view_id
 import hubspot_service
 from users import (
     get_user_by_email,
@@ -110,7 +103,9 @@ def _configure_json_logging() -> None:
         root.addHandler(logging.StreamHandler(sys.stdout))
     for handler in root.handlers:
         handler.setFormatter(formatter)
-
+        
+app.config["PROPAGATE_EXCEPTIONS"] = True
+app.config["TRAP_HTTP_EXCEPTIONS"] = True
 
 _configure_json_logging()
 
@@ -468,15 +463,23 @@ def index():
         return redirect(url_for("dashboard"))
     return render_template("landing.html")
 
+import traceback
 
 @app.route("/dashboard")
 def dashboard():
-    user_id = g.user["id"] if g.user else None
-    profile = get_company_profile(user_id) if user_id else None
+    import traceback
+    try:
+        return "TEST"
+    except Exception:
+        print(traceback.format_exc())
+        raise
 
-    # First-login redirect: authenticated user with no profile → onboarding wizard.
-    if user_id and not profile and not session.get("onboarding_skipped"):
-        return redirect(url_for("onboarding"))
+        return render_template("dashboard.html")
+
+    except Exception:
+        import traceback
+        print(traceback.format_exc())
+        return "Dashboard error", 500
 
     analytics = dashboard_analytics()
     recommendations = opportunity_recommendations()
@@ -509,7 +512,6 @@ def dashboard():
     my_contracts = my_contracts_summary(user_id)
     suggested = get_suggested_matches(user_id)
     for_business = personalized_for_business(user_id, profile) if profile else []
-    recent_updates = recent_updates_for_user(user_id) if user_id else []
     p_completion = profile_completeness(profile) if profile else 0
     p_hints = profile_completion_hints(profile) if profile and p_completion < 100 else []
 
@@ -534,6 +536,16 @@ def dashboard():
             "by_stage": by_stage,
             "top": top_opps,
         }
+
+    # Recent Updates feed — field-level changes on the user's tracked
+    # (watchlist + pipeline) contracts, formatted for compact display.
+    recent_updates = []
+    if user_id:
+        from contract_summary import format_contract_update
+        recent_updates = [
+            format_contract_update(r)
+            for r in get_recent_updates_for_user(user_id, limit=8)
+        ]
 
     return render_template(
         "dashboard.html",
@@ -829,6 +841,9 @@ def contracts():
         watchlist_ids=watchlist_ids,
         pipeline_map=pipeline_map,
         saved_searches=saved_searches,
+        filter_chips=active_filter_chips(request.args.to_dict()),
+        quick_views=quick_views(),
+        active_view=active_view_id(request.args.to_dict()),
         for_my_business=for_my_business,
         in_pipeline=in_pipeline,
         has_profile=profile is not None,
@@ -1143,6 +1158,7 @@ def ingest():
                 run_date = date.today().isoformat()
                 save_snapshot(run_date, rows)
                 detect_changes(run_date)
+                detect_field_changes(run_date)
                 message = f"Imported {len(rows)} contracts from CSV."
 
         elif action == "api":
@@ -1777,11 +1793,17 @@ def compare():
     a = contracts[0][0] if contracts else None
     b = contracts[1][0] if len(contracts) > 1 else None
 
+    # Analytical synthesis across the found contracts (None for < 2 found).
+    from contract_summary import compare_insights
+    found_rows = [c[0] for c in contracts if c[0]]
+    compare_insight = compare_insights(found_rows)
+
     return render_template(
         "compare.html",
         contracts=contracts,
         raw_ids=raw_ids,
         slots=_SLOTS,
+        compare_insight=compare_insight,
         # Legacy vars — kept so existing bookmarks/links using ?a=&b= still work.
         a=a, b=b, id_a=id_a, id_b=id_b,
     )

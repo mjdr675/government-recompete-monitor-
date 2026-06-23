@@ -5,6 +5,10 @@ Presentation logic for the contract detail page — kept OUT of recompete_report
 functions over already-stored fields only: no DB, no external/AI calls.
 """
 
+from domain.policies.contract_ranking import rank_contracts
+
+def format_contract_update(*args, **kwargs):
+    return ""
 
 def _safe_int(v):
     try:
@@ -210,3 +214,172 @@ def contract_timeline(row):
 
     events.sort(key=lambda e: e["date"])
     return events
+
+
+# ---------------------------------------------------------------------------
+# Multi-contract comparison insights (Contract Intelligence Tools lane)
+#
+# Pure analytical synthesis over a set of already-fetched contract rows — no DB,
+# no external/AI calls. Turns the raw side-by-side compare table into a
+# decision aid: which contract to pursue first, and which leads on value,
+# score, and recompete timing.
+# ---------------------------------------------------------------------------
+
+def _contract_label(row):
+    return row.get("award_id") or row.get("internal_id")
+
+
+def compare_insights(rows):
+    """Return deterministic analytical highlights across compared contracts.
+
+    ``rows`` is a list of contract row dicts. Returns None for fewer than two
+    rows (insights need something to compare). Otherwise returns a dict:
+
+        {
+          "recommended": {label, internal_id, reason},
+          "highlights": [ {title, label, internal_id, detail}, ... ],
+        }
+
+    The recommended pick maximises recompete score, breaking ties by the
+    soonest active recompete, then by highest value — all from stored fields.
+    """
+    rows = [r for r in rows if r]
+    if len(rows) < 2:
+        return None
+
+    def score_of(r):
+        return _safe_int(r.get("recompete_score")) or 0
+
+    def value_of(r):
+        try:
+            return float(r.get("value") or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def active_days(r):
+        d = _safe_int(r.get("days_remaining"))
+        return d if (d is not None and d > 0) else None
+
+    highlights = []
+
+    # Highest value
+    top_value = max(rows, key=value_of)
+    if value_of(top_value) > 0:
+        highlights.append({
+            "title": "Highest value",
+            "label": _contract_label(top_value),
+            "internal_id": top_value.get("internal_id"),
+            "detail": "${:,.0f}".format(value_of(top_value)),
+        })
+
+    # Best recompete score
+    top_score = max(rows, key=score_of)
+    if score_of(top_score) > 0:
+        highlights.append({
+            "title": "Best recompete score",
+            "label": _contract_label(top_score),
+            "internal_id": top_score.get("internal_id"),
+            "detail": "{}/100".format(score_of(top_score)),
+        })
+
+    # Soonest active recompete (smallest positive days_remaining)
+    active = [r for r in rows if active_days(r) is not None]
+    if active:
+        soonest = min(active, key=active_days)
+        highlights.append({
+            "title": "Soonest recompete",
+            "label": _contract_label(soonest),
+            "internal_id": soonest.get("internal_id"),
+            "detail": "{} days remaining".format(active_days(soonest)),
+        })
+
+    # Recommended pick: highest score, then soonest active expiry, then value.
+    # Ordering policy lives in the shared domain module so pipeline/search/
+    # recommendation ranking can reuse the exact same rule.
+    best = rank_contracts(rows)[0]
+    reason_parts = []
+    if score_of(best) > 0:
+        reason_parts.append("highest recompete score ({}/100)".format(score_of(best)))
+    bd = active_days(best)
+    if bd is not None:
+        reason_parts.append("recompete in {} days".format(bd))
+    if value_of(best) > 0:
+        reason_parts.append("${:,.0f} value".format(value_of(best)))
+    reason = "Strongest opportunity by " + ", ".join(reason_parts) + "." if reason_parts \
+        else "Best available option among the compared contracts."
+
+    return {
+        "recommended": {
+            "label": _contract_label(best),
+            "internal_id": best.get("internal_id"),
+            "reason": reason,
+        },
+        "highlights": highlights,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Recent Updates feed (Auto Contract Updates lane)
+#
+# Pure presentation over a contract_field_changes row dict (no DB / AI). Turns a
+# stored field-level change into a compact, human-readable dashboard feed item.
+# Part of the authoritative (internal_id) contract_field_changes read path.
+# ---------------------------------------------------------------------------
+
+_UPDATE_FIELD_LABELS = {
+    "value": "Value",
+    "end_date": "Recompete date",
+    "days_remaining": "Days remaining",
+    "vendor": "Vendor",
+    "competition_type": "Competition type",
+    "recompete_score": "Recompete score",
+    "priority": "Priority",
+}
+
+
+def _format_update_value(field, raw):
+    """Render a stored old/new value for display ('—' when blank)."""
+    if raw is None or raw == "":
+        return "—"
+    if field == "value":
+        try:
+            return "${:,.0f}".format(float(raw))
+        except (TypeError, ValueError):
+            return str(raw)
+    return str(raw)
+
+
+def format_contract_update(row):
+    """Turn a contract_field_changes row into a display dict for the feed.
+
+    Input keys used: field_name, change_kind, old_value, new_value, run_date,
+    created_at, award_id, internal_id. Returns a dict with a human-readable
+    ``headline`` plus the contract label, formatted old/new values, and the
+    timestamp — everything the dashboard card needs, no template logic required.
+    """
+    field = row.get("field_name") or ""
+    kind = (row.get("change_kind") or "").upper()
+    label = _UPDATE_FIELD_LABELS.get(field, field.replace("_", " ").title() or "Field")
+
+    if kind == "INCREASE":
+        headline = f"{label} increased"
+    elif kind == "DECREASE":
+        headline = f"{label} decreased"
+    elif kind == "SET":
+        headline = f"{label} set"
+    elif kind == "CLEARED":
+        headline = f"{label} cleared"
+    else:
+        headline = f"{label} changed"
+
+    return {
+        "internal_id": row.get("internal_id"),
+        "contract": row.get("award_id") or row.get("internal_id"),
+        "headline": headline,
+        "field_name": field,
+        "change_kind": kind,
+        "old_value": _format_update_value(field, row.get("old_value")),
+        "new_value": _format_update_value(field, row.get("new_value")),
+        "run_date": row.get("run_date"),
+        "created_at": row.get("created_at"),
+    }
