@@ -507,7 +507,6 @@ def init_db():
             recompete_score INTEGER,
             priority TEXT,
             psc_description TEXT,
-            description TEXT,
             raw_json TEXT,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
             vendor_website TEXT
@@ -2271,12 +2270,6 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
         base += " AND c.agency LIKE :agency"
         params["agency"] = f"%{agency}%"
 
-    if category:
-        keywords = CATEGORY_KEYWORDS.get(category, [category])
-        clauses = " OR ".join("c.description LIKE ?" for _ in keywords)
-        base += f" AND ({clauses})"
-        params.extend(f"%{kw}%" for kw in keywords)
-
     if priority:
         base += " AND c.priority = :priority"
         params["priority"] = priority
@@ -2348,10 +2341,6 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
         base += f" AND c.internal_id NOT IN ({ex_placeholders})"
         for i, eid in enumerate(exclude_ids):
             params[f"ex_{i}"] = eid
-
-    if min_value is not None:
-        base += " AND c.value >= ?"
-        params.append(float(min_value))
 
     col = sort if sort in _SORTABLE else "recompete_score"
     order = "ASC" if direction == "asc" else "DESC"
