@@ -4,6 +4,17 @@ from datetime import datetime, timezone
 
 DB_PATH = "contracts.db"
 
+# Maps category dropdown values to keywords matched against the description field.
+# A contract matches if ANY keyword appears in its description (case-insensitive via LIKE).
+CATEGORY_KEYWORDS = {
+    "Cleaning":      ["custodial", "janitorial", "cleaning", "housekeeping", "sanitation"],
+    "Grounds":       ["grounds", "landscaping", "mowing", "turf", "lawn", "pest control", "snow removal"],
+    "IT":            ["information technology", "software", "hardware", "network", "telecommunications",
+                      "data", "cyber", "cloud", "helpdesk", "help desk", "it support"],
+    "Cybersecurity": ["cybersecurity", "cyber security", "information security", "infosec",
+                      "soc ", "siem", "vulnerability", "penetration test", "zero trust"],
+}
+
 def connect():
     return sqlite3.connect(DB_PATH)
 
@@ -25,15 +36,16 @@ def init_db():
             recompete_score INTEGER,
             priority TEXT,
             psc_description TEXT,
+            description TEXT,
             raw_json TEXT,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
         """)
-        # Add psc_description column to existing DBs that predate this change
-        try:
-            con.execute("ALTER TABLE contracts ADD COLUMN psc_description TEXT")
-        except Exception:
-            pass
+        for col in ("psc_description", "description"):
+            try:
+                con.execute(f"ALTER TABLE contracts ADD COLUMN {col} TEXT")
+            except Exception:
+                pass
         con.execute("CREATE INDEX IF NOT EXISTS idx_contracts_vendor ON contracts(vendor)")
         con.execute("CREATE INDEX IF NOT EXISTS idx_contracts_agency ON contracts(agency)")
         con.execute("CREATE INDEX IF NOT EXISTS idx_contracts_priority ON contracts(priority)")
@@ -79,9 +91,9 @@ def upsert_contract(row):
         INSERT INTO contracts (
             internal_id, award_id, vendor, agency, sub_agency, value,
             start_date, end_date, days_remaining, competition_type,
-            solicitation_id, recompete_score, priority, psc_description, raw_json, updated_at
+            solicitation_id, recompete_score, priority, psc_description, description, raw_json, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(internal_id) DO UPDATE SET
             award_id=excluded.award_id,
             vendor=excluded.vendor,
@@ -96,6 +108,7 @@ def upsert_contract(row):
             recompete_score=excluded.recompete_score,
             priority=excluded.priority,
             psc_description=excluded.psc_description,
+            description=excluded.description,
             raw_json=excluded.raw_json,
             updated_at=excluded.updated_at
         """, (
@@ -113,6 +126,7 @@ def upsert_contract(row):
             int(row.get("score") or row.get("recompete_score") or 0),
             row.get("priority"),
             row.get("psc_description") or row.get("category") or "",
+            row.get("description") or "",
             json.dumps(row, default=str),
             now,
         ))
@@ -158,9 +172,9 @@ def save_snapshot(run_date, rows):
             INSERT INTO contracts (
                 internal_id, award_id, vendor, agency, sub_agency, value,
                 start_date, end_date, days_remaining, competition_type,
-                solicitation_id, recompete_score, priority, psc_description, raw_json, updated_at
+                solicitation_id, recompete_score, priority, psc_description, description, raw_json, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(internal_id) DO UPDATE SET
                 award_id=excluded.award_id,
                 vendor=excluded.vendor,
@@ -175,6 +189,7 @@ def save_snapshot(run_date, rows):
                 recompete_score=excluded.recompete_score,
                 priority=excluded.priority,
                 psc_description=excluded.psc_description,
+                description=excluded.description,
                 raw_json=excluded.raw_json,
                 updated_at=CURRENT_TIMESTAMP
             """, (
@@ -192,6 +207,7 @@ def save_snapshot(run_date, rows):
                 int(row.get("recompete_score") or row.get("score") or 0),
                 row.get("priority"),
                 row.get("psc_description") or row.get("category") or "",
+                row.get("description") or "",
                 json.dumps(row, default=str),
             ))
 
@@ -454,8 +470,10 @@ def get_contracts(q="", agency="", category="", priority="", days=None, min_valu
         params.append(f"%{agency}%")
 
     if category:
-        base += " AND c.psc_description LIKE ?"
-        params.append(f"%{category}%")
+        keywords = CATEGORY_KEYWORDS.get(category, [category])
+        clauses = " OR ".join("c.description LIKE ?" for _ in keywords)
+        base += f" AND ({clauses})"
+        params.extend(f"%{kw}%" for kw in keywords)
 
     if priority:
         base += " AND c.priority = ?"
