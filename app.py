@@ -324,12 +324,12 @@ import traceback
 
 @app.route("/dashboard")
 def dashboard():
+    import traceback
     try:
-        user_id = g.user["id"] if g.user else None
-        profile = get_company_profile(user_id) if user_id else None
-
-        if user_id and not profile and not session.get("onboarding_skipped"):
-            return redirect(url_for("onboarding"))
+        return "TEST"
+    except Exception:
+        print(traceback.format_exc())
+        raise
 
         return render_template("dashboard.html")
 
