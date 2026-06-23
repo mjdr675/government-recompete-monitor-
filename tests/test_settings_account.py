@@ -111,3 +111,67 @@ class TestPasswordChange:
         })
         assert verify_password(user["email"], "BrandNew99!") is not None
         assert verify_password(user["email"], "OldPass99!") is None
+
+
+class TestCompanyNameSettings:
+    def test_settings_page_shows_company_name_form(self, logged_in_client):
+        client, user = logged_in_client
+        resp = client.get("/settings/account")
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        assert "Company Name" in body
+        assert 'name="company_name"' in body
+
+    def test_settings_page_shows_existing_company_name(self, db, client):
+        user = users_module.create_user("co@example.com", "Pass1234!", company_name="Apex Gov")
+        set_trial(user["id"], days=7)
+        with client.session_transaction() as sess:
+            sess["user_id"] = user["id"]
+        resp = client.get("/settings/account")
+        assert b"Apex Gov" in resp.data
+
+    def test_shows_dash_when_no_company_name(self, logged_in_client):
+        client, user = logged_in_client
+        body = client.get("/settings/account").get_data(as_text=True)
+        assert "<strong>Company:</strong> —" in body or "Company:</strong> —" in body
+
+    def test_update_company_name_post(self, db, logged_in_client):
+        client, user = logged_in_client
+        resp = client.post("/settings/account/company", data={"company_name": "Delta Logistics"},
+                           follow_redirects=True)
+        assert resp.status_code == 200
+        fresh = users_module.get_user_by_id(user["id"])
+        assert fresh["company_name"] == "Delta Logistics"
+
+    def test_update_company_name_shows_in_sidebar(self, db, logged_in_client):
+        client, user = logged_in_client
+        client.post("/settings/account/company", data={"company_name": "Bravo Systems"},
+                    follow_redirects=True)
+        with client.session_transaction() as sess:
+            sess["onboarding_skipped"] = "1"
+        body = client.get("/dashboard").get_data(as_text=True)
+        assert "Bravo Systems" in body
+
+    def test_clear_company_name_with_blank(self, db, logged_in_client):
+        client, user = logged_in_client
+        client.post("/settings/account/company", data={"company_name": "Old Name"},
+                    follow_redirects=True)
+        client.post("/settings/account/company", data={"company_name": "   "},
+                    follow_redirects=True)
+        fresh = users_module.get_user_by_id(user["id"])
+        assert fresh["company_name"] is None
+
+    def test_update_company_name_requires_auth(self, client):
+        resp = client.post("/settings/account/company", data={"company_name": "X"})
+        assert resp.status_code in (301, 302)
+        assert "/login" in resp.headers["Location"]
+
+    def test_update_company_name_function_directly(self, db):
+        user = users_module.create_user("direct@example.com", "Pass1234!")
+        users_module.update_company_name(user["id"], "Gamma Corp")
+        assert users_module.get_user_by_id(user["id"])["company_name"] == "Gamma Corp"
+
+    def test_update_company_name_clears_to_null(self, db):
+        user = users_module.create_user("clear@example.com", "Pass1234!", company_name="Old")
+        users_module.update_company_name(user["id"], "")
+        assert users_module.get_user_by_id(user["id"])["company_name"] is None

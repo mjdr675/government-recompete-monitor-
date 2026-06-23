@@ -2,8 +2,14 @@
 {% block title %}Vendor Profile{% endblock %}
 
 {% block content %}
-<h1>{{ vendor }}</h1>
-<div class="muted">Vendor intelligence profile</div>
+<div style="margin-bottom:16px">
+  <h1>{{ vendor }}</h1>
+  <div class="muted">Vendor intelligence profile
+    {% if profile.vendor_website %}
+    &nbsp;·&nbsp; <a href="{{ profile.vendor_website }}" target="_blank" rel="noopener noreferrer" data-testid="vendor-website-link" style="font-size:13px">&#127758; Website ↗</a>
+    {% endif %}
+  </div>
+</div>
 
 <div class="cards">
   <div class="card">

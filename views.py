@@ -63,7 +63,49 @@ SAVED_VIEWS = {
         "filters": {
             "days": 90
         }
-    }
+    },
+    "facilities-contracts": {
+        "label": "Facilities Contracts",
+        "description": "Browse Facilities contracts filtered by category.",
+        "filters": {
+            "category": "Facilities"
+        }
+    },
+    "cleaning-contracts": {
+        "label": "Cleaning / Janitorial",
+        "description": "Browse cleaning / janitorial matched by your current filters.",
+        "filters": {"category": "Cleaning"}
+    },
+    "grounds-contracts": {
+        "label": "Grounds / Landscaping",
+        "description": "Browse grounds / landscaping matched by your current filters.",
+        "filters": {"category": "Grounds"}
+    },
+    "it-contracts": {
+        "label": "IT Contracts",
+        "description": "Browse it contracts matched by your current filters.",
+        "filters": {"category": "IT"}
+    },
+    "cybersecurity-contracts": {
+        "label": "Cybersecurity Contracts",
+        "description": "Browse cybersecurity contracts matched by your current filters.",
+        "filters": {"category": "Cybersecurity"}
+    },
+    "construction-contracts": {
+        "label": "Construction Contracts",
+        "description": "Browse construction contracts matched by your current filters.",
+        "filters": {"category": "Construction"}
+    },
+    "security-contracts": {
+        "label": "Physical Security",
+        "description": "Browse physical security matched by your current filters.",
+        "filters": {"category": "Security"}
+    },
+    "logistics-contracts": {
+        "label": "Logistics Contracts",
+        "description": "Browse logistics contracts matched by your current filters.",
+        "filters": {"category": "Logistics"}
+    },
 }
 
 

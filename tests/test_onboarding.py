@@ -41,6 +41,7 @@ def _make_full_profile(**kwargs):
         "set_asides": ["small_business"],
         "states": [],
         "geo_coverage": "nationwide",
+        "keywords": ["IT support"],
     }
     base.update(kwargs)
     return base

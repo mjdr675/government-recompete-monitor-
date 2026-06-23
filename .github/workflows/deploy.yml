@@ -1,0 +1,51 @@
+name: Deploy Recompete
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Stub ae CLI
+        run: |
+          sudo mkdir -p /usr/local/bin
+          echo -e '#!/bin/bash\necho "ae stub running"' | sudo tee /usr/local/bin/ae
+          sudo chmod +x /usr/local/bin/ae
+
+      - name: Run tests
+        run: pytest -q
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /home/michael/government-recompete-monitor-
+            git fetch origin
+            git reset --hard origin/main
+            git clean -fd
+            sudo systemctl restart recompete
+            sudo systemctl status recompete --no-pager

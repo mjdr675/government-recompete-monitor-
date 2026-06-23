@@ -65,29 +65,41 @@ def connect():
 # applied without re-executing — most critically, avoiding the unnecessary
 # search_vector rebuild from 005 on every subsequent startup.
 _MIGRATION_PROBES: dict = {
+    "001_initial_schema.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'contracts'"
+    ),
     "001_initial_pg.sql": (
         "SELECT COUNT(*) FROM information_schema.tables "
         "WHERE table_schema = 'public' AND table_name = 'contracts'"
     ),
+    "002_contract_snapshots.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'contract_snapshots'"
+    ),
     "002_subscription_and_alerts.sql": (
-        "SELECT COUNT(*) FROM information_schema.columns "
-        "WHERE table_name = 'users' AND column_name = 'stripe_customer_id'"
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'user_subscriptions'"
     ),
-    "003_company_name.sql": (
-        "SELECT COUNT(*) FROM information_schema.columns "
-        "WHERE table_name = 'users' AND column_name = 'company_name'"
+    "003_changes.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'changes'"
     ),
-    "004_contracts_days_remaining_index.sql": (
-        "SELECT COUNT(*) FROM pg_indexes "
-        "WHERE indexname = 'idx_contracts_days_remaining'"
+    "004_saved_views.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'saved_views'"
     ),
-    "005_contracts_description_search.sql": (
-        "SELECT COUNT(*) FROM information_schema.columns "
-        "WHERE table_name = 'contracts' AND column_name = 'description'"
+    "005_users.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'users'"
+    ),
+    "006_user_companies.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'user_companies'"
     ),
     "006_company_profile.sql": (
         "SELECT COUNT(*) FROM information_schema.tables "
-        "WHERE table_schema = 'public' AND table_name = 'company_profiles'"
+        "WHERE table_schema = 'public' AND table_name = 'user_companies'"
     ),
     "007_opportunities.sql": (
         "SELECT COUNT(*) FROM information_schema.tables "
@@ -96,6 +108,27 @@ _MIGRATION_PROBES: dict = {
     "008_notification_preferences.sql": (
         "SELECT COUNT(*) FROM information_schema.tables "
         "WHERE table_schema = 'public' AND table_name = 'user_notification_preferences'"
+    ),
+    "009_contracts_ci_columns.sql": (
+        "SELECT COUNT(*) FROM information_schema.columns "
+        "WHERE table_name = 'contracts' AND column_name = 'place_of_performance_state'"
+    ),
+    "010_discovery_columns.sql": (
+        "SELECT COUNT(*) FROM information_schema.columns "
+        "WHERE table_name = 'contracts' AND column_name = 'place_of_performance_state'"
+    ),
+    "003_company_name.sql": (
+        "SELECT 1"
+    ),
+    "004_contracts_days_remaining_index.sql": (
+        "SELECT 1"
+    ),
+    "005_contracts_description_search.sql": (
+        "SELECT 1"
+    ),
+    "011_company_keywords.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'company_keywords'"
     ),
 }
 
@@ -273,6 +306,101 @@ def _apply_pg_migrations() -> None:
     _apply_migrations()
 
 
+# ---------------------------------------------------------------------------
+# Contract-intelligence helpers
+# ---------------------------------------------------------------------------
+
+_CATEGORY_RULES = [
+    ("Cybersecurity", ["cyber", "information security", "security operations", "soc "]),
+    ("IT", [
+        "information technology", "help desk", "helpdesk", "software", "cloud ",
+        "network ", "hardware", "data center", "systems integrat",
+        "it support", "it service", "managed service",
+    ]),
+    ("Cleaning", ["janitorial", "cleaning", "custodial", "housekeeping", "sanitation"]),
+    ("Grounds", ["grounds", "landscaping", "lawn", "mowing", "turf "]),
+    ("Facilities", [
+        "facility", "facilities", "hvac", "building maintenance",
+        "operations and maintenance", "o&m", "maintenance and repair",
+    ]),
+    ("Construction", ["construction", "renovation", "roofing", "paving", "demolition", "structural"]),
+    ("Logistics", ["logistics", "supply chain", "transportation", "shipping", "warehousing", "distribution"]),
+    ("Security", ["security guard", "physical security", "guard service", "armed guard", "unarmed guard"]),
+    ("Administrative", ["administrative support", "administrative services", "program support", "clerical"]),
+]
+
+_NAICS_CATEGORY_MAP = [
+    ("5415", "IT"), ("5416", "IT"), ("5413", "IT"),
+    ("7371", "IT"), ("7372", "IT"), ("7374", "IT"),
+    ("2381", "Construction"), ("2382", "Construction"),
+    ("2383", "Construction"), ("2389", "Construction"),
+    ("56173", "Grounds"),
+    ("5617", "Cleaning"),
+    ("56161", "Security"), ("5616", "Security"),
+    ("4841", "Logistics"), ("4842", "Logistics"), ("4931", "Logistics"),
+]
+
+ALL_CATEGORIES = [
+    "Administrative", "Cleaning", "Construction", "Cybersecurity",
+    "Facilities", "Grounds", "IT", "Logistics", "Security",
+]
+
+
+def infer_category(description="", naics_code="", vendor="", agency=""):
+    """Return a human-readable contract category inferred from available fields.
+
+    Checks keyword rules against description+vendor first, then falls back to
+    NAICS code prefix matching. Returns 'Other' when nothing matches.
+    """
+    text = " ".join(filter(None, [description, vendor])).lower()
+    for cat, keywords in _CATEGORY_RULES:
+        for kw in keywords:
+            if kw in text:
+                return cat
+    if naics_code:
+        nc = str(naics_code).strip()
+        for prefix, cat in _NAICS_CATEGORY_MAP:
+            if nc.startswith(prefix):
+                return cat
+    return "Other"
+
+
+def extract_raw_field(row, field, default=None):
+    """Pull a field from a contract row's raw_json blob.
+
+    Returns the field value when present, or *default* when raw_json is absent,
+    unparseable, or the field is missing/falsy.  Never raises.
+    """
+    raw = row.get("raw_json") if row else None
+    if not raw:
+        return default
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else raw
+        return data.get(field) or default
+    except Exception:
+        return default
+
+
+def _ensure_ci_columns():
+    """Add place_of_performance_state and vendor_website to contracts if absent.
+
+    SQLite does not support IF NOT EXISTS on ALTER TABLE; we check PRAGMA
+    table_info first.  Idempotent — safe to call on every startup.
+    """
+    engine = get_engine()
+    with engine.begin() as conn:
+        rows = conn.execute(text("PRAGMA table_info(contracts)")).fetchall()
+        if not rows:
+            return
+        existing = {r[1] for r in rows}
+        for col, coltype in [
+            ("place_of_performance_state", "TEXT"),
+            ("vendor_website", "TEXT"),
+        ]:
+            if col not in existing:
+                conn.execute(text(f"ALTER TABLE contracts ADD COLUMN {col} {coltype}"))
+
+
 def _ensure_description_column():
     """Migrate existing SQLite DBs to add description column and rebuild FTS with it.
 
@@ -297,6 +425,44 @@ def _ensure_description_column():
     return True
 
 
+def _extract_pop_state(row):
+    """Best-effort extraction of a US state abbreviation from a contract row."""
+    for key in ("place_of_performance_state", "pop_state", "state"):
+        val = row.get(key)
+        if val and str(val).strip():
+            return str(val).strip()[:2].upper()
+    for key in ("place_of_performance_city", "pop_city", "city"):
+        val = row.get(key)
+        if val and "," in str(val):
+            parts = str(val).rsplit(",", 1)
+            st = parts[-1].strip()[:2].upper()
+            if len(st) == 2 and st.isalpha():
+                return st
+    return None
+
+
+def _ensure_discovery_columns():
+    """Add naics_code, place_of_performance_state, category to SQLite; rebuild FTS if needed."""
+    engine = get_engine()
+    with engine.begin() as conn:
+        rows = conn.execute(text("PRAGMA table_info(contracts)")).fetchall()
+        if not rows:
+            return False
+        cols = [r[1] for r in rows]
+        added = False
+        for col_def in ("naics_code TEXT", "place_of_performance_state TEXT", "category TEXT"):
+            col_name = col_def.split()[0]
+            if col_name not in cols:
+                conn.execute(text(f"ALTER TABLE contracts ADD COLUMN {col_def}"))
+                added = True
+        if added:
+            conn.execute(text("DROP TABLE IF EXISTS contracts_fts"))
+            conn.execute(text("DROP TRIGGER IF EXISTS contracts_ai"))
+            conn.execute(text("DROP TRIGGER IF EXISTS contracts_ad"))
+            conn.execute(text("DROP TRIGGER IF EXISTS contracts_au"))
+    return added
+
+
 def init_db():
     database_url = os.environ.get("DATABASE_URL", "")
     if database_url:
@@ -304,6 +470,8 @@ def init_db():
         return
 
     needs_fts_rebuild = _ensure_description_column()
+    _ensure_ci_columns()
+    needs_fts_rebuild = _ensure_discovery_columns() or needs_fts_rebuild
 
     engine = get_engine()
     with engine.begin() as conn:
@@ -315,6 +483,9 @@ def init_db():
             agency TEXT,
             sub_agency TEXT,
             description TEXT,
+            naics_code TEXT,
+            place_of_performance_state TEXT,
+            category TEXT,
             value REAL,
             start_date TEXT,
             end_date TEXT,
@@ -324,7 +495,8 @@ def init_db():
             recompete_score INTEGER,
             priority TEXT,
             raw_json TEXT,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            vendor_website TEXT
         )
         """))
         conn.execute(text(
@@ -348,28 +520,28 @@ def init_db():
         conn.execute(text("""
         CREATE VIRTUAL TABLE IF NOT EXISTS contracts_fts USING fts5(
             internal_id UNINDEXED,
-            vendor, agency, award_id, description,
+            vendor, agency, award_id, description, naics_code, place_of_performance_state,
             content='contracts', content_rowid='rowid'
         )
         """))
         conn.execute(text("""
         CREATE TRIGGER IF NOT EXISTS contracts_ai AFTER INSERT ON contracts BEGIN
-            INSERT INTO contracts_fts(rowid, internal_id, vendor, agency, award_id, description)
-            VALUES (new.rowid, new.internal_id, new.vendor, new.agency, new.award_id, new.description);
+            INSERT INTO contracts_fts(rowid, internal_id, vendor, agency, award_id, description, naics_code, place_of_performance_state)
+            VALUES (new.rowid, new.internal_id, new.vendor, new.agency, new.award_id, new.description, new.naics_code, new.place_of_performance_state);
         END
         """))
         conn.execute(text("""
         CREATE TRIGGER IF NOT EXISTS contracts_ad AFTER DELETE ON contracts BEGIN
-            INSERT INTO contracts_fts(contracts_fts, rowid, internal_id, vendor, agency, award_id, description)
-            VALUES ('delete', old.rowid, old.internal_id, old.vendor, old.agency, old.award_id, old.description);
+            INSERT INTO contracts_fts(contracts_fts, rowid, internal_id, vendor, agency, award_id, description, naics_code, place_of_performance_state)
+            VALUES ('delete', old.rowid, old.internal_id, old.vendor, old.agency, old.award_id, old.description, old.naics_code, old.place_of_performance_state);
         END
         """))
         conn.execute(text("""
         CREATE TRIGGER IF NOT EXISTS contracts_au AFTER UPDATE ON contracts BEGIN
-            INSERT INTO contracts_fts(contracts_fts, rowid, internal_id, vendor, agency, award_id, description)
-            VALUES ('delete', old.rowid, old.internal_id, old.vendor, old.agency, old.award_id, old.description);
-            INSERT INTO contracts_fts(rowid, internal_id, vendor, agency, award_id, description)
-            VALUES (new.rowid, new.internal_id, new.vendor, new.agency, new.award_id, new.description);
+            INSERT INTO contracts_fts(contracts_fts, rowid, internal_id, vendor, agency, award_id, description, naics_code, place_of_performance_state)
+            VALUES ('delete', old.rowid, old.internal_id, old.vendor, old.agency, old.award_id, old.description, old.naics_code, old.place_of_performance_state);
+            INSERT INTO contracts_fts(rowid, internal_id, vendor, agency, award_id, description, naics_code, place_of_performance_state)
+            VALUES (new.rowid, new.internal_id, new.vendor, new.agency, new.award_id, new.description, new.naics_code, new.place_of_performance_state);
         END
         """))
         if needs_fts_rebuild:
@@ -396,6 +568,7 @@ def init_db():
             "subscription_status TEXT NOT NULL DEFAULT 'trialing'",
             "trial_ends_at TEXT",
             "company_name TEXT",
+            "billing_interval TEXT",
         ):
             try:
                 conn.execute(text(f"ALTER TABLE users ADD COLUMN {col}"))
@@ -531,6 +704,14 @@ def init_db():
             profile_id  INTEGER NOT NULL REFERENCES company_profiles(id) ON DELETE CASCADE,
             set_aside_type TEXT NOT NULL,
             UNIQUE(profile_id, set_aside_type)
+        )
+        """))
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS company_keywords (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile_id  INTEGER NOT NULL REFERENCES company_profiles(id) ON DELETE CASCADE,
+            keyword     TEXT NOT NULL,
+            UNIQUE(profile_id, keyword)
         )
         """))
         conn.execute(text("""
@@ -690,6 +871,12 @@ def get_company_profile(user_id):
                 {"pid": pid},
             ).fetchall()
         ]
+        profile["keywords"] = [
+            r[0] for r in conn.execute(
+                text("SELECT keyword FROM company_keywords WHERE profile_id = :pid ORDER BY keyword"),
+                {"pid": pid},
+            ).fetchall()
+        ]
     return profile
 
 
@@ -711,6 +898,13 @@ def save_company_profile(user_id, data):
     states = [s.strip() for s in (data.get("states") or []) if s.strip()]
     agencies = [a.strip() for a in (data.get("agencies") or []) if a.strip()]
     set_asides = [s.strip() for s in (data.get("set_asides") or []) if s.strip()]
+    keywords_raw = data.get("keywords") or []
+    if isinstance(keywords_raw, str):
+        keywords_raw = [
+            k for part in keywords_raw.replace(",", "\n").splitlines()
+            for k in [part.strip()] if k
+        ]
+    keywords = [k.lower() for k in keywords_raw if k.strip()]
 
     min_val = data.get("min_contract_value")
     max_val = data.get("max_contract_value")
@@ -754,7 +948,8 @@ def save_company_profile(user_id, data):
         # Replace all multi-value lists wholesale.  ON CONFLICT DO NOTHING
         # is defensive against duplicate values in the submitted lists.
         for table in ("company_naics", "company_states",
-                      "company_preferred_agencies", "company_set_asides"):
+                      "company_preferred_agencies", "company_set_asides",
+                      "company_keywords"):
             conn.execute(
                 text(f"DELETE FROM {table} WHERE profile_id = :pid"),
                 {"pid": profile_id},
@@ -787,6 +982,13 @@ def save_company_profile(user_id, data):
                      " VALUES (:pid, :sa)"
                      " ON CONFLICT(profile_id, set_aside_type) DO NOTHING"),
                 {"pid": profile_id, "sa": sa},
+            )
+        for kw in keywords:
+            conn.execute(
+                text("INSERT INTO company_keywords (profile_id, keyword)"
+                     " VALUES (:pid, :kw)"
+                     " ON CONFLICT(profile_id, keyword) DO NOTHING"),
+                {"pid": profile_id, "kw": kw},
             )
 
     return profile_id
@@ -1007,16 +1209,26 @@ def upsert_contract(row):
         return
 
     now = datetime.now(timezone.utc).isoformat()
+    naics_code = row.get("naics_code") or row.get("naics") or ""
+    pop_state = _extract_pop_state(row)
+    category = infer_category(
+        description=row.get("description") or "",
+        naics_code=naics_code,
+        vendor=row.get("vendor") or "",
+        agency=row.get("agency") or "",
+    )
 
     with get_engine().begin() as conn:
         conn.execute(text("""
         INSERT INTO contracts (
-            internal_id, award_id, vendor, agency, sub_agency, description, value,
-            start_date, end_date, days_remaining, competition_type,
+            internal_id, award_id, vendor, agency, sub_agency, description,
+            naics_code, place_of_performance_state, category,
+            value, start_date, end_date, days_remaining, competition_type,
             solicitation_id, recompete_score, priority, raw_json, updated_at
         )
-        VALUES (:internal_id, :award_id, :vendor, :agency, :sub_agency, :description, :value,
-                :start_date, :end_date, :days_remaining, :competition_type,
+        VALUES (:internal_id, :award_id, :vendor, :agency, :sub_agency, :description,
+                :naics_code, :place_of_performance_state, :category,
+                :value, :start_date, :end_date, :days_remaining, :competition_type,
                 :solicitation_id, :recompete_score, :priority, :raw_json, :updated_at)
         ON CONFLICT(internal_id) DO UPDATE SET
             award_id=excluded.award_id,
@@ -1024,6 +1236,9 @@ def upsert_contract(row):
             agency=excluded.agency,
             sub_agency=excluded.sub_agency,
             description=excluded.description,
+            naics_code=excluded.naics_code,
+            place_of_performance_state=excluded.place_of_performance_state,
+            category=excluded.category,
             value=excluded.value,
             start_date=excluded.start_date,
             end_date=excluded.end_date,
@@ -1041,6 +1256,9 @@ def upsert_contract(row):
             "agency": row.get("agency"),
             "sub_agency": row.get("sub_agency"),
             "description": row.get("description"),
+            "naics_code": naics_code,
+            "place_of_performance_state": pop_state,
+            "category": category,
             "value": float(row.get("value") or 0),
             "start_date": row.get("start_date"),
             "end_date": row.get("end_date"),
@@ -1093,14 +1311,24 @@ def save_snapshot(run_date, rows):
             if not internal_id:
                 continue
 
+            naics_code = row.get("naics_code") or row.get("naics") or ""
+            pop_state = _extract_pop_state(row)
+            category = infer_category(
+                description=row.get("description") or "",
+                naics_code=naics_code,
+                vendor=row.get("vendor") or "",
+                agency=row.get("agency") or "",
+            )
             conn.execute(text("""
             INSERT INTO contracts (
-                internal_id, award_id, vendor, agency, sub_agency, description, value,
-                start_date, end_date, days_remaining, competition_type,
+                internal_id, award_id, vendor, agency, sub_agency, description,
+                naics_code, place_of_performance_state, category,
+                value, start_date, end_date, days_remaining, competition_type,
                 solicitation_id, recompete_score, priority, raw_json, updated_at
             )
-            VALUES (:internal_id, :award_id, :vendor, :agency, :sub_agency, :description, :value,
-                    :start_date, :end_date, :days_remaining, :competition_type,
+            VALUES (:internal_id, :award_id, :vendor, :agency, :sub_agency, :description,
+                    :naics_code, :place_of_performance_state, :category,
+                    :value, :start_date, :end_date, :days_remaining, :competition_type,
                     :solicitation_id, :recompete_score, :priority, :raw_json, CURRENT_TIMESTAMP)
             ON CONFLICT(internal_id) DO UPDATE SET
                 award_id=excluded.award_id,
@@ -1108,6 +1336,9 @@ def save_snapshot(run_date, rows):
                 agency=excluded.agency,
                 sub_agency=excluded.sub_agency,
                 description=excluded.description,
+                naics_code=excluded.naics_code,
+                place_of_performance_state=excluded.place_of_performance_state,
+                category=excluded.category,
                 value=excluded.value,
                 start_date=excluded.start_date,
                 end_date=excluded.end_date,
@@ -1125,6 +1356,9 @@ def save_snapshot(run_date, rows):
                 "agency": row.get("agency"),
                 "sub_agency": row.get("sub_agency"),
                 "description": row.get("description"),
+                "naics_code": naics_code,
+                "place_of_performance_state": pop_state,
+                "category": category,
                 "value": float(row.get("value") or 0),
                 "start_date": row.get("start_date"),
                 "end_date": row.get("end_date"),
@@ -1344,6 +1578,58 @@ def save_early_access(email: str, hubspot_contact_id: str | None = None) -> None
 
 _SORTABLE = {"recompete_score", "value", "days_remaining", "end_date", "priority", "vendor", "agency"}
 
+_CATEGORY_RULES = [
+    ("Cybersecurity", ["cyber", "information security", "security operations", "soc "]),
+    ("IT", ["information technology", "help desk", "helpdesk", "software", "cloud ", "network ", "hardware", "data center", "systems integrat", "it support", "it service", "managed service"]),
+    ("Cleaning", ["janitorial", "cleaning", "custodial", "housekeeping", "sanitation"]),
+    ("Grounds", ["grounds", "landscaping", "lawn", "mowing", "turf "]),
+    ("Facilities", ["facility", "facilities", "hvac", "building maintenance", "operations and maintenance", "o&m", "maintenance and repair"]),
+    ("Construction", ["construction", "renovation", "roofing", "paving", "demolition", "structural"]),
+    ("Logistics", ["logistics", "supply chain", "transportation", "shipping", "warehousing", "distribution"]),
+    ("Security", ["security guard", "physical security", "guard service", "armed guard", "unarmed guard"]),
+    ("Administrative", ["administrative support", "administrative services", "program support", "clerical"]),
+]
+
+_NAICS_CATEGORY_MAP = [
+    ("5415", "IT"), ("5416", "IT"), ("5413", "IT"), ("7371", "IT"), ("7372", "IT"), ("7374", "IT"),
+    ("2381", "Construction"), ("2382", "Construction"), ("2383", "Construction"), ("2389", "Construction"),
+    ("56173", "Grounds"),
+    ("5617", "Cleaning"),
+    ("56161", "Security"), ("5616", "Security"),
+    ("4841", "Logistics"), ("4842", "Logistics"), ("4931", "Logistics"),
+]
+
+ALL_CATEGORIES = [
+    "Administrative", "Cleaning", "Construction", "Cybersecurity",
+    "Facilities", "Grounds", "IT", "Logistics", "Security",
+]
+
+
+def infer_category(description="", naics_code="", vendor="", agency=""):
+    text = " ".join(filter(None, [description, vendor])).lower()
+    for cat, keywords in _CATEGORY_RULES:
+        for kw in keywords:
+            if kw in text:
+                return cat
+    if naics_code:
+        nc = str(naics_code).strip()
+        for prefix, cat in _NAICS_CATEGORY_MAP:
+            if nc.startswith(prefix):
+                return cat
+    return "Other"
+
+
+def list_contract_states(engine=None):
+    if engine is None:
+        engine = get_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(text(
+            "SELECT DISTINCT place_of_performance_state FROM contracts"
+            " WHERE place_of_performance_state IS NOT NULL AND place_of_performance_state != ''"
+            " ORDER BY place_of_performance_state"
+        )).fetchall()
+    return [r[0] for r in rows]
+
 
 def list_saved_searches(user_id):
     """Return a user's saved searches (newest first) with parsed params.
@@ -1382,7 +1668,7 @@ def search_tokens(q, limit=8):
     return re.findall(r"[a-z0-9]+", (q or "").lower())[:limit]
 
 
-def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort="recompete_score", direction="desc", page=1, limit=25, status="", profile_filter=None, internal_ids=None):
+def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort="recompete_score", direction="desc", page=1, limit=25, status="", profile_filter=None, internal_ids=None, state="", category="", exclude_ids=None):
     engine = get_engine()
     is_pg = engine.dialect.name == "postgresql"
 
@@ -1470,6 +1756,20 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
             base += f" AND c.internal_id IN ({placeholders})"
             for i, iid in enumerate(internal_ids):
                 params[f"iid_{i}"] = iid
+
+    if state:
+        base += " AND c.place_of_performance_state = :state"
+        params["state"] = state.upper()
+
+    if category:
+        base += " AND c.category = :category"
+        params["category"] = category
+
+    if exclude_ids is not None and len(exclude_ids) > 0:
+        ex_placeholders = ", ".join(f":ex_{i}" for i in range(len(exclude_ids)))
+        base += f" AND c.internal_id NOT IN ({ex_placeholders})"
+        for i, eid in enumerate(exclude_ids):
+            params[f"ex_{i}"] = eid
 
     col = sort if sort in _SORTABLE else "recompete_score"
     order = "ASC" if direction == "asc" else "DESC"

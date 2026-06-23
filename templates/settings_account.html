@@ -9,6 +9,7 @@
   <div class="settings-card">
     <h2>Account</h2>
     <p style="margin:0 0 4px"><strong>Email:</strong> {{ user.email }}</p>
+    <p style="margin:0 0 4px"><strong>Company:</strong> {{ user.company_name or '—' }}</p>
     <p style="margin:0 0 12px;font-size:13px;color:var(--text-muted)">
       Subscription:
       {% if user.subscription_status == 'active' %}
@@ -27,6 +28,26 @@
     {% else %}
       <a href="/subscribe" class="btn btn-primary" style="font-size:13px">Upgrade to Pro →</a>
     {% endif %}
+  </div>
+
+  <div class="settings-card">
+    <h2>Company Name</h2>
+    {% if company_error %}
+      <div class="auth-error" style="margin-bottom:16px">{{ company_error }}</div>
+    {% endif %}
+    {% if company_success %}
+      <div class="auth-success" style="margin-bottom:16px">{{ company_success }}</div>
+    {% endif %}
+    <form method="post" action="/settings/account/company">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="company_name">Company name <span class="hint">(shown in your workspace)</span></label>
+        <input type="text" id="company_name" name="company_name" maxlength="120"
+               value="{{ user.company_name or '' }}" placeholder="Your company or agency"
+               autocomplete="organization">
+      </div>
+      <button type="submit" class="btn btn-primary" style="margin-top:4px">Save company name</button>
+    </form>
   </div>
 
   <div class="settings-card">

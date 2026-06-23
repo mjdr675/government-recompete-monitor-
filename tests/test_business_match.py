@@ -274,9 +274,9 @@ class TestBusinessMatchScore:
             max_contract_value=5_000_000,
         )
         contract = _make_contract(agency="Department of Defense", value=500_000)
-        # agency matches (25 pts), value misses (0/25), possible=50
+        # agency matches (25 pts), value misses (0/20), possible=45 → round(25/45*100)=56
         score = business_match_score(contract, profile)
-        assert score == 50
+        assert score == 56
 
     def test_contract_value_none_skips_value_dimension(self):
         profile = _make_profile(min_contract_value=1_000_000, agencies=["Defense"])
@@ -524,7 +524,7 @@ class TestDashboardBizOpportunities:
         })
         rv = authed_client.get("/dashboard")
         body = rv.get_data(as_text=True)
-        assert "Opportunities For Your Business" in body
+        assert "Recommended for your company" in body
 
     def test_dashboard_no_opportunities_section_with_no_match(self, authed_client, biz_db):
         from db import save_company_profile

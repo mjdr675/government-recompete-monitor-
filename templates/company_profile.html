@@ -142,6 +142,13 @@
     {% endif %}
   </div>
 
+  {# ── Keywords ─────────────────────────────────────────────────────────── #}
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:20px">
+    <h2 style="margin-top:0;margin-bottom:8px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)">Keywords</h2>
+    <div class="muted" style="font-size:13px;margin-bottom:10px">Plain-language descriptions of your services — used to find matching contracts. Enter one per line or comma-separated.<br>Examples: janitorial, lawn care, IT support, facilities management</div>
+    <textarea name="keywords" rows="3" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:14px;resize:vertical">{% if profile and profile.keywords %}{{ profile.keywords | join(', ') }}{% endif %}</textarea>
+  </div>
+
   {# ── Set-Aside Preferences ────────────────────────────────────────────── #}
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:20px">
     <h2 style="margin-top:0;margin-bottom:12px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)">Set-Aside Preferences</h2>
