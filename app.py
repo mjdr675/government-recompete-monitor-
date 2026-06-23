@@ -322,6 +322,12 @@ def index():
 
 import traceback
 
+try:
+    ...
+except Exception as e:
+    print(traceback.format_exc())
+    raise
+    
 @app.route("/dashboard")
 def dashboard():
     user_id = g.user["id"] if g.user else None
