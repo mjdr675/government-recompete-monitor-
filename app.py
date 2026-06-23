@@ -102,14 +102,14 @@ def _configure_json_logging() -> None:
         root.addHandler(logging.StreamHandler(sys.stdout))
     for handler in root.handlers:
         handler.setFormatter(formatter)
-        
-app.config["PROPAGATE_EXCEPTIONS"] = True
-app.config["TRAP_HTTP_EXCEPTIONS"] = True
+
 
 _configure_json_logging()
 
 app = Flask(__name__)
 load_dotenv()
+app.config["PROPAGATE_EXCEPTIONS"] = True
+app.config["TRAP_HTTP_EXCEPTIONS"] = True
 
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
