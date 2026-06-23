@@ -91,7 +91,7 @@
 
 {% if g.user %}
 {% set p = request.path %}
-{% set user_initial = (g.user.get('company_name') or g.user['email'])[0].upper() %}
+{% set user_initial = (g.user.get('company_name') or g.user.get('email') or 'Workspace')[0].upper() %}
 <div class="app-layout">
   <div class="sidebar-backdrop" onclick="document.body.classList.remove('sidebar-open')" aria-hidden="true"></div>
   <aside class="sidebar">
@@ -137,7 +137,7 @@
     <div class="sidebar-footer">
       <div class="sidebar-user">
         <span class="sidebar-avatar-sm" aria-hidden="true">{{ user_initial }}</span>
-        <span class="sidebar-user-name" title="{{ g.user['email'] }}">{{ g.user.get('company_name') or g.user['email'] }}</span>
+        <span class="sidebar-user-name" title="{{ g.user.get('email', '') }}">{{ g.user.get('company_name') or g.user.get('email') or 'Workspace' }}</span>
       </div>
       <div class="sidebar-footer-links">
         {% if g.user.get('stripe_customer_id') %}

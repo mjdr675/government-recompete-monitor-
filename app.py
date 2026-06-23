@@ -50,6 +50,7 @@ from db import (
 from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
 from analytics import dashboard_analytics, opportunity_recommendations, dashboard_recommended_actions, business_opportunities
+from analytics import suggested_matches as get_suggested_matches, my_contracts_summary
 from business_match import (
     business_match_score,
     business_match_reasons,
@@ -350,6 +351,8 @@ def dashboard():
     dash_actions = dashboard_recommended_actions(user_id)
     has_profile = bool(profile)
     biz_opps = business_opportunities(user_id)
+    my_contracts = my_contracts_summary(user_id)
+    suggested = get_suggested_matches(user_id)
     p_completion = profile_completeness(profile) if profile else 0
     p_hints = profile_completion_hints(profile) if profile and p_completion < 100 else []
 
@@ -382,6 +385,9 @@ def dashboard():
         recommendations=recommendations,
         dash_actions=dash_actions,
         biz_opps=biz_opps,
+        my_contracts=my_contracts,
+        suggested_matches=suggested,
+        company_name=profile.get("company_name") if profile else None,
         has_profile=has_profile,
         profile_completion=p_completion,
         profile_hints=p_hints,
@@ -1417,6 +1423,11 @@ def company_profile_page():
         states = [s for s in request.form.getlist("states") if s in _VALID_STATE_CODES]
         agencies = [a for a in request.form.getlist("agencies") if a in frozenset(all_agencies)]
         set_asides = [s for s in request.form.getlist("set_asides") if s in _VALID_SET_ASIDES]
+        keywords_raw = request.form.get("keywords", "")
+        keywords = [
+            k for part in keywords_raw.replace(",", "\n").splitlines()
+            for k in [part.strip()] if k
+        ]
 
         min_val = request.form.get("min_contract_value", "").strip()
         max_val = request.form.get("max_contract_value", "").strip()
@@ -1447,6 +1458,7 @@ def company_profile_page():
                 "states": states if geo_coverage == "states" else [],
                 "agencies": agencies,
                 "set_asides": set_asides,
+                "keywords": keywords,
             })
             success = "Profile saved."
 

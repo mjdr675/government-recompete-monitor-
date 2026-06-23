@@ -77,14 +77,27 @@ def _agency_matches(contract_agency: str, profile_agencies: list[str]) -> bool:
     return False
 
 
+def _keyword_matches(contract, profile_keywords: list[str]) -> list[str]:
+    """Return the subset of profile_keywords found in vendor/description/award_id."""
+    if not profile_keywords:
+        return []
+    searchable = " ".join(filter(None, [
+        contract.get("vendor") or "",
+        contract.get("description") or "",
+        contract.get("award_id") or "",
+    ])).lower()
+    return [kw for kw in profile_keywords if kw and kw.lower() in searchable]
+
+
 def business_match_score(contract, profile) -> int:
     """Return a 0–100 Business Match score for a contract against a company profile.
 
     Weights:
       - NAICS match  : 35 pts  (only when contract has sam_naics AND profile has codes)
       - Agency match : 25 pts  (only when profile has preferred agencies)
-      - Value range  : 25 pts  (only when profile has min or max value)
-      - Set-aside    : 15 pts  (only when profile has set-asides AND contract has competition_type)
+      - Value range  : 20 pts  (only when profile has min or max value)
+      - Set-aside    : 10 pts  (only when profile has set-asides AND contract has competition_type)
+      - Keywords     : 10 pts  (only when profile has keywords)
 
     Each dimension is skipped (not penalised) when the data is unavailable.
     Returns 0 if profile is None or no dimension can be evaluated.
@@ -117,19 +130,28 @@ def business_match_score(contract, profile) -> int:
     if min_val is not None or max_val is not None:
         contract_value = contract.get("value")
         if contract_value is not None:
-            possible += 25
+            possible += 20
             in_min = (contract_value >= min_val) if min_val is not None else True
             in_max = (contract_value <= max_val) if max_val is not None else True
             if in_min and in_max:
-                earned += 25
+                earned += 20
 
     # Set-aside
     profile_set_asides = profile.get("set_asides") or []
     competition_type = contract.get("competition_type") or ""
     if profile_set_asides and competition_type:
-        possible += 15
+        possible += 10
         if any(_comp_type_matches_set_aside(competition_type, sa) for sa in profile_set_asides):
-            earned += 15
+            earned += 10
+
+    # Keywords
+    profile_keywords = profile.get("keywords") or []
+    if profile_keywords:
+        possible += 10
+        matched = _keyword_matches(contract, profile_keywords)
+        if matched:
+            ratio = len(matched) / len(profile_keywords)
+            earned += round(10 * min(ratio, 1.0))
 
     if possible == 0:
         return 0
@@ -170,6 +192,12 @@ def business_match_reasons(contract, profile) -> list[str]:
                 label = _SET_ASIDE_LABELS.get(sa, sa)
                 reasons.append(f"Matches your {label} set-aside preference")
                 break
+
+    profile_keywords = profile.get("keywords") or []
+    matched_kws = _keyword_matches(contract, profile_keywords)
+    if matched_kws:
+        display = ", ".join(matched_kws[:3])
+        reasons.append(f"Keywords match: {display}")
 
     return reasons
 
@@ -229,7 +257,7 @@ def _set_aside_sql_keywords(set_aside_codes: list[str]) -> list[str]:
     return keywords
 
 
-# Profile completeness: 7 dimensions, each worth ~14 points.
+# Profile completeness: 8 dimensions, each worth 12.5 points.
 _COMPLETENESS_FIELDS = [
     ("company_name", lambda p: bool(p.get("company_name"))),
     ("naics_codes", lambda p: bool(p.get("naics_codes"))),
@@ -238,6 +266,7 @@ _COMPLETENESS_FIELDS = [
     ("max_contract_value", lambda p: p.get("max_contract_value") is not None),
     ("set_asides", lambda p: bool(p.get("set_asides"))),
     ("geo", lambda p: bool(p.get("states")) or p.get("geo_coverage") == "nationwide"),
+    ("keywords", lambda p: bool(p.get("keywords"))),
 ]
 
 
@@ -262,4 +291,6 @@ def profile_completion_hints(profile) -> list[str]:
         hints.append("Set your preferred contract size range.")
     if not profile.get("set_asides"):
         hints.append("Add your set-aside certifications if applicable.")
+    if not profile.get("keywords"):
+        hints.append("Add keywords (e.g. 'lawn care', 'janitorial', 'IT support') to improve matching.")
     return hints

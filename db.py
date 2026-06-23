@@ -97,6 +97,10 @@ _MIGRATION_PROBES: dict = {
         "SELECT COUNT(*) FROM information_schema.tables "
         "WHERE table_schema = 'public' AND table_name = 'user_notification_preferences'"
     ),
+    "011_company_keywords.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'company_keywords'"
+    ),
 }
 
 
@@ -396,6 +400,7 @@ def init_db():
             "subscription_status TEXT NOT NULL DEFAULT 'trialing'",
             "trial_ends_at TEXT",
             "company_name TEXT",
+            "billing_interval TEXT",
         ):
             try:
                 conn.execute(text(f"ALTER TABLE users ADD COLUMN {col}"))
@@ -531,6 +536,14 @@ def init_db():
             profile_id  INTEGER NOT NULL REFERENCES company_profiles(id) ON DELETE CASCADE,
             set_aside_type TEXT NOT NULL,
             UNIQUE(profile_id, set_aside_type)
+        )
+        """))
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS company_keywords (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile_id  INTEGER NOT NULL REFERENCES company_profiles(id) ON DELETE CASCADE,
+            keyword     TEXT NOT NULL,
+            UNIQUE(profile_id, keyword)
         )
         """))
         conn.execute(text("""
@@ -690,6 +703,12 @@ def get_company_profile(user_id):
                 {"pid": pid},
             ).fetchall()
         ]
+        profile["keywords"] = [
+            r[0] for r in conn.execute(
+                text("SELECT keyword FROM company_keywords WHERE profile_id = :pid ORDER BY keyword"),
+                {"pid": pid},
+            ).fetchall()
+        ]
     return profile
 
 
@@ -711,6 +730,13 @@ def save_company_profile(user_id, data):
     states = [s.strip() for s in (data.get("states") or []) if s.strip()]
     agencies = [a.strip() for a in (data.get("agencies") or []) if a.strip()]
     set_asides = [s.strip() for s in (data.get("set_asides") or []) if s.strip()]
+    keywords_raw = data.get("keywords") or []
+    if isinstance(keywords_raw, str):
+        keywords_raw = [
+            k for part in keywords_raw.replace(",", "\n").splitlines()
+            for k in [part.strip()] if k
+        ]
+    keywords = [k.lower() for k in keywords_raw if k.strip()]
 
     min_val = data.get("min_contract_value")
     max_val = data.get("max_contract_value")
@@ -754,7 +780,8 @@ def save_company_profile(user_id, data):
         # Replace all multi-value lists wholesale.  ON CONFLICT DO NOTHING
         # is defensive against duplicate values in the submitted lists.
         for table in ("company_naics", "company_states",
-                      "company_preferred_agencies", "company_set_asides"):
+                      "company_preferred_agencies", "company_set_asides",
+                      "company_keywords"):
             conn.execute(
                 text(f"DELETE FROM {table} WHERE profile_id = :pid"),
                 {"pid": profile_id},
@@ -787,6 +814,13 @@ def save_company_profile(user_id, data):
                      " VALUES (:pid, :sa)"
                      " ON CONFLICT(profile_id, set_aside_type) DO NOTHING"),
                 {"pid": profile_id, "sa": sa},
+            )
+        for kw in keywords:
+            conn.execute(
+                text("INSERT INTO company_keywords (profile_id, keyword)"
+                     " VALUES (:pid, :kw)"
+                     " ON CONFLICT(profile_id, keyword) DO NOTHING"),
+                {"pid": profile_id, "kw": kw},
             )
 
     return profile_id
