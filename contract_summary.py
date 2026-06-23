@@ -210,3 +210,108 @@ def contract_timeline(row):
 
     events.sort(key=lambda e: e["date"])
     return events
+
+
+# ---------------------------------------------------------------------------
+# Multi-contract comparison insights (Contract Intelligence Tools lane)
+#
+# Pure analytical synthesis over a set of already-fetched contract rows — no DB,
+# no external/AI calls. Turns the raw side-by-side compare table into a
+# decision aid: which contract to pursue first, and which leads on value,
+# score, and recompete timing.
+# ---------------------------------------------------------------------------
+
+def _contract_label(row):
+    return row.get("award_id") or row.get("internal_id")
+
+
+def compare_insights(rows):
+    """Return deterministic analytical highlights across compared contracts.
+
+    ``rows`` is a list of contract row dicts. Returns None for fewer than two
+    rows (insights need something to compare). Otherwise returns a dict:
+
+        {
+          "recommended": {label, internal_id, reason},
+          "highlights": [ {title, label, internal_id, detail}, ... ],
+        }
+
+    The recommended pick maximises recompete score, breaking ties by the
+    soonest active recompete, then by highest value — all from stored fields.
+    """
+    rows = [r for r in rows if r]
+    if len(rows) < 2:
+        return None
+
+    def score_of(r):
+        return _safe_int(r.get("recompete_score")) or 0
+
+    def value_of(r):
+        try:
+            return float(r.get("value") or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def active_days(r):
+        d = _safe_int(r.get("days_remaining"))
+        return d if (d is not None and d > 0) else None
+
+    highlights = []
+
+    # Highest value
+    top_value = max(rows, key=value_of)
+    if value_of(top_value) > 0:
+        highlights.append({
+            "title": "Highest value",
+            "label": _contract_label(top_value),
+            "internal_id": top_value.get("internal_id"),
+            "detail": "${:,.0f}".format(value_of(top_value)),
+        })
+
+    # Best recompete score
+    top_score = max(rows, key=score_of)
+    if score_of(top_score) > 0:
+        highlights.append({
+            "title": "Best recompete score",
+            "label": _contract_label(top_score),
+            "internal_id": top_score.get("internal_id"),
+            "detail": "{}/100".format(score_of(top_score)),
+        })
+
+    # Soonest active recompete (smallest positive days_remaining)
+    active = [r for r in rows if active_days(r) is not None]
+    if active:
+        soonest = min(active, key=active_days)
+        highlights.append({
+            "title": "Soonest recompete",
+            "label": _contract_label(soonest),
+            "internal_id": soonest.get("internal_id"),
+            "detail": "{} days remaining".format(active_days(soonest)),
+        })
+
+    # Recommended pick: highest score, then soonest active expiry, then value.
+    def rank_key(r):
+        urgency = active_days(r)
+        urgency = urgency if urgency is not None else 10 ** 9
+        return (-score_of(r), urgency, -value_of(r))
+
+    best = sorted(rows, key=rank_key)[0]
+    reason_parts = []
+    if score_of(best) > 0:
+        reason_parts.append("highest recompete score ({}/100)".format(score_of(best)))
+    bd = active_days(best)
+    if bd is not None:
+        reason_parts.append("recompete in {} days".format(bd))
+    if value_of(best) > 0:
+        reason_parts.append("${:,.0f} value".format(value_of(best)))
+    reason = "Strongest opportunity by " + ", ".join(reason_parts) + "." if reason_parts \
+        else "Best available option among the compared contracts."
+
+    return {
+        "recommended": {
+            "label": _contract_label(best),
+            "internal_id": best.get("internal_id"),
+            "reason": reason,
+        },
+        "highlights": highlights,
+    }
