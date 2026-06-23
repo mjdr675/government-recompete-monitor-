@@ -471,7 +471,6 @@ def init_db():
             priority TEXT,
             raw_json TEXT,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            place_of_performance_state TEXT,
             vendor_website TEXT
         )
         """))
