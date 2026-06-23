@@ -21,6 +21,7 @@ from flask_wtf.csrf import CSRFProtect
 from werkzeug.utils import secure_filename
 
 from auth import bp as auth_bp
+from access import get_access_state, is_access_granted
 from email_service import send_email
 from change_detector import detect_changes
 from sqlalchemy import text
@@ -128,6 +129,10 @@ if _sentry_dsn:
     )
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+# Unified access control (domain state + web routing split). Default OFF: the
+# legacy require_login/require_active_workspace gates remain authoritative until
+# parity is proven and the flag is flipped. See access.py for the domain layer.
+UNIFIED_ACCESS_ENABLED = os.getenv("UNIFIED_ACCESS_ENABLED", "").lower() in ("1", "true", "yes")
 STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
 STRIPE_PRICE_ID_YEARLY = os.getenv("STRIPE_PRICE_ID_YEARLY")
 # Workspace plan tiers → Stripe price ids (set per environment).
@@ -298,8 +303,10 @@ def require_login():
         return None
     if "user_id" not in session:
         return redirect(url_for("auth.login", next=request.path))
-    # Trial / subscription gate
-    if request.path not in _SUBSCRIPTION_EXEMPT:
+    # Trial / subscription gate (legacy). Authentication above always runs; the
+    # billing branch is suppressed when the unified gate is enabled so the two
+    # never both decide billing.
+    if not UNIFIED_ACCESS_ENABLED and request.path not in _SUBSCRIPTION_EXEMPT:
         user = g.get("user")
         if user and user.get("subscription_status") != "active":
             trial_ends_at = user.get("trial_ends_at")
@@ -320,10 +327,11 @@ _WORKSPACE_GATED_PREFIXES = ("/dashboard", "/contracts", "/compare", "/pipeline"
 def require_active_workspace():
     """Redirect to /settings/billing when the user's workspace is inactive.
 
-    Registered after require_login, so the existing user-level gate runs first
-    and short-circuits where it applies. Only enforces once a workspace billing
-    record exists; brand-new users (no workspace yet) are not blocked here.
+    Legacy workspace gate. Dormant when the unified gate is enabled, so billing
+    is never decided by two authorities at once.
     """
+    if UNIFIED_ACCESS_ENABLED:
+        return None
     if "user_id" not in session:
         return None
     path = request.path
@@ -335,6 +343,45 @@ def require_active_workspace():
     workspace = get_workspace_for_user(user["id"])
     if workspace and not is_workspace_active(workspace["id"]):
         return redirect(url_for("settings_billing", expired="1"))
+
+
+# --- Web layer: pure state -> destination mapping (no business logic) --------
+# Maps a domain access state (from access.get_access_state) to a canonical
+# billing destination, or None when access is permitted. URLs live ONLY here.
+_ACCESS_REDIRECTS = {
+    "billing_required": "/settings/billing",
+    "expired": "/settings/billing?expired=1",
+}
+
+
+def get_access_redirect(state):
+    """Return the canonical redirect path for a denied state, else None."""
+    return _ACCESS_REDIRECTS.get(state)
+
+
+@app.before_request
+def require_access():
+    """Unified billing gate: domain state -> web redirect. Default OFF.
+
+    Orchestration only — it holds no entitlement rules (those live in
+    access.get_access_state) and no URL knowledge (that lives in
+    get_access_redirect). Authentication remains require_login's job.
+    """
+    if not UNIFIED_ACCESS_ENABLED:
+        return None
+    if request.path in _PUBLIC_PATHS or request.path in _SUBSCRIPTION_EXEMPT:
+        return None
+    if "user_id" not in session:
+        return None  # auth handled by require_login
+    user = g.get("user")
+    if not user:
+        return None
+    workspace = get_workspace_for_user(user["id"])
+    billing = get_workspace_billing(workspace["id"]) if workspace else None
+    state = get_access_state(user, billing)
+    target = get_access_redirect(state)
+    if target:
+        return redirect(target)
 
 
 @app.context_processor
