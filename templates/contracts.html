@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_score_explainer.html" as score_help %}
 {% block title %}Contracts{% endblock %}
 
 {% block content %}
@@ -168,7 +169,7 @@
         <th class="col-r">{{ sort_link("value", "Value") }}</th>
         <th>{{ sort_link("end_date", "End Date") }}</th>
         <th class="col-r">{{ sort_link("days_remaining", "Days") }}</th>
-        <th class="col-r">{{ sort_link("recompete_score", "Score") }} <span title="Recompete Score (0–100): competition type (≤40) + contract value (≤35) + time remaining (≤25) + agency/sourcing bonuses. Higher = more attractive to pursue. Open any contract for the full breakdown." style="cursor:help;color:var(--text-faint);font-weight:normal">&#9432;</span></th>
+        <th class="col-r">{{ sort_link("recompete_score", "Score") }} <button type="button" class="score-info-btn" onclick="openScoreModal()" aria-haspopup="dialog" aria-label="How the Recompete Score is calculated" title="How the Recompete Score is calculated">&#9432;</button></th>
         {% if for_my_business %}<th class="col-r" title="How well this contract matches your Company Profile">Match</th>{% endif %}
       </tr>
     </thead>
@@ -282,6 +283,9 @@
     <span class="muted" style="padding:5px 10px" aria-disabled="true">Last</span>
   {% endif %}
 </div>
+
+{# Recompete Score explanation modal, opened from the Score column info icon. #}
+{{ score_help.score_modal() }}
 
 <script>
 function updateCompare() {
