@@ -62,12 +62,9 @@
       📍 {% if performance_city %}{{ performance_city }}, {% endif %}{{ performance_state }}
     </span>
     {% endif %}
-    {% if psc_description %}
-    <span style="font-size:11px;padding:2px 8px;border-radius:9999px;background:var(--surface);border:1px solid var(--border);color:var(--text-muted)">{{ psc_description }}</span>
-    {% endif %}
   </div>
-  <strong>What:</strong>
-  This contract{% if row["vendor"] %} is held by <strong><a href="/vendor/{{ row['vendor']|urlencode }}">{{ row["vendor"] }}</a></strong>{% endif %}{% if row["agency"] %} for <strong>{{ row["agency"] }}</strong>{% if row["sub_agency"] %} ({{ row["sub_agency"] }}){% endif %}{% endif %}{% if row["value"] %}, valued at <strong>${{ "{:,.0f}".format(row["value"]) }}</strong>{% endif %}.
+  <strong>Summary:</strong>
+  This contract{% if row["vendor"] %} is held by <strong>{{ row["vendor"] }}</strong>{% endif %}{% if row["agency"] %} for <strong>{{ row["agency"] }}</strong>{% if row["sub_agency"] %} ({{ row["sub_agency"] }}){% endif %}{% endif %}{% if row["value"] %}, valued at <strong>${{ "{:,.0f}".format(row["value"]) }}</strong>{% endif %}.
   {% if row["description"] %}<br><span style="color:var(--text-muted)">{{ row["description"][:200] }}{% if row["description"]|length > 200 %}…{% endif %}</span>{% endif %}
   <br><strong>Where:</strong>
   {% if performance_city and performance_state %}{{ performance_city }}, {{ performance_state }}{% elif performance_state %}{{ performance_state }}{% else %}<span class="muted">Location not recorded</span>{% endif %}.
@@ -77,6 +74,13 @@
   <br><strong>Priority:</strong>
   {% if row["priority"] %}<span class="priority-badge priority-{{ row['priority'].lower() }}">{{ row["priority"] }}</span> (score {{ row["recompete_score"] or "—" }}){% else %}<span class="muted">Not scored</span>{% endif %}
 </div>
+
+{% if row.get("description") %}
+<div style="margin-top:12px;padding:14px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);line-height:1.6">
+  <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Contract Description</div>
+  <div style="font-size:14px">{{ row["description"] }}</div>
+</div>
+{% endif %}
 
 {% if action %}
 <div style="margin-top:14px;padding:16px 18px;background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:var(--radius-sm);line-height:1.6">
@@ -194,13 +198,14 @@
       <tr><th>Agency</th><td><a href="/agency/{{ row["agency"]|urlencode }}">{{ row["agency"] or "—" }}</a></td></tr>
       <tr><th>Sub-Agency</th><td>{{ row["sub_agency"] or "—" }}</td></tr>
       <tr><th>Location</th><td data-testid="location-field">
-        {% if performance_city and performance_state %}{{ performance_city }}, {{ performance_state }}
-        {% elif performance_state %}{{ performance_state }}
+        {% if performance_city and performance_state %}<a href="/contracts?state={{ performance_state|urlencode }}">{{ performance_city }}, {{ performance_state }}</a>
+        {% elif performance_state %}<a href="/contracts?state={{ performance_state|urlencode }}">{{ performance_state }}</a>
         {% else %}<span class="muted">Not recorded</span>{% endif %}
       </td></tr>
       {% if category and category != "Other" %}
-      <tr><th>Category</th><td data-testid="category-field"><span style="font-size:12px;padding:2px 8px;border-radius:9999px;background:var(--surface);border:1px solid var(--border)">{{ category }}</span></td></tr>
+      <tr><th>Category</th><td data-testid="category-field"><a href="/contracts?category={{ category|urlencode }}"><span style="font-size:12px;padding:2px 8px;border-radius:9999px;background:var(--surface);border:1px solid var(--border)">{{ category }}</span></a></td></tr>
       {% endif %}
+      {% if row.get("naics_code") %}<tr><th>NAICS Code</th><td>{{ row["naics_code"] }}</td></tr>{% endif %}
       <tr><th>Award ID</th><td>{{ row["award_id"] or "—" }}</td></tr>
       <tr><th>Solicitation ID</th><td>{{ row["solicitation_id"] or "—" }}</td></tr>
       <tr><th>Competition Type</th><td>{{ row["competition_type"] or "—" }}</td></tr>

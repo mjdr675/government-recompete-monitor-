@@ -13,7 +13,7 @@
   <div class="filter-row">
     <div class="filter-field grow">
       <label>Search</label>
-      <input name="q" value="{{ q }}" placeholder="Vendor, agency, award ID&hellip;">
+      <input name="q" value="{{ q }}" placeholder="Vendor, agency, work type, state&hellip;">
     </div>
     <div class="filter-field grow">
       <label>Agency</label>
@@ -21,6 +21,24 @@
         <option value="">All agencies</option>
         {% for a in all_agencies %}
           <option value="{{ a }}" {% if a == agency %}selected{% endif %}>{{ a }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-field sm">
+      <label>Category</label>
+      <select name="category">
+        <option value="">All categories</option>
+        {% for c in all_categories %}
+          <option value="{{ c }}" {% if c == category %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-field sm">
+      <label>State</label>
+      <select name="state">
+        <option value="">All states</option>
+        {% for s in all_states %}
+          <option value="{{ s }}" {% if s == state %}selected{% endif %}>{{ s }}</option>
         {% endfor %}
       </select>
     </div>
@@ -61,6 +79,8 @@
     </div>
     <input type="hidden" name="sort" value="{{ sort }}">
     <input type="hidden" name="dir" value="{{ direction }}">
+    {% if in_pipeline %}<input type="hidden" name="in_pipeline" value="1">{% endif %}
+    {% if discover %}<input type="hidden" name="discover" value="1">{% endif %}
     <div style="display:flex;gap:8px;align-items:flex-end;padding-bottom:1px">
       <button type="submit" class="btn btn-primary">Filter</button>
       <a href="/contracts" class="btn btn-ghost">Reset</a>
@@ -78,7 +98,7 @@
 {% if g.user %}
 <div style="margin:-8px 0 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
   {% if for_my_business %}
-    <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&sort={{ sort }}&dir={{ direction }}{% if in_pipeline %}&in_pipeline=1{% endif %}"
+    <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if in_pipeline %}&in_pipeline=1{% endif %}"
        class="btn btn-primary" style="padding:5px 14px;font-size:13px">&#10003; For My Business</a>
     <a href="/contracts" class="muted" style="font-size:12px;text-decoration:underline">Show all contracts</a>
     {% if not has_profile %}
@@ -86,20 +106,27 @@
     {% endif %}
   {% else %}
     {% if not has_profile %}
-    <a href="/contracts?for_my_business=1&q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&sort={{ sort }}&dir={{ direction }}"
+    <a href="/contracts?for_my_business=1&q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}"
        class="btn btn-ghost" style="padding:5px 14px;font-size:13px" title="Filter using your Company Profile">For My Business</a>
     <span class="muted" style="font-size:12px">— <a href="/company-profile">Set up your Company Profile</a> first</span>
     {% else %}
-    <a href="/contracts?for_my_business=1&q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&sort={{ sort }}&dir={{ direction }}"
+    <a href="/contracts?for_my_business=1&q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}"
        class="btn btn-ghost" style="padding:5px 14px;font-size:13px" title="Filter using your Company Profile">For My Business</a>
     {% endif %}
   {% endif %}
   {% if in_pipeline %}
-    <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}"
+    <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}"
        class="btn btn-primary" style="padding:5px 14px;font-size:13px">&#10003; In My Pipeline</a>
   {% elif pipeline_map %}
-    <a href="/contracts?in_pipeline=1&q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&sort={{ sort }}&dir={{ direction }}"
+    <a href="/contracts?in_pipeline=1&q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}"
        class="btn btn-ghost" style="padding:5px 14px;font-size:13px" title="Show only contracts in your pipeline">In My Pipeline</a>
+  {% endif %}
+  {% if discover %}
+    <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}"
+       class="btn btn-primary" style="padding:5px 14px;font-size:13px">&#10003; Discover Mode</a>
+  {% elif pipeline_map %}
+    <a href="/contracts?discover=1&q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}"
+       class="btn btn-ghost" style="padding:5px 14px;font-size:13px" title="Show only contracts not yet in your pipeline">Discover</a>
   {% endif %}
 </div>
 {% endif %}
@@ -117,7 +144,7 @@
 {% macro sort_link(col, label) %}
   {% set next_dir = "asc" if (sort == col and direction == "desc") else "desc" %}
   {% set arrow = " ↓" if (sort == col and direction == "desc") else (" ↑" if sort == col else "") %}
-  <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&sort={{ col }}&dir={{ next_dir }}{% if for_my_business %}&for_my_business=1{% endif %}{% if in_pipeline %}&in_pipeline=1{% endif %}">{{ label }}{{ arrow }}</a>
+  <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ col }}&dir={{ next_dir }}{% if for_my_business %}&for_my_business=1{% endif %}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}">{{ label }}{{ arrow }}</a>
 {% endmacro %}
 
 {# ── Desktop table (hidden on mobile) ──────────────────────── #}
@@ -136,6 +163,8 @@
         <th>{{ sort_link("priority", "Priority") }}</th>
         <th>{{ sort_link("vendor", "Vendor") }}</th>
         <th>{{ sort_link("agency", "Agency") }}</th>
+        <th>Category</th>
+        <th>State</th>
         <th class="col-r">{{ sort_link("value", "Value") }}</th>
         <th>{{ sort_link("end_date", "End Date") }}</th>
         <th class="col-r">{{ sort_link("days_remaining", "Days") }}</th>
@@ -158,6 +187,8 @@
         </td>
         <td><a href="/vendor/{{ r["vendor"]|urlencode }}">{{ r["vendor"] }}</a></td>
         <td><a href="/agency/{{ r["agency"]|urlencode }}">{{ r["agency"] }}</a></td>
+        <td>{% if r.get("category") and r["category"] != "Other" %}<a href="/contracts?category={{ r['category'] }}" style="font-size:12px;color:var(--text-muted)">{{ r["category"] }}</a>{% endif %}</td>
+        <td>{% if r.get("place_of_performance_state") %}<a href="/contracts?state={{ r['place_of_performance_state'] }}" style="font-size:12px;color:var(--text-muted)">{{ r["place_of_performance_state"] }}</a>{% endif %}</td>
         <td class="col-r">${{ "{:,.0f}".format(r["value"] or 0) }}</td>
         <td>{{ r["end_date"] }}</td>
         <td class="col-r">
@@ -172,7 +203,7 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="{{ 10 if for_my_business else 9 }}" style="text-align:center;padding:40px 20px;color:var(--text-muted)">
+        <td colspan="{{ 12 if for_my_business else 11 }}" style="text-align:center;padding:40px 20px;color:var(--text-muted)">
           No contracts match your current filters. <a href="/contracts">Clear all filters</a> to see the full list.
         </td>
       </tr>
@@ -190,7 +221,7 @@
       <a href="/contract/{{ r['internal_id'] }}" class="mobile-card-title">{{ r["vendor"] or r["award_id"] or r["internal_id"] }}</a>
       <span class="priority-badge priority-{{ (r["priority"] or "unknown").lower().replace(" ", "-").replace("_", "-") }}">{{ r["priority"] }}</span>
     </div>
-    <div class="mobile-card-agency">{{ r["agency"] or '—' }}</div>
+    <div class="mobile-card-agency">{{ r["agency"] or '—' }}{% if r.get("place_of_performance_state") %} &middot; {{ r["place_of_performance_state"] }}{% endif %}</div>
     <div class="mobile-card-meta">
       <span class="mobile-card-value">${{ "{:,.0f}".format(r["value"] or 0) }}</span>
       <span class="sep">·</span>
@@ -200,6 +231,10 @@
       {% else %}<span>{{ days }}d</span>{% endif %}
       <span class="sep">·</span>
       <span class="muted">Score {{ r["recompete_score"] or '—' }}</span>
+      {% if r.get("category") and r["category"] != "Other" %}
+      <span class="sep">·</span>
+      <span class="muted">{{ r["category"] }}</span>
+      {% endif %}
       {% if for_my_business and r.get("match_score") is not none %}
       <span class="sep">·</span>
       <span style="font-weight:600;color:var(--accent)">{{ r.get("match_score") }}% match</span>
@@ -227,7 +262,7 @@
 </div>
 
 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px">
-  {% set base_qs %}q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}{% if in_pipeline %}&in_pipeline=1{% endif %}{% endset %}
+  {% set base_qs %}q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}{% endset %}
 
   {% if has_prev %}
     <a href="/contracts?{{ base_qs }}&page=1" class="btn btn-ghost" style="padding:5px 10px">First</a>

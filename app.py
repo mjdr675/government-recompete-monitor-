@@ -31,11 +31,13 @@ from db import (
     get_engine,
     init_db,
     list_saved_searches,
+    list_contract_states,
     save_company_profile,
     save_demo_request,
     save_early_access,
     save_snapshot,
     upsert_contract,
+    ALL_CATEGORIES,
     PIPELINE_STAGES,
     PIPELINE_TERMINAL_STAGES,
     add_opportunity,
@@ -538,6 +540,9 @@ def contracts():
     sort = request.args.get("sort", "recompete_score")
     direction = request.args.get("dir", "desc")
     page = int(request.args.get("page", 1))
+    state = request.args.get("state", "")
+    category = request.args.get("category", "")
+    discover = request.args.get("discover", "")
 
     if status not in ("", "open", "expired"):
         status = ""
@@ -564,6 +569,13 @@ def contracts():
         for opp in list_opportunities(g.user["id"]):
             pipeline_map[opp["internal_id"]] = opp["id"]
 
+    # Discover mode: exclude pipeline contracts to surface only new opportunities.
+    discover_exclude_ids = None
+    if discover and g.user and pipeline_map:
+        discover_exclude_ids = list(pipeline_map.keys())
+    elif discover:
+        discover_exclude_ids = []
+
     # When ?in_pipeline=1, restrict to the user's own pipeline contracts.
     pipeline_ids: list | None = None
     if in_pipeline and g.user and pipeline_map:
@@ -571,6 +583,9 @@ def contracts():
     elif in_pipeline and g.user:
         # User has no pipeline — return empty results without hitting get_contracts.
         pipeline_ids = []
+
+    engine = get_engine()
+    all_states = list_contract_states(engine)
 
     if pipeline_ids is not None and len(pipeline_ids) == 0:
         result = {"contracts": [], "total": 0, "count": 0, "start": 0, "page": page}
@@ -588,13 +603,15 @@ def contracts():
             limit=25,
             profile_filter=pf,
             internal_ids=pipeline_ids,
+            state=state,
+            category=category,
+            exclude_ids=discover_exclude_ids,
         )
 
     _total = result["total"]
     _page_size = 25
     _total_pages = max(1, (_total + _page_size - 1) // _page_size)
 
-    engine = get_engine()
     watchlist_ids = set()
     saved_searches = []
     if g.user:
@@ -635,6 +652,8 @@ def contracts():
         has_next=result["start"] + result["count"] < _total,
         priorities=["CRITICAL", "HIGH", "MEDIUM", "LOW"],
         all_agencies=all_agencies,
+        all_states=all_states,
+        all_categories=ALL_CATEGORIES,
         q=q,
         agency=agency,
         priority=priority,
@@ -643,6 +662,9 @@ def contracts():
         status=status,
         sort=sort,
         direction=direction,
+        state=state,
+        category=category,
+        discover=discover,
         watchlist_ids=watchlist_ids,
         pipeline_map=pipeline_map,
         saved_searches=saved_searches,
