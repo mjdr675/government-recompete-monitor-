@@ -61,7 +61,6 @@ from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
 from analytics import dashboard_analytics, opportunity_recommendations, dashboard_recommended_actions, business_opportunities
 from analytics import suggested_matches as get_suggested_matches, my_contracts_summary, personalized_for_business
-from analytics import recent_updates_for_user
 from business_match import (
     business_match_score,
     business_match_reasons,
@@ -108,8 +107,6 @@ _configure_json_logging()
 
 app = Flask(__name__)
 load_dotenv()
-app.config["PROPAGATE_EXCEPTIONS"] = True
-app.config["TRAP_HTTP_EXCEPTIONS"] = True
 
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
@@ -326,112 +323,105 @@ def index():
         return redirect(url_for("dashboard"))
     return render_template("landing.html")
 
-import traceback
-
 @app.route("/dashboard")
 def dashboard():
-    import traceback
     try:
-        return "TEST"
-    except Exception:
-        print(traceback.format_exc())
-        raise
+        user_id = g.user["id"] if g.user else None
+        profile = get_company_profile(user_id) if user_id else None
 
-        return render_template("dashboard.html")
+        if user_id and not profile and not session.get("onboarding_skipped"):
+            return redirect(url_for("onboarding"))
+
+        analytics = dashboard_analytics()
+        recommendations = opportunity_recommendations()
+        engine = get_engine()
+        last_ingest = None
+        hours_ago = None
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT created_at FROM ingest_log"
+                    " WHERE status = 'success' ORDER BY created_at DESC LIMIT 1"
+                )
+            ).fetchone()
+        if row:
+            last_ingest = row[0]
+            try:
+                ts = datetime.fromisoformat(last_ingest)
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                hours_ago = round((datetime.now(timezone.utc) - ts).total_seconds() / 3600, 1)
+            except (ValueError, TypeError):
+                pass
+        show_onboarding = (
+            g.get("watchlist_count", 0) == 0
+            and not session.get("onboarding_dismissed")
+        )
+        dash_actions = dashboard_recommended_actions(user_id)
+        has_profile = bool(profile)
+        biz_opps = business_opportunities(user_id)
+        my_contracts = my_contracts_summary(user_id)
+        suggested = get_suggested_matches(user_id)
+        for_business = personalized_for_business(user_id, profile) if profile else []
+        p_completion = profile_completeness(profile) if profile else 0
+        p_hints = profile_completion_hints(profile) if profile and p_completion < 100 else []
+
+        pipeline_summary = {"total": 0, "active": 0, "by_stage": {}, "top": []}
+        if user_id:
+            all_opps = list_opportunities(user_id)
+            active_opps = [o for o in all_opps if o["stage"] not in PIPELINE_TERMINAL_STAGES]
+            by_stage: dict = {}
+            for o in all_opps:
+                by_stage[o["stage"]] = by_stage.get(o["stage"], 0) + 1
+            top_opps = sorted(
+                active_opps,
+                key=lambda o: (
+                    o["next_action_due"] or "9999-99-99",
+                    -(o["recompete_score"] or 0),
+                    o["updated_at"] or "",
+                ),
+            )[:5]
+            pipeline_summary = {
+                "total": len(all_opps),
+                "active": len(active_opps),
+                "by_stage": by_stage,
+                "top": top_opps,
+            }
+
+        recent_updates = []
+        if user_id:
+            from contract_summary import format_contract_update
+            recent_updates = [
+                format_contract_update(r)
+                for r in get_recent_updates_for_user(user_id, limit=8)
+            ]
+
+        return render_template(
+            "dashboard.html",
+            report=build_report(date.today().isoformat()),
+            analytics=analytics,
+            recommendations=recommendations,
+            dash_actions=dash_actions,
+            biz_opps=biz_opps,
+            my_contracts=my_contracts,
+            suggested_matches=suggested,
+            for_business=for_business,
+            recent_updates=recent_updates,
+            company_name=profile.get("company_name") if profile else None,
+            has_profile=has_profile,
+            profile_completion=p_completion,
+            profile_hints=p_hints,
+            last_ingest=last_ingest,
+            hours_ago=hours_ago,
+            show_onboarding=show_onboarding,
+            pipeline_summary=pipeline_summary,
+            pipeline_stages=PIPELINE_STAGES,
+        )
 
     except Exception:
         import traceback
         print(traceback.format_exc())
         return "Dashboard error", 500
-
-    analytics = dashboard_analytics()
-    recommendations = opportunity_recommendations()
-    engine = get_engine()
-    last_ingest = None
-    hours_ago = None
-    with engine.connect() as conn:
-        row = conn.execute(
-            text(
-                "SELECT created_at FROM ingest_log"
-                " WHERE status = 'success' ORDER BY created_at DESC LIMIT 1"
-            )
-        ).fetchone()
-    if row:
-        last_ingest = row[0]
-        try:
-            ts = datetime.fromisoformat(last_ingest)
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
-            hours_ago = round((datetime.now(timezone.utc) - ts).total_seconds() / 3600, 1)
-        except (ValueError, TypeError):
-            pass
-    show_onboarding = (
-        g.get("watchlist_count", 0) == 0
-        and not session.get("onboarding_dismissed")
-    )
-    dash_actions = dashboard_recommended_actions(user_id)
-    has_profile = bool(profile)
-    biz_opps = business_opportunities(user_id)
-    my_contracts = my_contracts_summary(user_id)
-    suggested = get_suggested_matches(user_id)
-    for_business = personalized_for_business(user_id, profile) if profile else []
-    recent_updates = recent_updates_for_user(user_id) if user_id else []
-    p_completion = profile_completeness(profile) if profile else 0
-    p_hints = profile_completion_hints(profile) if profile and p_completion < 100 else []
-
-    pipeline_summary = {"total": 0, "active": 0, "by_stage": {}, "top": []}
-    if user_id:
-        all_opps = list_opportunities(user_id)
-        active_opps = [o for o in all_opps if o["stage"] not in PIPELINE_TERMINAL_STAGES]
-        by_stage: dict = {}
-        for o in all_opps:
-            by_stage[o["stage"]] = by_stage.get(o["stage"], 0) + 1
-        top_opps = sorted(
-            active_opps,
-            key=lambda o: (
-                o["next_action_due"] or "9999-99-99",
-                -(o["recompete_score"] or 0),
-                o["updated_at"] or "",
-            ),
-        )[:5]
-        pipeline_summary = {
-            "total": len(all_opps),
-            "active": len(active_opps),
-            "by_stage": by_stage,
-            "top": top_opps,
-        }
-
-    # Recent Updates feed — field-level changes on the user's tracked
-    # (watchlist + pipeline) contracts, formatted for compact display.
-    recent_updates = []
-    if user_id:
-        from contract_summary import format_contract_update
-        recent_updates = [
-            format_contract_update(r)
-            for r in get_recent_updates_for_user(user_id, limit=8)
-        ]
-
-    return render_template(
-        "dashboard.html",
-        report=build_report(date.today().isoformat()),
-        analytics=analytics,
-        recommendations=recommendations,
-        dash_actions=dash_actions,
-        biz_opps=biz_opps,
-        my_contracts=my_contracts,
-        suggested_matches=suggested,
-        for_business=for_business,
-        recent_updates=recent_updates,
-        company_name=profile.get("company_name") if profile else None,
-        has_profile=has_profile,
-        profile_completion=p_completion,
-        profile_hints=p_hints,
-        last_ingest=last_ingest,
-        hours_ago=hours_ago,
-        show_onboarding=show_onboarding,
-        pipeline_summary=pipeline_summary,
-        pipeline_stages=PIPELINE_STAGES,
-    )
 
 
 @app.route("/onboarding/dismiss", methods=["POST"])
