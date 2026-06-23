@@ -22,6 +22,7 @@ from werkzeug.utils import secure_filename
 
 from auth import bp as auth_bp
 from access import get_access_state, is_access_granted
+from access_observability import log_access_decision
 from email_service import send_email
 from change_detector import detect_changes
 from sqlalchemy import text
@@ -315,6 +316,10 @@ def require_login():
                 if trial_end.tzinfo is None:
                     trial_end = trial_end.replace(tzinfo=timezone.utc)
                 if datetime.now(timezone.utc) > trial_end:
+                    log_access_decision(
+                        user.get("id"), None, "expired",
+                        "/subscribe?expired=1", "legacy", request.path,
+                    )
                     return redirect(url_for("subscribe", expired="1"))
 
 
@@ -342,6 +347,13 @@ def require_active_workspace():
         return None
     workspace = get_workspace_for_user(user["id"])
     if workspace and not is_workspace_active(workspace["id"]):
+        # Decision uses the unchanged legacy check above; get_access_state is used
+        # only to label the log line in the shared 4-state vocabulary.
+        label = get_access_state(user, get_workspace_billing(workspace["id"]))
+        log_access_decision(
+            user["id"], workspace["id"], label,
+            "/settings/billing?expired=1", "legacy", request.path,
+        )
         return redirect(url_for("settings_billing", expired="1"))
 
 
@@ -380,8 +392,36 @@ def require_access():
     billing = get_workspace_billing(workspace["id"]) if workspace else None
     state = get_access_state(user, billing)
     target = get_access_redirect(state)
+    log_access_decision(
+        user["id"], workspace["id"] if workspace else None,
+        state, target, "unified", request.path,
+    )
     if target:
         return redirect(target)
+
+
+@app.before_request
+def observe_access_decision():
+    """Shadow observer: when the unified gate is OFF, record the decision the
+    unified engine *would* make, so it can be compared against the legacy logs
+    for parity — without enforcing anything. Pure instrumentation."""
+    if UNIFIED_ACCESS_ENABLED:
+        return None  # enforcement path already logs mode="unified"
+    if request.path in _PUBLIC_PATHS or request.path in _SUBSCRIPTION_EXEMPT:
+        return None
+    if "user_id" not in session:
+        return None
+    user = g.get("user")
+    if not user:
+        return None
+    workspace = get_workspace_for_user(user["id"])
+    billing = get_workspace_billing(workspace["id"]) if workspace else None
+    state = get_access_state(user, billing)
+    log_access_decision(
+        user["id"], workspace["id"] if workspace else None,
+        state, get_access_redirect(state), "shadow", request.path,
+    )
+    return None  # never enforces
 
 
 @app.context_processor
