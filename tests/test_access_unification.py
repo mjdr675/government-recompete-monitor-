@@ -39,16 +39,19 @@ class TestDomainState:
     def test_active_workspace_allowed(self):
         assert get_access_state({}, {"subscription_status": "active"}, now=NOW) == ALLOWED
 
-    def test_active_user_fallback_allowed(self):
-        assert get_access_state({"subscription_status": "active"}, None, now=NOW) == ALLOWED
+    def test_user_subscription_is_not_an_authority(self):
+        # LOCKED: workspace is the sole authority. A user-level active sub with
+        # no workspace does NOT grant access.
+        assert get_access_state({"subscription_status": "active"}, None, now=NOW) == BILLING_REQUIRED
 
     def test_live_workspace_trial_trialing(self):
         ws = {"subscription_status": "trialing", "trial_end_at": _ts(3)}
         assert get_access_state({}, ws, now=NOW) == TRIALING
 
-    def test_live_user_trial_fallback_trialing(self):
+    def test_user_trial_is_not_an_authority(self):
+        # A user-level trial alone, with no workspace, is not entitlement.
         user = {"subscription_status": "trialing", "trial_ends_at": _ts(2)}
-        assert get_access_state(user, None, now=NOW) == TRIALING
+        assert get_access_state(user, None, now=NOW) == BILLING_REQUIRED
 
     def test_expired_trial_expired(self):
         ws = {"subscription_status": "trialing", "trial_end_at": _ts(-1)}
@@ -62,10 +65,15 @@ class TestDomainState:
         ws = {"subscription_status": "active", "trial_end_at": _ts(-5)}
         assert get_access_state({}, ws, now=NOW) == ALLOWED
 
-    def test_workspace_trial_rescues_expired_user(self):
-        user = {"subscription_status": "trialing", "trial_ends_at": _ts(-10)}
-        ws = {"subscription_status": "trialing", "trial_end_at": _ts(1)}
-        assert get_access_state(user, ws, now=NOW) == TRIALING
+    def test_workspace_authority_ignores_user_state(self):
+        # User state never rescues or overrides the workspace, in either direction.
+        expired_user = {"subscription_status": "trialing", "trial_ends_at": _ts(-10)}
+        live_ws = {"subscription_status": "trialing", "trial_end_at": _ts(1)}
+        assert get_access_state(expired_user, live_ws, now=NOW) == TRIALING
+
+        active_user = {"subscription_status": "active"}
+        expired_ws = {"subscription_status": "canceled", "trial_end_at": _ts(-1)}
+        assert get_access_state(active_user, expired_ws, now=NOW) == EXPIRED
 
     def test_deterministic(self):
         ws = {"subscription_status": "trialing", "trial_end_at": _ts(1)}

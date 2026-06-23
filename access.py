@@ -5,10 +5,18 @@ entitlement?" — and nothing else. It contains NO URLs, redirects, Flask
 imports, or I/O. It is deterministic and side-effect free: the only external
 input is the current time, which is injectable for testing.
 
-Unification: a single function folds the (legacy) user-level subscription/trial
-signals and the (new) workspace-level signals into one of four states. The
-workspace is the billing principal; user-level fields are honoured as a
-migration-era fallback so behaviour matches the system being replaced.
+Authority model (LOCKED): the **workspace is the single source of truth** for
+billing entitlement. Billing is company-scoped — the workspace pays and all of
+its members inherit access. Therefore:
+
+  - A user's own (legacy) subscription/trial state NEVER grants or denies
+    access to a workspace.
+  - get_access_state evaluates the WORKSPACE only. The `user` argument is
+    accepted for signature stability and telemetry, but it has no effect on the
+    returned state.
+
+This deliberately replaces the earlier hybrid (OR-across-principals) behaviour,
+where a user-level entitlement could rescue an unpaid workspace.
 """
 from datetime import datetime, timezone
 
@@ -48,33 +56,29 @@ def _parse_ts(ts):
 
 
 def get_access_state(user, workspace, now=None):
-    """Return the entitlement state for an account.
+    """Return the entitlement state for an account — workspace is the authority.
 
     Args:
-        user:      user dict (may carry legacy subscription_status / trial_ends_at)
-        workspace: workspace billing dict (subscription_status / trial_end_at)
-        now:       injectable current time (defaults to UTC now) for determinism
+        user:      accepted for signature/telemetry compatibility ONLY; it does
+                   not influence the decision (see module docstring).
+        workspace: workspace billing dict (subscription_status / trial_end_at).
+        now:       injectable current time (defaults to UTC now) for determinism.
 
-    Returns one of ACCESS_STATES. Precedence (first match wins):
-        1. active subscription on either principal      -> "allowed"
-        2. a live trial window on either principal       -> "trialing"
-        3. a trial marker exists but has elapsed         -> "expired"
-        4. no entitlement signal at all                  -> "billing_required"
+    Returns one of ACCESS_STATES, evaluated on the workspace alone
+    (first match wins):
+        1. active workspace subscription          -> "allowed"
+        2. workspace trial window still open       -> "trialing"
+        3. workspace trial marker exists, elapsed  -> "expired"
+        4. no workspace / no entitlement signal    -> "billing_required"
     """
     now = now or datetime.now(timezone.utc)
 
-    if _is_active(workspace) or _is_active(user):
+    if _is_active(workspace):
         return ALLOWED
 
-    trial_ends = [
-        ts for ts in (_parse_ts(_trial_end_raw(workspace)),
-                      _parse_ts(_trial_end_raw(user)))
-        if ts is not None
-    ]
-    if any(now <= end for end in trial_ends):
-        return TRIALING
-    if trial_ends:
-        return EXPIRED
+    trial_end = _parse_ts(_trial_end_raw(workspace))
+    if trial_end is not None:
+        return TRIALING if now <= trial_end else EXPIRED
     return BILLING_REQUIRED
 
 
