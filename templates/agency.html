@@ -6,37 +6,245 @@
 <div class="muted">Agency intelligence profile</div>
 
 <div class="cards">
-  <div class="card"><div class="muted">Pipeline Value</div><div class="num">${{ "{:,.0f}".format(profile.summary.pipeline_value or 0) }}</div></div>
-  <div class="card"><div class="muted">Contracts</div><div class="num">{{ profile.summary.contracts }}</div></div>
-  <div class="card"><div class="muted">Critical</div><div class="num">{{ profile.summary.critical_contracts }}</div></div>
-  <div class="card"><div class="muted">Avg Score</div><div class="num">{{ "{:.1f}".format(profile.summary.avg_score or 0) }}</div></div>
+  <div class="card">
+    <div class="muted">Pipeline Value</div>
+    <div class="num">${{ "{:,.0f}".format(profile.summary.pipeline_value or 0) }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Contracts</div>
+    <div class="num">{{ profile.summary.contracts }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Active</div>
+    <div class="num">{{ profile.summary.active_contracts or 0 }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Expired</div>
+    <div class="num">{{ profile.summary.expired_contracts or 0 }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Critical</div>
+    <div class="num">{{ profile.summary.critical_contracts }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Avg Score</div>
+    <div class="num">{{ "{:.1f}".format(profile.summary.avg_score or 0) }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Top Score</div>
+    <div class="num">{{ profile.summary.max_score or 0 }}</div>
+  </div>
 </div>
 
-<h2>Top Vendors</h2>
+<h2 id="active-contracts">Active Contracts</h2>
+{% if profile.active %}
+<div style="overflow-x:auto">
 <table>
-<tr><th>Vendor</th><th>Contracts</th><th>Pipeline</th></tr>
-{% for v in profile.vendors %}
 <tr>
-<td><a href="/vendor/{{ v.vendor|urlencode }}">{{ v.vendor }}</a></td>
-<td>{{ v.contracts }}</td>
-<td>${{ "{:,.0f}".format(v.pipeline_value or 0) }}</td>
+<th>Priority</th>
+<th>Contract</th>
+<th>Vendor</th>
+<th>Value</th>
+<th>Start Date</th>
+<th>End Date</th>
+<th>Days Remaining</th>
+<th>Score</th>
 </tr>
-{% endfor %}
-</table>
-
-<h2>Upcoming Expirations</h2>
-<table>
-<tr><th>Priority</th><th>Contract</th><th>Vendor</th><th>Value</th><th>End Date</th><th>Days</th><th>Score</th></tr>
-{% for r in profile.upcoming %}
+{% for r in profile.active %}
 <tr>
-<td><span class="priority-badge priority-{{ (r.priority or 'unknown').lower().replace(' ','-').replace('_','-') }}">{{ r.priority }}</span></td>
+<td><span class="priority-badge priority-{{ (r.priority or 'unknown').lower().replace(' ','-').replace('_','-') }}">{{ r.priority or '—' }}</span></td>
 <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
 <td><a href="/vendor/{{ r.vendor|urlencode }}">{{ r.vendor }}</a></td>
 <td>${{ "{:,.0f}".format(r.value or 0) }}</td>
-<td>{{ r.end_date }}</td>
+<td>{{ r.start_date or '—' }}</td>
+<td>{{ r.end_date or '—' }}</td>
 <td>{{ r.days_remaining }}</td>
-<td>{{ r.recompete_score }}</td>
+<td>{{ r.recompete_score or '—' }}</td>
 </tr>
 {% endfor %}
 </table>
+</div>
+{% else %}
+<p class="muted">No active contracts found for this agency.</p>
+{% endif %}
+
+<h2>Contract Timeline</h2>
+<div style="max-width:700px;margin-bottom:28px">
+  <canvas id="timeline-chart"></canvas>
+</div>
+
+<h2>Win / Loss Indicators</h2>
+<div class="cards" style="margin-bottom:16px">
+{% for r in profile.win_loss_summary %}
+<div class="card">
+  <div class="muted">{{ r.status }}</div>
+  <div class="num">{{ r.contracts }}</div>
+  <div class="muted" style="font-size:12px">${{ "{:,.0f}".format(r.total_value or 0) }}</div>
+</div>
+{% endfor %}
+</div>
+{% if profile.change_events %}
+<h3 style="margin-top:0">Recent Events</h3>
+<div style="overflow-x:auto">
+<table>
+<tr><th>Event</th><th>Date</th><th>Contract</th><th>Vendor</th><th>Value</th><th>Priority</th></tr>
+{% for e in profile.change_events %}
+<tr>
+  <td>
+    {% if e.change_type == 'NEW' %}
+      <span class="priority-badge" style="background:#16a34a">New Award</span>
+    {% else %}
+      <span class="priority-badge" style="background:#b00020">Ended</span>
+    {% endif %}
+  </td>
+  <td>{{ e.run_date }}</td>
+  <td>{{ e.award_id or '—' }}</td>
+  <td><a href="/vendor/{{ e.vendor|urlencode }}">{{ e.vendor or '—' }}</a></td>
+  <td>${{ "{:,.0f}".format(e.value or 0) }}</td>
+  <td>{{ e.priority or '—' }}</td>
+</tr>
+{% endfor %}
+</table>
+</div>
+{% endif %}
+
+<h2>Recompete Score Analysis</h2>
+<p class="muted">Agency avg: <strong>{{ "{:.1f}".format(profile.summary.avg_score or 0) }}</strong> &nbsp;|&nbsp; Platform avg: <strong>{{ "{:.1f}".format(profile.summary.platform_avg_score or 0) }}</strong></p>
+<div style="overflow-x:auto">
+<table>
+<tr><th>Score Bucket</th><th>Contracts</th></tr>
+{% for r in profile.score_distribution %}
+<tr><td>{{ r.bucket }}</td><td>{{ r.contracts }}</td></tr>
+{% endfor %}
+</table>
+</div>
+
+<h2>Pipeline by Priority</h2>
+<div style="max-width:360px;margin-bottom:20px">
+  <canvas id="priority-chart"></canvas>
+</div>
+<div style="overflow-x:auto">
+<table>
+<tr><th>Priority</th><th>Contracts</th><th>Total Value</th><th>Avg Value</th></tr>
+{% for r in profile.pipeline_by_priority %}
+<tr>
+  <td><span class="priority-badge priority-{{ (r.priority or 'unknown').lower().replace(' ','-').replace('_','-') }}">{{ r.priority or 'Unknown' }}</span></td>
+  <td>{{ r.contracts }}</td>
+  <td>${{ "{:,.0f}".format(r.total_value or 0) }}</td>
+  <td>${{ "{:,.0f}".format(r.avg_value or 0) }}</td>
+</tr>
+{% endfor %}
+</table>
+</div>
+
+<h2>Vendor Leaderboard</h2>
+<div style="overflow-x:auto">
+<table>
+<tr><th>Vendor</th><th>Contracts</th><th>Active</th><th>Pipeline Value</th><th>Share</th><th>Top Score</th></tr>
+{% for v in profile.vendors %}
+<tr>
+  <td><a href="/vendor/{{ v.vendor|urlencode }}">{{ v.vendor }}</a></td>
+  <td>{{ v.contracts }}</td>
+  <td>{{ v.active_contracts }}</td>
+  <td>${{ "{:,.0f}".format(v.pipeline_value or 0) }}</td>
+  <td>{{ "{:.0f}".format(100 * (v.pipeline_value or 0) / (profile.summary.pipeline_value or 1)) }}%</td>
+  <td>{{ v.top_score or '—' }}</td>
+</tr>
+{% endfor %}
+</table>
+</div>
+
+<h2>Upcoming Expirations</h2>
+<div style="overflow-x:auto">
+<table>
+<tr>
+<th>Priority</th>
+<th>Contract</th>
+<th>Vendor</th>
+<th>Value</th>
+<th>End Date</th>
+<th>Days Remaining</th>
+<th>Competition</th>
+<th>Score</th>
+</tr>
+{% for r in profile.upcoming %}
+{% set days = r.days_remaining %}
+<tr>
+<td>
+<span class="priority-badge priority-{{ (r.priority or 'unknown').lower().replace(' ','-').replace('_','-') }}">
+{{ r.priority or '—' }}
+</span>
+</td>
+<td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
+<td><a href="/vendor/{{ r.vendor|urlencode }}">{{ r.vendor }}</a></td>
+<td>${{ "{:,.0f}".format(r.value or 0) }}</td>
+<td>{{ r.end_date or '—' }}</td>
+{% if days is none %}
+  <td>—</td>
+{% elif days <= 0 %}
+  <td style="color:#b00020;font-weight:bold">{{ days }}</td>
+{% elif days <= 30 %}
+  <td style="color:#d97706;font-weight:bold">{{ days }}</td>
+{% elif days <= 90 %}
+  <td style="color:#2563eb">{{ days }}</td>
+{% else %}
+  <td>{{ days }}</td>
+{% endif %}
+<td>{{ r.competition_type or '—' }}</td>
+<td>{{ r.recompete_score or '—' }}</td>
+</tr>
+{% endfor %}
+</table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+  var timelineData = {{ profile.timeline | tojson }};
+  if (timelineData.length > 0) {
+    new Chart(document.getElementById('timeline-chart'), {
+      type: 'bar',
+      data: {
+        labels: timelineData.map(function(r) { return r.year + ' ' + r.quarter; }),
+        datasets: [{
+          label: 'Contract Value',
+          data: timelineData.map(function(r) { return r.total_value; }),
+          backgroundColor: '#1f4f8f'
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { ticks: { callback: function(v) { return '$' + (v/1e6).toFixed(1) + 'M'; } } }
+        }
+      }
+    });
+  }
+
+  var priorityColors = { 'CRITICAL': '#b00020', 'HIGH': '#d97706', 'MEDIUM': '#2563eb', 'LOW': '#4b5563' };
+  var priorityData = {{ profile.pipeline_by_priority | tojson }};
+  if (priorityData.length > 0) {
+    new Chart(document.getElementById('priority-chart'), {
+      type: 'doughnut',
+      data: {
+        labels: priorityData.map(function(r) { return r.priority || 'Unknown'; }),
+        datasets: [{
+          data: priorityData.map(function(r) { return r.total_value; }),
+          backgroundColor: priorityData.map(function(r) { return priorityColors[r.priority] || '#999'; })
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'right' },
+          tooltip: { callbacks: { label: function(ctx) { return '$' + ctx.raw.toLocaleString(); } } }
+        }
+      }
+    });
+  }
+})();
+</script>
 {% endblock %}

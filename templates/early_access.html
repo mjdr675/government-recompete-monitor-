@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Join Early Access{% endblock %}
+
+{% block content %}
+<h1>Join the Early Access List</h1>
+<div class="muted" style="margin-bottom:20px;">
+  Be first to know when new features and beta seats open up.
+</div>
+
+{% if message %}
+<p style="color:#1a7f4b;margin-bottom:16px;font-weight:bold;">{{ message }}</p>
+{% endif %}
+
+{% if error %}
+<p style="color:#b00020;margin-bottom:16px;">{{ error }}</p>
+{% endif %}
+
+{% if not message %}
+<form method="post" style="max-width:380px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div style="margin-bottom:14px;">
+    <label style="display:block;margin-bottom:4px;font-weight:bold;">Email <span style="color:#b00020;">*</span></label>
+    <input type="email" name="email" required autofocus
+           style="width:100%;padding:9px;box-sizing:border-box;">
+  </div>
+  <button type="submit" style="width:100%;padding:10px;">Join Early Access</button>
+</form>
+{% endif %}
+{% endblock %}

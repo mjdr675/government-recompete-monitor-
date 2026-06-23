@@ -1,0 +1,28 @@
+{% extends "email/base.html" %}
+{% block title %}Welcome to Gov Recompete Monitor{% endblock %}
+{% block preheader %}Welcome to Gov Recompete Monitor — start finding contract opportunities.{% endblock %}
+
+{% block content %}
+<h2 style="margin:0 0 16px;font-size:22px;color:#1f4f8f;">Welcome, {{ user_email }}!</h2>
+<p style="margin:0 0 14px;">
+  You now have access to Gov Recompete Monitor — the fastest way to find expiring
+  federal contracts before your competitors do.
+</p>
+<p style="margin:0 0 14px;">
+  Browse upcoming recompete opportunities, bookmark the ones you care about, and
+  get alerts when contracts you're tracking are about to expire.
+</p>
+<p style="margin:0 0 28px;">
+  Get started by browsing contracts:
+</p>
+<p style="margin:0 0 28px;">
+  <a href="{{ app_url }}/contracts"
+     style="display:inline-block;background:#1f4f8f;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:6px;font-weight:bold;font-size:15px;">
+    Browse Contracts
+  </a>
+</p>
+<p style="margin:0;color:#666666;">
+  Or <a href="{{ app_url }}" style="color:#1f4f8f;">view your dashboard</a> to see
+  the full pipeline summary.
+</p>
+{% endblock %}

@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block title %}{{ opp['internal_id'] }} — Pipeline{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:6px">
+  <a href="/pipeline" style="font-size:13px;color:var(--text-muted)">&larr; Back to Pipeline</a>
+</div>
+
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px">
+  <div>
+    <h1>{{ contract["award_id"] or opp["internal_id"] if contract else opp["internal_id"] }}</h1>
+    <div class="page-meta">{{ opp["internal_id"] }}</div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <span class="priority-badge priority-{{ (opp['stage'] or 'new') }}">{{ opp["stage"]|capitalize }}</span>
+    {% if contract %}
+    <a href="/contract/{{ opp['internal_id'] }}" style="font-size:13px;padding:6px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-muted)">Contract detail &rarr;</a>
+    {% endif %}
+  </div>
+</div>
+
+{% if contract %}
+<div class="kpi-row" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
+  <div class="kpi-card">
+    <div class="kpi-label">Value</div>
+    <div class="kpi-value" style="font-size:20px">${{ "{:,.0f}".format(contract["value"] or 0) }}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Recompete Score</div>
+    <div class="kpi-value">{{ contract["recompete_score"] or "—" }}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Days Remaining</div>
+    <div class="kpi-value">{{ contract["days_remaining"] if contract["days_remaining"] is not none else "—" }}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Priority</div>
+    <div class="kpi-value" style="font-size:14px;padding-top:4px">
+      <span class="priority-badge priority-{{ (contract["priority"] or "unknown").lower() }}">{{ contract["priority"] or "—" }}</span>
+    </div>
+  </div>
+</div>
+
+<div class="table-wrapper" style="margin-bottom:20px">
+  <table class="detail-table">
+    <tbody>
+      <tr><th>Vendor / Incumbent</th><td>{{ contract["vendor"] or "—" }}</td></tr>
+      <tr><th>Agency</th><td>{{ contract["agency"] or "—" }}</td></tr>
+      <tr><th>Sub-Agency</th><td>{{ contract["sub_agency"] or "—" }}</td></tr>
+      <tr><th>Award ID</th><td>{{ contract["award_id"] or "—" }}</td></tr>
+      <tr><th>Competition Type</th><td>{{ contract["competition_type"] or "—" }}</td></tr>
+      <tr><th>Start Date</th><td>{{ contract["start_date"] or "—" }}</td></tr>
+      <tr><th>End Date</th><td>{{ contract["end_date"] or "—" }}</td></tr>
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="summary-box" style="margin-bottom:20px">
+  <strong>Contract data not available.</strong> This contract may have been removed from the database, but your pipeline entry is preserved.
+</div>
+{% endif %}
+
+{# ── Business Match ──────────────────────────────────────────── #}
+{% if has_profile and biz_match_score is not none %}
+<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:var(--radius-sm);padding:16px 20px;margin-bottom:20px">
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:10px">
+    <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.05em">Business Match</div>
+    <div style="font-size:22px;font-weight:700;color:var(--accent)">{{ biz_match_score }}%</div>
+  </div>
+  {% if biz_match_reasons %}
+  <ul style="margin:0;padding-left:18px;list-style:disc">
+    {% for r in biz_match_reasons %}
+    <li style="font-size:14px;margin-bottom:3px">{{ r }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if biz_mismatch_reasons %}
+  <div style="margin-top:10px;font-size:13px;color:var(--text-muted)">
+    Outside your profile:
+    <ul style="margin:4px 0 0;padding-left:18px;list-style:disc">
+      {% for r in biz_mismatch_reasons %}
+      <li>{{ r }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  {% if not biz_match_reasons and not biz_mismatch_reasons %}
+  <div class="muted" style="font-size:13px">No specific match signals found for this contract.</div>
+  {% endif %}
+</div>
+{% elif not has_profile %}
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px 20px;margin-bottom:20px">
+  <div style="font-weight:600;margin-bottom:6px">Business Match</div>
+  <div class="muted" style="font-size:14px">
+    Complete your <a href="/company-profile">Company Profile</a> to see how well this contract fits your business.
+  </div>
+</div>
+{% endif %}
+
+{# ── Capture workspace ─────────────────────────────────────────── #}
+<div class="capture-workspace" style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+
+  {# Left: read-only summary #}
+  <div>
+    <h2 style="margin-bottom:14px;font-size:15px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted)">Capture Details</h2>
+    <div class="table-wrapper">
+      <table class="detail-table">
+        <tbody>
+          <tr><th>Stage</th><td>{{ opp["stage"]|capitalize }}</td></tr>
+          <tr><th>Probability</th><td>{% if opp["probability"] is not none %}{{ opp["probability"] }}%{% else %}—{% endif %}</td></tr>
+          <tr><th>Next Action</th><td>{{ opp["next_action"] or "—" }}</td></tr>
+          <tr><th>Due Date</th><td>{{ opp["next_action_due"] or "—" }}</td></tr>
+          <tr><th>Notes</th><td style="white-space:pre-wrap">{{ opp["notes"] or "—" }}</td></tr>
+          <tr><th>Added</th><td>{{ opp["created_at"][:10] if opp["created_at"] else "—" }}</td></tr>
+          <tr><th>Last Updated</th><td>{{ opp["updated_at"][:10] if opp["updated_at"] else "—" }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# Right: update form #}
+  <div>
+    <h2 style="margin-bottom:14px;font-size:15px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted)">Update</h2>
+    <form method="post" action="/pipeline/update/{{ opp['id'] }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div style="display:flex;flex-direction:column;gap:12px">
+
+        <div>
+          <label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px">Stage</label>
+          <select name="stage" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:14px">
+            {% for val, label in pipeline_stages %}
+            <option value="{{ val }}" {{ 'selected' if opp['stage'] == val }}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px">Probability (%)</label>
+          <input type="number" name="probability" min="0" max="100"
+                 value="{{ opp['probability'] if opp['probability'] is not none else '' }}"
+                 placeholder="0–100"
+                 style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:14px">
+        </div>
+
+        <div>
+          <label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px">Next Action</label>
+          <input type="text" name="next_action"
+                 value="{{ opp['next_action'] or '' }}"
+                 placeholder="e.g. Draft capability statement"
+                 style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:14px">
+        </div>
+
+        <div>
+          <label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px">Due Date</label>
+          <input type="date" name="next_action_due"
+                 value="{{ opp['next_action_due'] or '' }}"
+                 style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:14px">
+        </div>
+
+        <div>
+          <label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px">Notes</label>
+          <textarea name="notes" rows="4" placeholder="Capture strategy, contacts, intel…"
+                    style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:14px;resize:vertical">{{ opp['notes'] or '' }}</textarea>
+        </div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button type="submit" class="btn btn-primary">Save changes</button>
+          <form method="post" action="/pipeline/remove/{{ opp['internal_id'] }}" style="margin:0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" onclick="return confirm('Remove from pipeline?')"
+                    style="font-size:14px;padding:8px 16px;border:1px solid var(--border);border-radius:var(--radius-sm);background:transparent;color:var(--text-muted);cursor:pointer">Remove from pipeline</button>
+          </form>
+        </div>
+
+      </div>
+    </form>
+  </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Sign In — Recompete{% endblock %}
+
+{% block extra_head %}{% include 'partials/_auth_styles.html' %}{% endblock %}
+
+{% block content %}
+<div class="auth-page">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <span class="auth-logo-mark" aria-hidden="true">R</span>
+      <span class="auth-logo-name">Recompete</span>
+    </div>
+
+    <h1 class="auth-heading">Welcome back</h1>
+    <p class="auth-sub">Sign in to your Recompete account</p>
+
+    {% if error %}
+    <div class="auth-error">{{ error }}</div>
+    {% endif %}
+
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" required autofocus autocomplete="email" placeholder="you@company.com">
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="••••••••">
+      </div>
+      <div class="field-row">
+        <span></span>
+        <a href="/forgot-password" style="font-size:12.5px;color:var(--text-muted);">Forgot password?</a>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Sign in</button>
+    </form>
+
+    <p class="auth-footer">
+      Don't have an account? <a href="/register">Start free trial</a>
+    </p>
+  </div>
+</div>
+{% endblock %}

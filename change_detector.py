@@ -1,8 +1,20 @@
-from db import connect, clear_changes_for_date, insert_change
+from db import (
+    connect,
+    clear_changes_for_date,
+    insert_change,
+)
 
 _PRIORITY_RANK = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
 
+
 def detect_changes(run_date):
+    """Record contract-presence and priority changes into the `changes` table.
+
+    Field-level contract changes are recorded separately by
+    update_detector.detect_field_changes() (the authoritative
+    contract_field_changes writer); this detector only handles the
+    NEW / REMOVED / UPGRADE / DOWNGRADE priority feed.
+    """
     clear_changes_for_date(run_date)
 
     with connect() as con:
@@ -22,23 +34,17 @@ def detect_changes(run_date):
 
         today, yesterday = dates
 
-        today_rows = {
-            r[0]: r[1]
-            for r in con.execute("""
-                SELECT internal_id, priority
-                FROM contract_snapshots
-                WHERE run_date = ?
-            """, (today,))
-        }
+        def _load(snapshot_date):
+            return {
+                r[0]: r[1]
+                for r in con.execute(
+                    "SELECT internal_id, priority FROM contract_snapshots WHERE run_date = ?",
+                    (snapshot_date,),
+                )
+            }
 
-        yesterday_rows = {
-            r[0]: r[1]
-            for r in con.execute("""
-                SELECT internal_id, priority
-                FROM contract_snapshots
-                WHERE run_date = ?
-            """, (yesterday,))
-        }
+        today_rows = _load(today)
+        yesterday_rows = _load(yesterday)
 
     new_count = 0
     removed_count = 0

@@ -1,165 +1,176 @@
-"""Tests for Saved Searches feature (db layer + HTTP routes)."""
-
-import json
-import os
-import tempfile
+"""Tests for POST /searches/save and DELETE /searches/:id routes."""
 
 import pytest
-
 import db as db_module
-from app import app as flask_app
 
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
 
 @pytest.fixture()
-def tmp_db(tmp_path, monkeypatch):
-    """Redirect all db operations to a fresh temp database."""
+def auth_db(tmp_path, monkeypatch):
     db_path = str(tmp_path / "test.db")
     monkeypatch.setattr(db_module, "DB_PATH", db_path)
+    db_module._cached_engine.cache_clear()
+    monkeypatch.delenv("DATABASE_URL", raising=False)
     db_module.init_db()
-    db_module.init_saved_searches_table()
     yield db_path
+    db_module._cached_engine.cache_clear()
 
 
 @pytest.fixture()
-def client(tmp_db):
-    flask_app.config["TESTING"] = True
-    with flask_app.test_client() as c:
+def client(auth_db):
+    import app as flask_app
+    flask_app.app.config["TESTING"] = True
+    flask_app.app.config["WTF_CSRF_ENABLED"] = False
+    flask_app.app.config["RATELIMIT_ENABLED"] = False
+    flask_app.app.secret_key = "test-secret-key"
+    with flask_app.app.test_client() as c:
+        c.post("/register", data={
+            "email": "ss@example.com",
+            "password": "password123",
+            "confirm": "password123",
+        })
+        yield c
+
+
+@pytest.fixture()
+def anon_client(auth_db):
+    import app as flask_app
+    flask_app.app.config["TESTING"] = True
+    flask_app.app.config["WTF_CSRF_ENABLED"] = False
+    flask_app.app.config["RATELIMIT_ENABLED"] = False
+    flask_app.app.secret_key = "test-secret-key"
+    with flask_app.app.test_client() as c:
         yield c
 
 
 # ---------------------------------------------------------------------------
-# db layer
+# POST /searches/save
 # ---------------------------------------------------------------------------
 
-class TestDbLayer:
-    def test_create_and_list(self, tmp_db):
-        sid = db_module.create_saved_search("DoD Critical", {"agency": "DEFENSE", "priority": "CRITICAL"})
-        assert isinstance(sid, int)
-        searches = db_module.get_saved_searches()
-        assert len(searches) == 1
-        assert searches[0]["name"] == "DoD Critical"
-        assert searches[0]["filters"]["agency"] == "DEFENSE"
+def test_save_returns_ok_and_id(client):
+    rv = client.post("/searches/save", json={"name": "My Search", "params": {"q": "janitorial"}})
+    assert rv.status_code == 200
+    data = rv.get_json()
+    assert data["ok"] is True
+    assert isinstance(data["id"], int)
 
-    def test_get_by_id(self, tmp_db):
-        sid = db_module.create_saved_search("Expiring Soon", {"days": "90"})
-        result = db_module.get_saved_search(sid)
-        assert result is not None
-        assert result["id"] == sid
-        assert result["filters"]["days"] == "90"
 
-    def test_get_missing_returns_none(self, tmp_db):
-        assert db_module.get_saved_search(9999) is None
+def test_save_missing_name_returns_400(client):
+    rv = client.post("/searches/save", json={"params": {"q": "test"}})
+    assert rv.status_code == 400
+    assert rv.get_json()["ok"] is False
 
-    def test_rename(self, tmp_db):
-        sid = db_module.create_saved_search("Old Name", {"q": "defense"})
-        assert db_module.rename_saved_search(sid, "New Name") is True
-        assert db_module.get_saved_search(sid)["name"] == "New Name"
 
-    def test_rename_missing_returns_false(self, tmp_db):
-        assert db_module.rename_saved_search(9999, "X") is False
+def test_save_empty_name_returns_400(client):
+    rv = client.post("/searches/save", json={"name": "  ", "params": {}})
+    assert rv.status_code == 400
 
-    def test_delete(self, tmp_db):
-        sid = db_module.create_saved_search("To Delete", {"q": "test"})
-        assert db_module.delete_saved_search(sid) is True
-        assert db_module.get_saved_search(sid) is None
 
-    def test_delete_missing_returns_false(self, tmp_db):
-        assert db_module.delete_saved_search(9999) is False
+def test_save_unauthenticated_returns_401(anon_client):
+    rv = anon_client.post("/searches/save", json={"name": "X", "params": {}})
+    assert rv.status_code == 401
 
-    def test_multiple_searches_ordered_newest_first(self, tmp_db):
-        db_module.create_saved_search("First", {"q": "a"})
-        db_module.create_saved_search("Second", {"q": "b"})
-        searches = db_module.get_saved_searches()
-        assert searches[0]["name"] == "Second"
-        assert searches[1]["name"] == "First"
+
+def test_save_multiple_searches_get_distinct_ids(client):
+    rv1 = client.post("/searches/save", json={"name": "A", "params": {}})
+    rv2 = client.post("/searches/save", json={"name": "B", "params": {}})
+    assert rv1.get_json()["id"] != rv2.get_json()["id"]
 
 
 # ---------------------------------------------------------------------------
-# HTTP routes
+# DELETE /searches/<id>
 # ---------------------------------------------------------------------------
 
-class TestRoutes:
-    def test_list_page_empty(self, client):
-        resp = client.get("/saved-searches")
-        assert resp.status_code == 200
-        assert b"No saved searches yet" in resp.data
+def test_delete_own_search_returns_ok(client):
+    rv = client.post("/searches/save", json={"name": "To delete", "params": {}})
+    search_id = rv.get_json()["id"]
+    rv2 = client.delete(f"/searches/{search_id}")
+    assert rv2.status_code == 200
+    assert rv2.get_json()["ok"] is True
 
-    def test_save_redirects_to_list(self, client):
-        resp = client.post("/saved-searches/save", data={
-            "name": "My Search",
-            "q": "janitorial",
-            "priority": "CRITICAL",
-        })
-        assert resp.status_code == 302
-        assert resp.headers["Location"].endswith("/saved-searches")
 
-    def test_save_appears_in_list(self, client):
-        client.post("/saved-searches/save", data={"name": "Test Search", "q": "test"})
-        resp = client.get("/saved-searches")
-        assert b"Test Search" in resp.data
+def test_delete_nonexistent_is_idempotent(client):
+    rv = client.delete("/searches/99999")
+    assert rv.status_code == 200
+    assert rv.get_json()["ok"] is True
 
-    def test_save_without_name_redirects_back(self, client):
-        resp = client.post("/saved-searches/save", data={"name": "", "q": "x"})
-        assert resp.status_code == 302
 
-    def test_load_redirects_to_contracts(self, client):
-        client.post("/saved-searches/save", data={
-            "name": "CRIT", "priority": "CRITICAL"
-        })
-        searches = db_module.get_saved_searches()
-        sid = searches[0]["id"]
-        resp = client.get(f"/saved-searches/{sid}/load")
-        assert resp.status_code == 302
-        assert "priority=CRITICAL" in resp.headers["Location"]
+def test_delete_unauthenticated_returns_401(anon_client):
+    rv = anon_client.delete("/searches/1")
+    assert rv.status_code == 401
 
-    def test_load_missing_redirects_to_list(self, client):
-        resp = client.get("/saved-searches/9999/load")
-        assert resp.status_code == 302
-        assert resp.headers["Location"].endswith("/saved-searches")
 
-    def test_rename(self, client):
-        client.post("/saved-searches/save", data={"name": "Original", "q": "x"})
-        searches = db_module.get_saved_searches()
-        sid = searches[0]["id"]
-        resp = client.post(f"/saved-searches/{sid}/rename", data={"name": "Renamed"})
-        assert resp.status_code == 302
-        page = client.get("/saved-searches").data
-        assert b"Renamed" in page
-        assert b"Original" not in page
+# ---------------------------------------------------------------------------
+# GET /searches page
+# ---------------------------------------------------------------------------
 
-    def test_rename_empty_name_no_change(self, client):
-        client.post("/saved-searches/save", data={"name": "Keep Me", "q": "x"})
-        searches = db_module.get_saved_searches()
-        sid = searches[0]["id"]
-        client.post(f"/saved-searches/{sid}/rename", data={"name": ""})
-        page = client.get("/saved-searches").data
-        assert b"Keep Me" in page
+def test_searches_page_returns_200(client):
+    rv = client.get("/searches")
+    assert rv.status_code == 200
+    assert b"Saved Searches" in rv.data
 
-    def test_delete(self, client):
-        client.post("/saved-searches/save", data={"name": "Delete Me", "q": "x"})
-        searches = db_module.get_saved_searches()
-        sid = searches[0]["id"]
-        resp = client.post(f"/saved-searches/{sid}/delete")
-        assert resp.status_code == 302
-        page = client.get("/saved-searches").data
-        assert b"Delete Me" not in page
 
-    def test_delete_missing_still_redirects(self, client):
-        resp = client.post("/saved-searches/9999/delete")
-        assert resp.status_code == 302
+def test_searches_page_redirects_when_not_logged_in(anon_client):
+    rv = anon_client.get("/searches")
+    assert rv.status_code == 302
+    assert "/login" in rv.headers["Location"]
 
-    def test_dashboard_shows_saved_searches(self, client):
-        client.post("/saved-searches/save", data={"name": "My Fav", "q": "test"})
-        resp = client.get("/")
-        assert resp.status_code == 200
-        assert b"My Fav" in resp.data
 
-    def test_contracts_page_has_save_form(self, client):
-        resp = client.get("/contracts")
-        assert resp.status_code == 200
-        assert b"saved-searches/save" in resp.data
-        assert b"Manage saved searches" in resp.data
+def test_delete_removes_row_from_db(client, auth_db):
+    import sqlite3
+    rv = client.post("/searches/save", json={"name": "Gone", "params": {}})
+    search_id = rv.get_json()["id"]
+    client.delete(f"/searches/{search_id}")
+    con = sqlite3.connect(auth_db)
+    count = con.execute("SELECT COUNT(*) FROM user_saved_searches WHERE id=?", (search_id,)).fetchone()[0]
+    con.close()
+    assert count == 0
+
+
+# ---------------------------------------------------------------------------
+# Reload round-trip (incl. the new status filter) + contracts-page quick links
+# ---------------------------------------------------------------------------
+
+def test_saved_search_roundtrips_status_and_query(client):
+    # save a filter combo that includes the new Open/Active status filter
+    client.post("/searches/save", json={
+        "name": "Open big contracts",
+        "params": {"q": "janitorial", "status": "open", "min_value": "1000000"},
+    })
+    body = client.get("/searches").get_data(as_text=True)
+    assert "Open big contracts" in body
+    # the Run link reloads /contracts with the saved params, status included
+    assert "/contracts?" in body
+    assert "status=open" in body
+    assert "q=janitorial" in body
+
+
+def test_contracts_page_shows_saved_search_links(client):
+    client.post("/searches/save", json={
+        "name": "Open DoD", "params": {"status": "open", "agency": "DEFENSE"},
+    })
+    body = client.get("/contracts").get_data(as_text=True)
+    assert "Saved searches:" in body            # the quick-links section renders
+    assert "Open DoD" in body                    # the saved search appears as a chip
+    assert "status=open" in body                 # links back to the filtered list
+
+
+def test_contracts_page_no_saved_searches_section_when_empty(client):
+    body = client.get("/contracts").get_data(as_text=True)
+    assert "Saved searches:" not in body         # nothing shown until the user saves one
+
+
+def test_empty_params_search_links_to_plain_contracts(client):
+    client.post("/searches/save", json={"name": "Everything", "params": {}})
+    body = client.get("/searches").get_data(as_text=True)
+    assert "Everything" in body
+
+
+def test_list_saved_searches_helper_parses_params(client, auth_db):
+    import db as db_module
+    from users import get_user_by_email
+    client.post("/searches/save", json={"name": "H", "params": {"status": "expired"}})
+    uid = get_user_by_email("ss@example.com")["id"]
+    items = db_module.list_saved_searches(uid)
+    assert len(items) == 1
+    assert items[0]["name"] == "H"
+    assert items[0]["params"] == {"status": "expired"}

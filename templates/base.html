@@ -1,42 +1,309 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-  <title>{% block title %}Government Recompete Monitor{% endblock %}</title>
-  <style>
-    body{font-family:Arial,sans-serif;margin:32px;background:#f7f7f7;color:#222}
-    a{color:#1f4f8f;text-decoration:none}
-    a:hover{text-decoration:underline}
-    .nav{margin-bottom:24px}
-    .nav a{margin-right:18px;font-weight:bold}
-    h1{margin-bottom:4px}
-    .muted{color:#666;margin-bottom:18px}
-    .cards{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px}
-    .card{background:white;border-radius:10px;padding:18px;min-width:140px;box-shadow:0 1px 4px #ddd;transition:box-shadow .15s,background .15s;cursor:pointer;}
-    .card:hover{background:#f0f4ff;box-shadow:0 3px 10px #c7d2e8;}
-    .num{font-size:28px;font-weight:bold}
-    table{width:100%;border-collapse:collapse;background:white;margin:16px 0 28px}
-    th,td{padding:10px;border-bottom:1px solid #eee;text-align:left;vertical-align:top}
-    th{background:#fafafa}
-    input,select,button{padding:8px;margin-right:8px}
-    .priority-badge{display:inline-block;padding:4px 8px;border-radius:999px;font-weight:bold;font-size:12px;color:white}
-    .priority-critical{background:#b00020}
-    .priority-high{background:#d97706}
-    .priority-medium{background:#2563eb}
-    .priority-low{background:#4b5563}
-  </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Recompete — Government Contract Intelligence{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/design.css') }}">
+  {% block extra_head %}{% endblock %}
+  <!-- Apply saved theme immediately to prevent flash of wrong theme -->
+  <script>try{if(localStorage.getItem('recompete-theme')==='dark')document.documentElement.setAttribute('data-theme','dark')}catch(e){}</script>
 </head>
 <body>
-  <div class="nav">
-    <a href="/">Dashboard</a>
-    <a href="/contracts">Contracts</a>
-    <a href="/watchlist">Watchlist</a>
-    <a href="/alerts">Alerts</a>
-    <a href="/saved-searches">Saved Searches</a>
-    <a href="/views">Views</a>
-    <a href="/ingest">Ingest</a>
-  </div>
 
-  {% block content %}{% endblock %}
-  {% block scripts %}{% endblock %}
+{%- macro icon_dashboard() -%}
+<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1.2"/>
+  <rect x="9" y="1.5" width="5.5" height="5.5" rx="1.2"/>
+  <rect x="1.5" y="9" width="5.5" height="5.5" rx="1.2"/>
+  <rect x="9" y="9" width="5.5" height="5.5" rx="1.2"/>
+</svg>
+{%- endmacro -%}
+
+{%- macro icon_contracts() -%}
+<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M3.5 2h6.5l3 3v9h-9.5V2z"/>
+  <path d="M10 2v3h3"/>
+  <line x1="5" y1="8.5" x2="11" y2="8.5"/>
+  <line x1="5" y1="11.5" x2="9" y2="11.5"/>
+</svg>
+{%- endmacro -%}
+
+{%- macro icon_watchlist() -%}
+<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M8 1.5l1.85 3.75L14 6.1l-3.05 2.98.72 4.22L8 11.15l-3.67 2.15.72-4.22L2 6.1l4.15-.85z"/>
+</svg>
+{%- endmacro -%}
+
+{%- macro icon_search() -%}
+<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="7" cy="7" r="4.5"/>
+  <line x1="10.3" y1="10.3" x2="14" y2="14"/>
+</svg>
+{%- endmacro -%}
+
+{%- macro icon_views() -%}
+<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="2" y="8" width="3" height="6" rx="0.8"/>
+  <rect x="6.5" y="4.5" width="3" height="9.5" rx="0.8"/>
+  <rect x="11" y="6" width="3" height="8" rx="0.8"/>
+</svg>
+{%- endmacro -%}
+
+{%- macro icon_alerts() -%}
+<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M8 1.5a4.5 4.5 0 0 1 4.5 4.5c0 3.8 1.5 5 1.5 5H2s1.5-1.2 1.5-5A4.5 4.5 0 0 1 8 1.5z"/>
+  <path d="M6.5 11.5a1.5 1.5 0 0 0 3 0"/>
+</svg>
+{%- endmacro -%}
+
+{%- macro icon_ingest() -%}
+<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <line x1="8" y1="1.5" x2="8" y2="10.5"/>
+  <polyline points="4.5 7 8 10.5 11.5 7"/>
+  <line x1="2" y1="14" x2="14" y2="14"/>
+</svg>
+{%- endmacro -%}
+
+{%- macro icon_pipeline() -%}
+<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="1.5 11.5 5.5 7 9 10 14.5 4"/>
+  <circle cx="14.5" cy="4" r="1.2" fill="currentColor" stroke="none"/>
+</svg>
+{%- endmacro -%}
+
+{%- macro icon_company() -%}
+<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="2" y="5" width="8" height="10" rx="0.8"/>
+  <path d="M10 8h2.5a0.8 0.8 0 0 1 0.8 0.8V15H10"/>
+  <line x1="5" y1="8" x2="5" y2="8.01"/>
+  <line x1="7" y1="8" x2="7" y2="8.01"/>
+  <line x1="5" y1="11" x2="5" y2="11.01"/>
+  <line x1="7" y1="11" x2="7" y2="11.01"/>
+  <line x1="4.5" y1="5" x2="4.5" y2="2.5"/>
+  <line x1="7.5" y1="5" x2="7.5" y2="2.5"/>
+  <line x1="4" y1="2.5" x2="8" y2="2.5"/>
+</svg>
+{%- endmacro -%}
+
+{% if g.user %}
+{% set p = request.path %}
+{% set user_initial = (g.user.get('company_name') or g.user.get('email') or 'Workspace')[0].upper() %}
+<div class="app-layout">
+  <div class="sidebar-backdrop" onclick="document.body.classList.remove('sidebar-open')" aria-hidden="true"></div>
+  <aside class="sidebar">
+    <a class="sidebar-brand" href="/dashboard">
+      <span class="brand-mark" aria-hidden="true">R</span>
+      <span class="brand-name">Recompete</span>
+    </a>
+    {% set ws_name = (workspace.name if workspace else None) or g.user.get('company_name') %}
+    {% if ws_name or (workspace and workspace.logo_path) %}
+    <a class="sidebar-workspace" href="/settings/workspace" style="text-decoration:none;color:inherit">
+      {% if workspace and workspace.logo_path %}
+      <img class="sidebar-workspace-logo" src="{{ url_for('static', filename=workspace.logo_path) }}"
+           alt="{{ ws_name or 'Workspace' }} logo"
+           style="width:24px;height:24px;border-radius:6px;object-fit:cover">
+      {% else %}
+      <span class="sidebar-workspace-avatar" aria-hidden="true">{{ (ws_name or 'W')[0].upper() }}</span>
+      {% endif %}
+      <span class="sidebar-workspace-name" title="{{ ws_name or 'Workspace' }}">{{ ws_name or 'Workspace' }}</span>
+    </a>
+    {% endif %}
+    <nav class="sidebar-nav">
+      <a href="/dashboard" class="{{ 'active' if p == '/dashboard' }}">
+        <span class="nav-icon">{{ icon_dashboard() }}</span>Dashboard
+      </a>
+      <a href="/contracts" class="{{ 'active' if p.startswith('/contract') }}">
+        <span class="nav-icon">{{ icon_contracts() }}</span>Contracts
+      </a>
+      <a href="/watchlist" class="{{ 'active' if p == '/watchlist' }}">
+        <span class="nav-icon">{{ icon_watchlist() }}</span>Watchlist{% if g.watchlist_count %}<span class="nav-badge">{{ g.watchlist_count }}</span>{% endif %}
+      </a>
+      <a href="/pipeline" class="{{ 'active' if p.startswith('/pipeline') }}">
+        <span class="nav-icon">{{ icon_pipeline() }}</span>Pipeline
+      </a>
+      <a href="/company-profile" class="{{ 'active' if p == '/company-profile' }}">
+        <span class="nav-icon">{{ icon_company() }}</span>Company Profile
+      </a>
+      <a href="/searches" class="{{ 'active' if p == '/searches' }}">
+        <span class="nav-icon">{{ icon_search() }}</span>Saved Searches
+      </a>
+      <a href="/views" class="{{ 'active' if p.startswith('/views') }}">
+        <span class="nav-icon">{{ icon_views() }}</span>Views
+      </a>
+      <a href="/settings/alerts" class="{{ 'active' if p.startswith('/settings') }}">
+        <span class="nav-icon">{{ icon_alerts() }}</span>Alerts
+      </a>
+      <a href="/ingest" class="{{ 'active' if p == '/ingest' }}">
+        <span class="nav-icon">{{ icon_ingest() }}</span>Ingest
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <span class="sidebar-avatar-sm" aria-hidden="true">{{ user_initial }}</span>
+        <span class="sidebar-user-name" title="{{ g.user.get('email', '') }}">{{ g.user.get('company_name') or g.user.get('email') or 'Workspace' }}</span>
+      </div>
+      <div class="sidebar-footer-links">
+        {% if g.user.get('stripe_customer_id') %}
+          <form method="post" action="/billing/portal" style="display:inline;margin:0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit">Subscription</button>
+          </form>
+        {% endif %}
+        <a href="/settings/account">Account</a>
+        <a href="/logout">Sign out</a>
+      </div>
+      {% if not g.user.get('stripe_customer_id') %}
+        <a href="/subscribe" class="sidebar-upgrade">Upgrade to Pro</a>
+      {% endif %}
+    </div>
+  </aside>
+  <div class="main-wrapper">
+    <header class="top-header">
+      <button class="sidebar-toggle" onclick="document.body.classList.toggle('sidebar-open')" aria-label="Toggle navigation">&#9776;</button>
+      <form class="header-search" action="/contracts" method="get" role="search">
+        <div class="header-search-inner">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+            <circle cx="7" cy="7" r="4.5"/><line x1="10.3" y1="10.3" x2="14" y2="14"/>
+          </svg>
+          <input type="search" name="q" placeholder="Search contracts…" autocomplete="off" aria-label="Search contracts">
+        </div>
+      </form>
+      <div class="header-spacer"></div>
+      <div class="header-actions">
+        <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme" title="Toggle dark/light mode"></button>
+        <div class="header-avatar" title="{{ g.user['email'] }}" aria-hidden="true">{{ user_initial }}</div>
+      </div>
+    </header>
+    {% if trial_days_remaining is not none %}
+      {% if trial_days_remaining <= 3 %}
+        <div class="trial-banner urgent">
+          <strong>Trial ending soon:</strong> {{ trial_days_remaining }} day{{ 's' if trial_days_remaining != 1 else '' }} remaining &mdash;
+          <a href="/subscribe" style="color:#b91c1c">Subscribe now to keep access &rarr;</a>
+        </div>
+      {% else %}
+        <div class="trial-banner">
+          <strong>Free trial:</strong> {{ trial_days_remaining }} day{{ 's' if trial_days_remaining != 1 else '' }} remaining &mdash;
+          <a href="/subscribe" style="color:#92400e">Upgrade to Pro &rarr;</a>
+        </div>
+      {% endif %}
+    {% endif %}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        {% if category == 'error' %}
+          <div class="flash-error" style="background:#fee2e2;border-left:3px solid #ef4444;color:#991b1b">{{ message }}</div>
+        {% else %}
+          <div class="flash-success" style="background:#d1fae5;border-left:3px solid #10b981;color:#065f46">{{ message }}</div>
+        {% endif %}
+      {% endfor %}
+    {% endwith %}
+    <main class="content">
+{% else %}
+<div class="anon-topbar">
+  <a class="anon-topbar-brand" href="/">
+    <span class="brand-mark" aria-hidden="true">R</span>
+    Recompete
+  </a>
+  <div class="anon-topbar-links">
+    <a href="/login">Sign in</a>
+    <a href="/register" class="btn btn-primary">Start free trial</a>
+  </div>
+</div>
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for category, message in messages %}
+    {% if category == 'error' %}
+      <div class="flash-error" style="background:#fee2e2;border-left:3px solid #ef4444;color:#991b1b">{{ message }}</div>
+    {% else %}
+      <div class="flash-success" style="background:#d1fae5;border-left:3px solid #10b981;color:#065f46">{{ message }}</div>
+    {% endif %}
+  {% endfor %}
+{% endwith %}
+<div class="anon-content">
+{% endif %}
+
+{% block content %}{% endblock %}
+
+{% if g.user %}
+    </main>
+  </div>{# /main-wrapper #}
+  <nav class="bottom-nav" aria-label="Main navigation">
+    <a href="/dashboard" class="bottom-nav-item {{ 'active' if p == '/dashboard' }}">
+      <span class="bottom-nav-icon">{{ icon_dashboard() }}</span>
+      <span class="bottom-nav-label">Home</span>
+    </a>
+    <a href="/contracts" class="bottom-nav-item {{ 'active' if p.startswith('/contract') }}">
+      <span class="bottom-nav-icon">{{ icon_search() }}</span>
+      <span class="bottom-nav-label">Search</span>
+    </a>
+    <a href="/pipeline" class="bottom-nav-item {{ 'active' if p.startswith('/pipeline') }}">
+      <span class="bottom-nav-icon">{{ icon_pipeline() }}</span>
+      <span class="bottom-nav-label">Pipeline</span>
+    </a>
+    <a href="/watchlist" class="bottom-nav-item {{ 'active' if p == '/watchlist' }}">
+      <span class="bottom-nav-icon" style="position:relative">
+        {{ icon_watchlist() }}
+        {% if g.watchlist_count %}<span class="bottom-nav-badge">{{ g.watchlist_count }}</span>{% endif %}
+      </span>
+      <span class="bottom-nav-label">Watchlist</span>
+    </a>
+    <a href="/company-profile" class="bottom-nav-item {{ 'active' if p == '/company-profile' }}">
+      <span class="bottom-nav-icon">{{ icon_company() }}</span>
+      <span class="bottom-nav-label">Profile</span>
+    </a>
+  </nav>
+</div>{# /app-layout #}
+{% else %}
+</div>
+{% endif %}
+
+<script>
+(function() {
+  var STORAGE_KEY = 'recompete-theme';
+  var btn = document.getElementById('theme-btn');
+
+  var MOON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  var SUN  = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+
+  function isDark() {
+    return document.documentElement.getAttribute('data-theme') === 'dark';
+  }
+
+  function renderBtn(dark) {
+    if (!btn) return;
+    btn.innerHTML = dark ? (SUN + ' Light') : (MOON + ' Dark');
+  }
+
+  function setTheme(dark) {
+    if (dark) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      try { localStorage.setItem(STORAGE_KEY, 'dark'); } catch(e) {}
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+      try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
+    }
+    renderBtn(dark);
+  }
+
+  function toggleTheme() { setTheme(!isDark()); }
+  window.toggleTheme = toggleTheme;
+
+  // Sync button label with current theme on every page load
+  renderBtn(isDark());
+})();
+</script>
+{% block scripts %}{% endblock %}
+<script>
+// Mobile greeting — runs on every page but only the greeting element listens
+(function() {
+  var el = document.getElementById('mobile-greeting-text');
+  if (!el) return;
+  var h = new Date().getHours();
+  var g = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  el.textContent = g;
+})();
+</script>
 </body>
 </html>

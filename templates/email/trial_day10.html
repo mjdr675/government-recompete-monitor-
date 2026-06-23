@@ -1,0 +1,31 @@
+{% extends "email/base.html" %}
+{% block title %}Your Gov Recompete Monitor trial ends in 4 days{% endblock %}
+{% block preheader %}Don't lose access — subscribe before your trial ends on {{ trial_ends_date }}.{% endblock %}
+
+{% block content %}
+<h2 style="margin:0 0 16px;font-size:22px;color:#1f4f8f;">Your trial ends in 4 days</h2>
+<p style="margin:0 0 14px;">Hi {{ user_email }},</p>
+<p style="margin:0 0 14px;">
+  You have <strong>4 days left</strong> on your Gov Recompete Monitor trial.
+  After {{ trial_ends_date }}, you'll need a subscription to continue tracking
+  federal contracts and receiving expiry alerts.
+</p>
+<p style="margin:0 0 20px;">
+  Subscribe now to keep uninterrupted access to:
+</p>
+<ul style="margin:0 0 20px;padding-left:20px;line-height:2;">
+  <li>Unlimited contract tracking and watchlist alerts</li>
+  <li>Daily recompete opportunity detection</li>
+  <li>Saved searches and custom views</li>
+  <li>CSV export</li>
+</ul>
+<p style="margin:0 0 20px;">
+  <a href="{{ app_url }}/subscribe"
+     style="display:inline-block;background:#1f4f8f;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:6px;font-weight:bold;font-size:15px;">
+    Subscribe — $49/month
+  </a>
+</p>
+<p style="margin:0;font-size:13px;color:#888888;">
+  Cancel anytime. Secure payment via Stripe.
+</p>
+{% endblock %}

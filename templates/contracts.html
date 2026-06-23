@@ -1,84 +1,367 @@
 {% extends "base.html" %}
+{% import "_score_explainer.html" as score_help %}
 {% block title %}Contracts{% endblock %}
 
 {% block content %}
-<h1>Contracts</h1>
-<div class="muted">Showing {{ start }}–{{ end }} of {{ total }} matching contracts</div>
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<div style="margin-bottom:16px">
+  <h1>Contracts</h1>
+  <p class="page-subtitle">Government contracts expiring soon — scored and ranked by recompete attractiveness.</p>
+  <div class="page-meta" style="margin-top:4px">Showing {{ start }}&ndash;{{ end }} of {{ total }} matching contracts</div>
+</div>
 
-<form method="get">
-  <input name="q" value="{{ q }}" placeholder="Search vendor, agency, award...">
-  <select name="priority">
-    <option value="">All priorities</option>
-    {% for p in priorities %}
-      <option value="{{ p }}" {% if p == priority %}selected{% endif %}>{{ p }}</option>
-    {% endfor %}
-  </select>
-  <input name="days" value="{{ days }}" placeholder="Expiring within days" style="width:160px;">
-  <input type="hidden" name="sort" value="{{ sort }}">
-  <input type="hidden" name="dir" value="{{ direction }}">
-  <button type="submit">Filter</button>
-  <a href="/contracts">Reset</a>
+<form method="get" class="filter-bar">
+  <div class="filter-row">
+    <div class="filter-field grow">
+      <label>Search</label>
+      <input name="q" value="{{ q }}" placeholder="Vendor, agency, work type, state&hellip;">
+    </div>
+    <div class="filter-field grow">
+      <label>Agency</label>
+      <select name="agency">
+        <option value="">All agencies</option>
+        {% for a in all_agencies %}
+          <option value="{{ a }}" {% if a == agency %}selected{% endif %}>{{ a }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-field sm">
+      <label>Category</label>
+      <select name="category">
+        <option value="">All categories</option>
+        {% for c in all_categories %}
+          <option value="{{ c }}" {% if c == category %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-field sm">
+      <label>State</label>
+      <select name="state">
+        <option value="">All states</option>
+        {% for s in all_states %}
+          <option value="{{ s }}" {% if s == state %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-field sm">
+      <label>Priority</label>
+      <select name="priority">
+        <option value="">All</option>
+        {% for p in priorities %}
+          <option value="{{ p }}" {% if p == priority %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-field sm">
+      <label>Expiring within</label>
+      <select name="days">
+        <option value="">Any time</option>
+        {% for d in [30, 60, 90, 180, 365] %}
+          <option value="{{ d }}" {% if days|string == d|string %}selected{% endif %}>{{ d }} days</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-field sm">
+      <label>Min value</label>
+      <select name="min_value">
+        <option value="">Any size</option>
+        {% for val, label in [(100000, "$100K+"), (500000, "$500K+"), (1000000, "$1M+"), (5000000, "$5M+"), (10000000, "$10M+")] %}
+          <option value="{{ val }}" {% if min_value and min_value|int == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-field sm">
+      <label>Status</label>
+      <select name="status">
+        {% for val, label in [("", "All"), ("open", "Open only"), ("expired", "Expired")] %}
+          <option value="{{ val }}" {% if status == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <input type="hidden" name="sort" value="{{ sort }}">
+    <input type="hidden" name="dir" value="{{ direction }}">
+    {% if in_pipeline %}<input type="hidden" name="in_pipeline" value="1">{% endif %}
+    {% if discover %}<input type="hidden" name="discover" value="1">{% endif %}
+    <div style="display:flex;gap:8px;align-items:flex-end;padding-bottom:1px">
+      <button type="submit" class="btn btn-primary">Filter</button>
+      <a href="/contracts" class="btn btn-ghost">Reset</a>
+    </div>
+  </div>
+  {% if g.user %}
+  <div class="filter-meta">
+    <button type="button" onclick="saveSearch()" style="background:none;border:none;padding:0;cursor:pointer;font-size:12px;color:var(--accent);font-family:inherit">Save this search</button>
+    <span id="save-confirm" class="muted" style="display:none">Saved</span>
+    <a href="/contracts/export.csv?{{ request.query_string.decode() }}">Export CSV</a>
+  </div>
+  {% endif %}
 </form>
 
-<form method="post" action="/saved-searches/save" style="margin:12px 0 0;display:inline-flex;align-items:center;gap:8px;">
-  <input type="hidden" name="q" value="{{ q }}">
-  <input type="hidden" name="agency" value="{{ agency }}">
-  <input type="hidden" name="priority" value="{{ priority }}">
-  <input type="hidden" name="days" value="{{ days }}">
-  <input type="hidden" name="sort" value="{{ sort }}">
-  <input type="hidden" name="direction" value="{{ direction }}">
-  <input name="name" placeholder="Save search as…" style="width:200px;">
-  <button type="submit">Save Search</button>
-</form>
-<span style="margin-left:16px;font-size:13px;"><a href="/saved-searches">Manage saved searches</a></span>
-<span style="margin-left:16px;font-size:13px;">
-  <a href="/contracts.csv?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&sort={{ sort }}&dir={{ direction }}">&#8595; Export CSV</a>
-</span>
+{% if quick_views %}
+<div class="quick-views" style="margin:-4px 0 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+  <span class="muted" style="font-size:12px">Quick views:</span>
+  {% for v in quick_views %}
+    {% if v.id == active_view %}
+    <a href="/views/{{ v.id }}" class="saved-search-chip" aria-current="true"
+       style="background:var(--accent);color:#fff;border-color:var(--accent)">&#10003; {{ v.label }}</a>
+    {% else %}
+    <a href="/views/{{ v.id }}" class="saved-search-chip">{{ v.label }}</a>
+    {% endif %}
+  {% endfor %}
+  <a href="/views" class="muted" style="font-size:12px;text-decoration:underline">All views &rarr;</a>
+</div>
+{% endif %}
+
+{% if g.user %}
+<div style="margin:-8px 0 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+  {% if for_my_business %}
+    <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if in_pipeline %}&in_pipeline=1{% endif %}"
+       class="btn btn-primary" style="padding:5px 14px;font-size:13px">&#10003; For My Business</a>
+    <a href="/contracts" class="muted" style="font-size:12px;text-decoration:underline">Show all contracts</a>
+    {% if not has_profile %}
+    <span class="muted" style="font-size:12px">— <a href="/company-profile">Set up your Company Profile</a> to enable personalised filtering.</span>
+    {% endif %}
+  {% else %}
+    {% if not has_profile %}
+    <a href="/contracts?for_my_business=1&q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}"
+       class="btn btn-ghost" style="padding:5px 14px;font-size:13px" title="Filter using your Company Profile">For My Business</a>
+    <span class="muted" style="font-size:12px">— <a href="/company-profile">Set up your Company Profile</a> first</span>
+    {% else %}
+    <a href="/contracts?for_my_business=1&q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}"
+       class="btn btn-ghost" style="padding:5px 14px;font-size:13px" title="Filter using your Company Profile">For My Business</a>
+    {% endif %}
+  {% endif %}
+  {% if in_pipeline %}
+    <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}"
+       class="btn btn-primary" style="padding:5px 14px;font-size:13px">&#10003; In My Pipeline</a>
+  {% elif pipeline_map %}
+    <a href="/contracts?in_pipeline=1&q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}"
+       class="btn btn-ghost" style="padding:5px 14px;font-size:13px" title="Show only contracts in your pipeline">In My Pipeline</a>
+  {% endif %}
+  {% if discover %}
+    <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}"
+       class="btn btn-primary" style="padding:5px 14px;font-size:13px">&#10003; Discover Mode</a>
+  {% elif pipeline_map %}
+    <a href="/contracts?discover=1&q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}"
+       class="btn btn-ghost" style="padding:5px 14px;font-size:13px" title="Show only contracts not yet in your pipeline">Discover</a>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if g.user and saved_searches %}
+<div class="saved-searches">
+  <span class="saved-searches-label">Saved searches:</span>
+  {% for s in saved_searches[:8] %}
+    <a href="{{ s.url }}" title="{{ s.name }}" class="saved-search-chip">{{ s.name }}</a>
+  {% endfor %}
+  <a href="/searches" class="muted" style="font-size:12px;text-decoration:underline;">Manage</a>
+</div>
+{% endif %}
+
+{% if filter_chips %}
+<div class="active-filters" style="margin:0 0 14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+  <span class="muted" style="font-size:12px">Active filters:</span>
+  {% for chip in filter_chips %}
+    <a href="{{ chip.remove_url }}" class="active-filter-chip"
+       title="Remove {{ chip.label }} filter"
+       style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:3px 10px;background:var(--surface);border:1px solid var(--border);border-radius:999px;text-decoration:none;color:var(--text)">
+      <span>{{ chip.label }}: <strong>{{ chip.value }}</strong></span>
+      <span aria-hidden="true" style="color:var(--text-muted);font-weight:600">&times;</span>
+    </a>
+  {% endfor %}
+  <a href="/contracts" class="muted" style="font-size:12px;text-decoration:underline">Clear all</a>
+</div>
+{% endif %}
 
 {% macro sort_link(col, label) %}
   {% set next_dir = "asc" if (sort == col and direction == "desc") else "desc" %}
   {% set arrow = " ↓" if (sort == col and direction == "desc") else (" ↑" if sort == col else "") %}
-  <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&sort={{ col }}&dir={{ next_dir }}">{{ label }}{{ arrow }}</a>
+  <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ col }}&dir={{ next_dir }}{% if for_my_business %}&for_my_business=1{% endif %}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}">{{ label }}{{ arrow }}</a>
 {% endmacro %}
-<table>
-<tr>
-  <th>{{ sort_link("priority", "Priority") }}</th>
-  <th>{{ sort_link("vendor", "Vendor") }}</th>
-  <th>{{ sort_link("agency", "Agency") }}</th>
-  <th>{{ sort_link("value", "Value") }}</th>
-  <th>{{ sort_link("end_date", "End Date") }}</th>
-  <th>{{ sort_link("days_remaining", "Days") }}</th>
-  <th>{{ sort_link("recompete_score", "Score") }}</th>
-</tr>
-{% for r in rows %}
-<tr>
-<td>
-  <a class="priority-badge priority-{{ (r["priority"] or "unknown").lower().replace(" ", "-").replace("_", "-") }}"
-     href="/contract/{{ r["internal_id"] }}">
-     {{ r["priority"] }}
-  </a>
-</td>
-<td><a href="/vendor/{{ r["vendor"]|urlencode }}">{{ r["vendor"] }}</a></td>
-<td><a href="/agency/{{ r["agency"]|urlencode }}">{{ r["agency"] }}</a></td>
-<td>${{ "{:,.0f}".format(r["value"] or 0) }}</td>
-<td>{{ r["end_date"] }}</td>
-<td>{{ r["days_remaining"] }}</td>
-<td>{{ r["recompete_score"] }}</td>
-</tr>
-{% else %}
-<tr><td colspan="7">No contracts found.</td></tr>
-{% endfor %}
-</table>
 
-<div style="margin-top:18px;">
+{# ── Desktop table (hidden on mobile) ──────────────────────── #}
+<div class="table-wrapper m-hide">
+  <div class="table-header">
+    <div class="table-header-actions">
+      <button id="compare-btn" disabled onclick="compareSelected()" class="btn btn-ghost" style="padding:3px 9px;font-size:11.5px">Compare selected</button>
+      <span id="compare-hint" class="faint" style="font-size:11.5px">Select 2</span>
+    </div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Watch</th>
+        <th></th>
+        <th>{{ sort_link("priority", "Priority") }}</th>
+        <th>{{ sort_link("vendor", "Vendor") }}</th>
+        <th>{{ sort_link("agency", "Agency") }}</th>
+        <th>Category</th>
+        <th>State</th>
+        <th class="col-r">{{ sort_link("value", "Value") }}</th>
+        <th>{{ sort_link("end_date", "End Date") }}</th>
+        <th class="col-r">{{ sort_link("days_remaining", "Days") }}</th>
+        <th class="col-r">{{ sort_link("recompete_score", "Score") }} <button type="button" class="score-info-btn" onclick="openScoreModal()" aria-haspopup="dialog" aria-label="How the Recompete Score is calculated" title="How the Recompete Score is calculated">&#9432;</button></th>
+        {% if for_my_business %}<th class="col-r" title="How well this contract matches your Company Profile">Match</th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td style="width:36px"><button class="bm-btn" data-id="{{ r['internal_id'] }}" onclick="bookmarkToggle(this)" title="Bookmark">{{ "★" if r['internal_id'] in watchlist_ids else "☆" }}</button></td>
+        <td style="width:28px"><input type="checkbox" class="cmp-check" value="{{ r['internal_id'] }}" onchange="updateCompare()"></td>
+        <td>
+          <a class="priority-badge priority-{{ (r["priority"] or "unknown").lower().replace(" ", "-").replace("_", "-") }}"
+             href="/contract/{{ r["internal_id"] }}">{{ r["priority"] }}</a>
+          {% if pipeline_map and r['internal_id'] in pipeline_map %}
+          <a href="/pipeline/{{ pipeline_map[r['internal_id']] }}"
+             style="font-size:10.5px;padding:1px 6px;border-radius:var(--radius-sm);background:#d1fae5;color:#065f46;font-weight:600;text-decoration:none;vertical-align:middle;margin-left:4px">&#10003; Pipeline</a>
+          {% endif %}
+        </td>
+        <td><a href="/vendor/{{ r["vendor"]|urlencode }}">{{ r["vendor"] }}</a></td>
+        <td><a href="/agency/{{ r["agency"]|urlencode }}">{{ r["agency"] }}</a></td>
+        <td>{% if r.get("category") and r["category"] != "Other" %}<a href="/contracts?category={{ r['category'] }}" style="font-size:12px;color:var(--text-muted)">{{ r["category"] }}</a>{% endif %}</td>
+        <td>{% if r.get("place_of_performance_state") %}<a href="/contracts?state={{ r['place_of_performance_state'] }}" style="font-size:12px;color:var(--text-muted)">{{ r["place_of_performance_state"] }}</a>{% endif %}</td>
+        <td class="col-r">${{ "{:,.0f}".format(r["value"] or 0) }}</td>
+        <td>{{ r["end_date"] }}</td>
+        <td class="col-r">
+          {%- set days = r["days_remaining"] -%}
+          {%- if days is none or days == "" -%}&mdash;
+          {%- elif days|int <= 30 -%}<span class="days-critical">{{ days }}</span>
+          {%- elif days|int <= 90 -%}<span class="days-warning">{{ days }}</span>
+          {%- else -%}{{ days }}{%- endif -%}
+        </td>
+        <td class="col-r">{{ r["recompete_score"] }}</td>
+        {% if for_my_business %}<td class="col-r" style="font-weight:600;color:var(--accent)">{% if r.get("match_score") is not none %}{{ r.get("match_score") }}%{% endif %}</td>{% endif %}
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="{{ 12 if for_my_business else 11 }}" style="text-align:center;padding:40px 20px;color:var(--text-muted)">
+          No contracts match your current filters. <a href="/contracts">Clear all filters</a> to see the full list.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{# ── Mobile cards (hidden on desktop) ──────────────────────── #}
+<div class="m-show">
+  {% for r in rows %}
+  {% set days = r["days_remaining"] %}
+  <div class="mobile-card">
+    <div class="mobile-card-head">
+      <a href="/contract/{{ r['internal_id'] }}" class="mobile-card-title">{{ r["vendor"] or r["award_id"] or r["internal_id"] }}</a>
+      <span class="priority-badge priority-{{ (r["priority"] or "unknown").lower().replace(" ", "-").replace("_", "-") }}">{{ r["priority"] }}</span>
+    </div>
+    <div class="mobile-card-agency">{{ r["agency"] or '—' }}{% if r.get("place_of_performance_state") %} &middot; {{ r["place_of_performance_state"] }}{% endif %}</div>
+    <div class="mobile-card-meta">
+      <span class="mobile-card-value">${{ "{:,.0f}".format(r["value"] or 0) }}</span>
+      <span class="sep">·</span>
+      {% if days is none or days == "" %}<span class="muted">—d</span>
+      {% elif days|int <= 30 %}<span class="days-critical">{{ days }}d</span>
+      {% elif days|int <= 90 %}<span class="days-warning">{{ days }}d</span>
+      {% else %}<span>{{ days }}d</span>{% endif %}
+      <span class="sep">·</span>
+      <span class="muted">Score {{ r["recompete_score"] or '—' }}</span>
+      {% if r.get("category") and r["category"] != "Other" %}
+      <span class="sep">·</span>
+      <span class="muted">{{ r["category"] }}</span>
+      {% endif %}
+      {% if for_my_business and r.get("match_score") is not none %}
+      <span class="sep">·</span>
+      <span style="font-weight:600;color:var(--accent)">{{ r.get("match_score") }}% match</span>
+      {% endif %}
+    </div>
+    {% if pipeline_map and r['internal_id'] in pipeline_map %}
+    <div style="margin-bottom:8px">
+      <a href="/pipeline/{{ pipeline_map[r['internal_id']] }}"
+         style="font-size:12px;padding:2px 8px;border-radius:var(--radius-sm);background:#d1fae5;color:#065f46;font-weight:600;text-decoration:none">&#10003; In Pipeline</a>
+    </div>
+    {% endif %}
+    <div class="mobile-card-actions">
+      <a href="/contract/{{ r['internal_id'] }}" class="btn btn-ghost">View</a>
+      {% if g.user %}
+      <button class="mobile-bm-btn bm-btn" data-id="{{ r['internal_id'] }}" onclick="bookmarkToggle(this)" title="Watch">{{ "★" if r['internal_id'] in watchlist_ids else "☆" }}</button>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="mobile-card" style="text-align:center;padding:40px 16px;color:var(--text-muted)">
+    No contracts match your current filters.<br>
+    <a href="/contracts" style="color:var(--accent);font-size:14px;margin-top:8px;display:inline-block">Clear filters</a>
+  </div>
+  {% endfor %}
+</div>
+
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px">
+  {% set base_qs %}q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}{% endset %}
+
   {% if has_prev %}
-    <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&sort={{ sort }}&dir={{ direction }}&page={{ page - 1 }}">Previous</a>
+    <a href="/contracts?{{ base_qs }}&page=1" class="btn btn-ghost" style="padding:5px 10px">First</a>
+    <a href="/contracts?{{ base_qs }}&page={{ page - 1 }}" class="btn btn-ghost" style="padding:5px 10px">Previous</a>
+  {% else %}
+    <span class="muted" style="padding:5px 10px" aria-disabled="true">First</span>
+    <span class="muted" style="padding:5px 10px" aria-disabled="true">Previous</span>
   {% endif %}
 
-  <span class="muted" style="margin:0 12px;">Page {{ page }}</span>
+  <span class="muted">Page {{ page }} of {{ total_pages }}</span>
 
   {% if has_next %}
-    <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&sort={{ sort }}&dir={{ direction }}&page={{ page + 1 }}">Next</a>
+    <a href="/contracts?{{ base_qs }}&page={{ page + 1 }}" class="btn btn-ghost" style="padding:5px 10px">Next</a>
+    <a href="/contracts?{{ base_qs }}&page={{ total_pages }}" class="btn btn-ghost" style="padding:5px 10px">Last</a>
+  {% else %}
+    <span class="muted" style="padding:5px 10px" aria-disabled="true">Next</span>
+    <span class="muted" style="padding:5px 10px" aria-disabled="true">Last</span>
   {% endif %}
 </div>
+
+{# Recompete Score explanation modal, opened from the Score column info icon. #}
+{{ score_help.score_modal() }}
+
+<script>
+function updateCompare() {
+  var checked = document.querySelectorAll('.cmp-check:checked');
+  var btn = document.getElementById('compare-btn');
+  btn.disabled = checked.length !== 2;
+}
+function compareSelected() {
+  var checked = document.querySelectorAll('.cmp-check:checked');
+  if (checked.length === 2) {
+    window.location.href = '/compare?a=' + encodeURIComponent(checked[0].value) +
+                           '&b=' + encodeURIComponent(checked[1].value);
+  }
+}
+function saveSearch() {
+  var name = window.prompt('Name this search:', '');
+  if (!name || !name.trim()) return;
+  var params = {};
+  new URLSearchParams(window.location.search).forEach(function(v, k) { params[k] = v; });
+  var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  fetch('/searches/save', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: name.trim(), params: params, csrf_token: token})
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.ok) {
+      var el = document.getElementById('save-confirm');
+      el.style.display = 'inline';
+      setTimeout(function() { el.style.display = 'none'; }, 2000);
+    } else {
+      alert('Could not save search: ' + (data.error || 'unknown error'));
+    }
+  }).catch(function() { alert('Could not save search.'); });
+}
+function bookmarkToggle(btn) {
+  var id = btn.dataset.id;
+  var isBookmarked = btn.textContent.trim() === '★';
+  var url = isBookmarked ? '/watchlist/remove' : '/watchlist/add';
+  var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({internal_id: id, csrf_token: token})
+  }).then(function(r) { return r.json(); }).then(function() {
+    btn.textContent = isBookmarked ? '☆' : '★';
+  });
+}
+</script>
 {% endblock %}

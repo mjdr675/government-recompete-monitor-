@@ -1,0 +1,25 @@
+{% extends "email/base.html" %}
+{% block title %}Your Gov Recompete Monitor trial has ended{% endblock %}
+{% block preheader %}Subscribe now to restore access to your watchlist and contract alerts.{% endblock %}
+
+{% block content %}
+<h2 style="margin:0 0 16px;font-size:22px;color:#1f4f8f;">Your free trial has ended</h2>
+<p style="margin:0 0 14px;">Hi {{ user_email }},</p>
+<p style="margin:0 0 14px;">
+  Your 14-day free trial of Gov Recompete Monitor expired on {{ trial_ends_date }}.
+  Your watchlist, saved searches, and alert preferences are still saved —
+  subscribe to restore full access immediately.
+</p>
+<p style="margin:0 0 20px;">
+  <a href="{{ app_url }}/subscribe"
+     style="display:inline-block;background:#1f4f8f;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:6px;font-weight:bold;font-size:15px;">
+    Subscribe Now — $49/month
+  </a>
+</p>
+<p style="margin:0 0 14px;font-size:13px;color:#555;">
+  Questions? Reply to this email and we'll be happy to help.
+</p>
+<p style="margin:0;font-size:13px;color:#888888;">
+  Cancel anytime. Secure payment via Stripe.
+</p>
+{% endblock %}

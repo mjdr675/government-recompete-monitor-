@@ -18,6 +18,7 @@ from __future__ import annotations
 import difflib
 import re
 import subprocess
+import sys
 import textwrap
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -261,7 +262,7 @@ def _run_tests(repo_root: Path, timeout: int = 120) -> TestResult:
     Exit code 5 means no tests collected — treated as pass with warning.
     """
     result = subprocess.run(
-        ["python", "-m", "pytest", "--tb=short", "-q"],
+        [sys.executable, "-m", "pytest", "--tb=short", "-q"],
         cwd=repo_root,
         capture_output=True,
         text=True,

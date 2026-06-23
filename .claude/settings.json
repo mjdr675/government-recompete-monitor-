@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/bin/pytest tests/ -v)",
+      "Bash(.venv/bin/pytest tests/ -q)",
+      "Bash(.venv/bin/pytest *)"
+    ]
+  }
+}

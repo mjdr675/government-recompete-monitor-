@@ -1,153 +1,117 @@
-"""Tests for Opportunity Watchlists — db layer and HTTP routes."""
+"""Tests for POST /watchlist/add and POST /watchlist/remove routes."""
 
 import pytest
-
 import db as db_module
-from app import app as flask_app
 
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
 
 @pytest.fixture()
-def tmp_db(tmp_path, monkeypatch):
+def auth_db(tmp_path, monkeypatch):
     db_path = str(tmp_path / "test.db")
     monkeypatch.setattr(db_module, "DB_PATH", db_path)
     db_module.init_db()
-    db_module.init_watchlist_table()
     yield db_path
 
 
-def _seed_contract(internal_id="C1", priority="HIGH", value=500_000):
-    db_module.upsert_contract({
-        "internal_id": internal_id,
-        "vendor": f"Vendor {internal_id}",
-        "agency": "TEST",
-        "value": value,
-        "priority": priority,
-        "recompete_score": 70,
-    })
+@pytest.fixture()
+def client(auth_db):
+    import app as flask_app
+    flask_app.app.config["TESTING"] = True
+    flask_app.app.config["WTF_CSRF_ENABLED"] = False
+    flask_app.app.config["RATELIMIT_ENABLED"] = False
+    flask_app.app.secret_key = "test-secret-key"
+    with flask_app.app.test_client() as c:
+        c.post("/register", data={
+            "email": "wl@example.com",
+            "password": "password123",
+            "confirm": "password123",
+        })
+        yield c
 
 
 @pytest.fixture()
-def client(tmp_db):
-    flask_app.config["TESTING"] = True
-    with flask_app.test_client() as c:
+def anon_client(auth_db):
+    import app as flask_app
+    flask_app.app.config["TESTING"] = True
+    flask_app.app.config["WTF_CSRF_ENABLED"] = False
+    flask_app.app.config["RATELIMIT_ENABLED"] = False
+    flask_app.app.secret_key = "test-secret-key"
+    with flask_app.app.test_client() as c:
         yield c
 
 
 # ---------------------------------------------------------------------------
-# db layer
+# /watchlist/add
 # ---------------------------------------------------------------------------
 
-class TestWatchlistDb:
-    def test_watch_and_is_watched(self, tmp_db):
-        _seed_contract("C1")
-        db_module.watch_contract("C1")
-        assert db_module.is_watched("C1") is True
+def test_add_returns_ok(client):
+    rv = client.post("/watchlist/add", json={"internal_id": "C001"})
+    assert rv.status_code == 200
+    assert rv.get_json()["ok"] is True
 
-    def test_unwatch(self, tmp_db):
-        _seed_contract("C1")
-        db_module.watch_contract("C1")
-        db_module.unwatch_contract("C1")
-        assert db_module.is_watched("C1") is False
 
-    def test_watch_idempotent(self, tmp_db):
-        _seed_contract("C1")
-        db_module.watch_contract("C1")
-        db_module.watch_contract("C1")
-        assert len(db_module.get_watchlist()) == 1
+def test_add_duplicate_is_idempotent(client):
+    client.post("/watchlist/add", json={"internal_id": "C001"})
+    rv = client.post("/watchlist/add", json={"internal_id": "C001"})
+    assert rv.status_code == 200
+    data = rv.get_json()
+    assert data["ok"] is True
+    assert data.get("already") is True
 
-    def test_is_watched_false_for_unknown(self, tmp_db):
-        assert db_module.is_watched("NONEXISTENT") is False
 
-    def test_get_watchlist_empty(self, tmp_db):
-        assert db_module.get_watchlist() == []
+def test_add_missing_internal_id_returns_400(client):
+    rv = client.post("/watchlist/add", json={})
+    assert rv.status_code == 400
+    assert rv.get_json()["ok"] is False
 
-    def test_get_watchlist_returns_contract_rows(self, tmp_db):
-        _seed_contract("C1")
-        _seed_contract("C2")
-        db_module.watch_contract("C1")
-        db_module.watch_contract("C2")
-        rows = db_module.get_watchlist()
-        assert len(rows) == 2
-        ids = {r["internal_id"] for r in rows}
-        assert ids == {"C1", "C2"}
 
-    def test_get_watchlist_orders_by_score_desc(self, tmp_db):
-        db_module.upsert_contract({"internal_id": "LOW", "vendor": "V", "agency": "A",
-                                   "value": 100, "priority": "LOW", "recompete_score": 10})
-        db_module.upsert_contract({"internal_id": "HIGH", "vendor": "V", "agency": "A",
-                                   "value": 100, "priority": "HIGH", "recompete_score": 90})
-        db_module.watch_contract("LOW")
-        db_module.watch_contract("HIGH")
-        rows = db_module.get_watchlist()
-        assert rows[0]["internal_id"] == "HIGH"
-
-    def test_unwatch_nonexistent_is_safe(self, tmp_db):
-        db_module.unwatch_contract("NONEXISTENT")
+def test_add_unauthenticated_returns_401(anon_client):
+    rv = anon_client.post("/watchlist/add", json={"internal_id": "C001"})
+    assert rv.status_code == 401
 
 
 # ---------------------------------------------------------------------------
-# HTTP routes
+# /watchlist/remove
 # ---------------------------------------------------------------------------
 
-class TestWatchlistRoutes:
-    def test_watchlist_page_empty(self, client):
-        resp = client.get("/watchlist")
-        assert resp.status_code == 200
-        assert b"watchlist is empty" in resp.data
+def test_remove_returns_ok(client):
+    client.post("/watchlist/add", json={"internal_id": "C001"})
+    rv = client.post("/watchlist/remove", json={"internal_id": "C001"})
+    assert rv.status_code == 200
+    assert rv.get_json()["ok"] is True
 
-    def test_watch_redirects(self, client, tmp_db):
-        _seed_contract("C1")
-        resp = client.post("/watch/C1")
-        assert resp.status_code == 302
 
-    def test_watch_then_appears_on_watchlist_page(self, client, tmp_db):
-        _seed_contract("C1")
-        client.post("/watch/C1")
-        resp = client.get("/watchlist")
-        assert b"Vendor C1" in resp.data
+def test_remove_nonexistent_is_idempotent(client):
+    rv = client.post("/watchlist/remove", json={"internal_id": "DOES_NOT_EXIST"})
+    assert rv.status_code == 200
+    assert rv.get_json()["ok"] is True
 
-    def test_unwatch_removes_from_watchlist(self, client, tmp_db):
-        _seed_contract("C1")
-        client.post("/watch/C1")
-        client.post("/unwatch/C1", data={"next": "/watchlist"})
-        resp = client.get("/watchlist")
-        assert b"Vendor C1" not in resp.data
 
-    def test_watch_redirects_to_next_param(self, client, tmp_db):
-        _seed_contract("C1")
-        resp = client.post("/watch/C1", data={"next": "/watchlist"})
-        assert resp.headers["Location"].endswith("/watchlist")
+def test_remove_unauthenticated_returns_401(anon_client):
+    rv = anon_client.post("/watchlist/remove", json={"internal_id": "C001"})
+    assert rv.status_code == 401
 
-    def test_unwatch_redirects_to_next_param(self, client, tmp_db):
-        _seed_contract("C1")
-        db_module.watch_contract("C1")
-        resp = client.post("/unwatch/C1", data={"next": "/watchlist"})
-        assert resp.headers["Location"].endswith("/watchlist")
 
-    def test_contract_detail_shows_watch_button(self, client, tmp_db):
-        _seed_contract("C1")
-        resp = client.get("/contract/C1")
-        assert resp.status_code == 200
-        assert b"Watch this contract" in resp.data
+def test_add_then_remove_clears_bookmark(client, auth_db):
+    import sqlite3
+    client.post("/watchlist/add", json={"internal_id": "C001"})
+    client.post("/watchlist/remove", json={"internal_id": "C001"})
+    con = sqlite3.connect(auth_db)
+    count = con.execute("SELECT COUNT(*) FROM user_watchlist WHERE internal_id='C001'").fetchone()[0]
+    con.close()
+    assert count == 0
 
-    def test_contract_detail_shows_unwatch_after_watching(self, client, tmp_db):
-        _seed_contract("C1")
-        client.post("/watch/C1")
-        resp = client.get("/contract/C1")
-        assert b"Watching" in resp.data
-        assert b"Watch this contract" not in resp.data
 
-    def test_dashboard_shows_watchlist_when_populated(self, client, tmp_db):
-        _seed_contract("C1")
-        client.post("/watch/C1")
-        resp = client.get("/")
-        assert resp.status_code == 200
-        assert b"Watchlist" in resp.data
+# ---------------------------------------------------------------------------
+# GET /watchlist page
+# ---------------------------------------------------------------------------
 
-    def test_watchlist_nav_link_present(self, client):
-        resp = client.get("/watchlist")
-        assert b'href="/watchlist"' in resp.data
+def test_watchlist_page_returns_200(client):
+    rv = client.get("/watchlist")
+    assert rv.status_code == 200
+    assert b"Watchlist" in rv.data
+
+
+def test_watchlist_page_redirects_when_not_logged_in(anon_client):
+    rv = anon_client.get("/watchlist")
+    assert rv.status_code == 302
+    assert "/login" in rv.headers["Location"]

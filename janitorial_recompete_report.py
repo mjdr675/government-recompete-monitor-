@@ -1,6 +1,9 @@
 import csv
 import time
 from sam_lookup import lookup_solicitation
+from change_detector import detect_changes
+from update_detector import detect_field_changes
+from db import save_snapshot
 import requests
 from datetime import date, datetime, timedelta
 
@@ -108,8 +111,18 @@ def recompete_score(row):
 def priority(score):
     return "CRITICAL" if score >= 90 else "HIGH" if score >= 75 else "MEDIUM" if score >= 60 else "LOW"
 
+def enrichment_award_id(row):
+    """Return the USAspending award identifier used for detail enrichment.
+
+    USAspending's search endpoint returns the award id as ``generated_internal_id``
+    (e.g. ``CONT_AWD_...``), which is also what the award-detail URL expects. The
+    ingest only ever populates that field, so prefer ``internal_id`` (kept for
+    compatibility / future sources) and fall back to ``generated_internal_id``.
+    """
+    return row.get("internal_id") or row.get("generated_internal_id")
+
 def should_enrich(row):
-    return row["value"] >= 1_000_000 and row["days_remaining"] <= 180 and row.get("internal_id")
+    return row["value"] >= 1_000_000 and row["days_remaining"] <= 180 and bool(enrichment_award_id(row))
 
 def fetch_award_detail(internal_id):
     try:
@@ -210,7 +223,7 @@ def main():
     enrich_count = 0
     for row in rows:
         if should_enrich(row):
-            detail = fetch_award_detail(row["internal_id"])
+            detail = fetch_award_detail(enrichment_award_id(row))
             row.update(enrichment_from_detail(detail))
             enrich_count += 1
             time.sleep(0.1)
@@ -264,7 +277,19 @@ def main():
         writer.writeheader()
         writer.writerows(rows)
 
+    # Persist to the database so the scheduled run_ingest task actually updates
+    # the contracts the app serves — previously this script only wrote a CSV, so
+    # the nightly ingest fetched data but never touched the DB. save_snapshot()
+    # is idempotent (upsert by internal_id + UNIQUE(run_date, internal_id)) and
+    # calls init_db() itself, so the job is safe to rerun. detect_changes() is
+    # likewise idempotent for the run_date (it clears that date's changes first).
+    run_date = str(TODAY)
+    save_snapshot(run_date, rows)
+    detect_changes(run_date)
+    detect_field_changes(run_date)
+
     print("Saved", len(rows), "upcoming recompete opportunities.")
+    print(f"Persisted {len(rows)} rows to the contracts database (snapshot {run_date}).")
     print("Enriched", enrich_count, "Tier A opportunities.")
     print("SAM.gov matches", sam_count, "solicitations.")
 

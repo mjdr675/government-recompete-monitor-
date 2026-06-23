@@ -3,6 +3,7 @@ import sys
 import time
 from sam_lookup import lookup_solicitation
 from change_detector import detect_changes
+from update_detector import detect_field_changes
 from db import init_db, upsert_contract, save_snapshot
 import requests
 from datetime import date, datetime, timedelta
@@ -114,8 +115,18 @@ def recompete_score(row):
 def priority(score):
     return "CRITICAL" if score >= 90 else "HIGH" if score >= 75 else "MEDIUM" if score >= 60 else "LOW"
 
+def enrichment_award_id(row):
+    """Return the USAspending award identifier used for detail enrichment.
+
+    USAspending's search endpoint returns the award id as ``generated_internal_id``
+    (e.g. ``CONT_AWD_...``), which is also what the award-detail URL expects. The
+    ingest only ever populates that field, so prefer ``internal_id`` (kept for
+    compatibility / future sources) and fall back to ``generated_internal_id``.
+    """
+    return row.get("internal_id") or row.get("generated_internal_id")
+
 def should_enrich(row):
-    return row["value"] >= 1_000_000 and row["days_remaining"] <= 180 and row.get("internal_id")
+    return row["value"] >= 1_000_000 and row["days_remaining"] <= 180 and bool(enrichment_award_id(row))
 
 def fetch_award_detail(internal_id):
     try:
@@ -216,7 +227,7 @@ def main():
     enrich_count = 0
     for row in rows:
         if should_enrich(row):
-            detail = fetch_award_detail(row["internal_id"])
+            detail = fetch_award_detail(enrichment_award_id(row))
             row.update(enrichment_from_detail(detail))
             enrich_count += 1
             time.sleep(0.1)
@@ -279,6 +290,7 @@ def main():
 
     save_snapshot(str(TODAY), rows)
     detect_changes(str(TODAY))
+    detect_field_changes(str(TODAY))
 
     print(f"Saved {len(rows)} rows to contracts.db")
     print(f"Saved snapshot for {TODAY}")

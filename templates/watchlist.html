@@ -2,45 +2,80 @@
 {% block title %}Watchlist{% endblock %}
 
 {% block content %}
-<h1>Watchlist</h1>
-<div class="muted">Contracts you are monitoring.</div>
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<div style="margin-bottom:16px">
+  <h1>Watchlist</h1>
+  <p class="page-subtitle">Contracts you&rsquo;ve starred for quick access. Use the &#9734; button on any contract to add it here.</p>
+  <div class="page-meta" style="margin-top:4px">{{ count }} bookmarked contract{{ "s" if count != 1 else "" }}</div>
+</div>
 
 {% if contracts %}
-<table style="margin-top:20px;">
-<tr>
-  <th>Priority</th>
-  <th>Vendor</th>
-  <th>Agency</th>
-  <th>Value</th>
-  <th>End Date</th>
-  <th>Days</th>
-  <th>Score</th>
-  <th></th>
-</tr>
-{% for r in contracts %}
-<tr>
-  <td>
-    <a class="priority-badge priority-{{ (r["priority"] or "unknown").lower() }}"
-       href="/contract/{{ r["internal_id"] }}">{{ r["priority"] }}</a>
-  </td>
-  <td><a href="/vendor/{{ r["vendor"]|urlencode }}">{{ r["vendor"] }}</a></td>
-  <td><a href="/agency/{{ r["agency"]|urlencode }}">{{ r["agency"] }}</a></td>
-  <td>${{ "{:,.0f}".format(r["value"] or 0) }}</td>
-  <td>{{ r["end_date"] }}</td>
-  <td>{{ r["days_remaining"] }}</td>
-  <td><a href="/contract/{{ r["internal_id"] }}">{{ r["recompete_score"] }}</a></td>
-  <td>
-    <form method="post" action="/unwatch/{{ r["internal_id"] }}">
-      <input type="hidden" name="next" value="/watchlist">
-      <button type="submit" style="color:#b00020;background:none;border:none;cursor:pointer;padding:4px;">Remove</button>
-    </form>
-  </td>
-</tr>
-{% endfor %}
-</table>
+<div class="table-wrapper">
+  <table>
+    <thead>
+      <tr>
+        <th>Watch</th>
+        <th>Priority</th>
+        <th>Vendor</th>
+        <th>Agency</th>
+        <th>Value</th>
+        <th>End Date</th>
+        <th>Days</th>
+        <th>Score</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in contracts %}
+      <tr>
+        <td style="width:36px"><button class="bm-btn" data-id="{{ r['internal_id'] }}" onclick="bookmarkToggle(this)" title="Remove bookmark">★</button></td>
+        <td>
+          <a class="priority-badge priority-{{ (r["priority"] or "unknown").lower().replace(" ", "-").replace("_", "-") }}"
+             href="/contract/{{ r["internal_id"] }}">{{ r["priority"] }}</a>
+        </td>
+        <td><a href="/vendor/{{ r["vendor"]|urlencode }}">{{ r["vendor"] }}</a></td>
+        <td><a href="/agency/{{ r["agency"]|urlencode }}">{{ r["agency"] }}</a></td>
+        <td>${{ "{:,.0f}".format(r["value"] or 0) }}</td>
+        <td>{{ r["end_date"] }}</td>
+        <td>{{ r["days_remaining"] }}</td>
+        <td>{{ r["recompete_score"] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% else %}
-<div class="muted" style="margin-top:24px;">
-  Your watchlist is empty. Open any <a href="/contracts">contract</a> and click <strong>Watch</strong> to add it here.
+<div class="empty-state-rich">
+  <div class="empty-icon">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+    </svg>
+  </div>
+  <p class="empty-title">No bookmarked contracts yet</p>
+  <p class="empty-desc">Star any contract to track it here. Use the ☆ button on the Contracts page.</p>
+  <a href="/contracts" class="btn btn-primary">Browse contracts</a>
 </div>
 {% endif %}
+
+<script>
+function bookmarkToggle(btn) {
+  var id = btn.dataset.id;
+  var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  fetch('/watchlist/remove', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({internal_id: id, csrf_token: token})
+  }).then(function(r) { return r.json(); }).then(function() {
+    var row = btn.closest('tr');
+    if (row) row.remove();
+    var countEl = document.querySelector('.page-meta');
+    if (countEl) {
+      var match = countEl.textContent.match(/^(\d+)/);
+      if (match) {
+        var n = parseInt(match[1]) - 1;
+        countEl.textContent = n + ' bookmarked contract' + (n !== 1 ? 's' : '');
+      }
+    }
+  });
+}
+</script>
 {% endblock %}

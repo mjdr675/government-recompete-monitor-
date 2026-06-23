@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Saved Searches — Recompete{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:16px">
+  <h1>Saved Searches</h1>
+  <p class="page-subtitle">Pinned contract filters you can re-run any time. Save a new one from the Contracts page.</p>
+  <div class="page-meta" style="margin-top:4px">{{ count }} saved search{{ "es" if count != 1 else "" }}</div>
+</div>
+
+{% if searches %}
+<div class="table-wrapper">
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Filters</th>
+        <th>Saved</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in searches %}
+      <tr id="search-row-{{ s.id }}">
+        <td><a href="{{ s.url }}">{{ s.name }}</a></td>
+        <td class="muted saved-search-filters" style="font-size:12px">
+          {% if s.params %}
+            {% set p = s.params %}
+            {% set parts = [] %}
+            {% if p.get('q') %}{% set _ = parts.append('Search: ' ~ p.q) %}{% endif %}
+            {% if p.get('agency') %}{% set _ = parts.append('Agency: ' ~ p.agency) %}{% endif %}
+            {% if p.get('priority') %}{% set _ = parts.append('Priority: ' ~ (p.priority | title)) %}{% endif %}
+            {% if p.get('days') %}{% set _ = parts.append('Expiring within: ' ~ p.days ~ ' days') %}{% endif %}
+            {% if p.get('min_value') %}{% set _ = parts.append('Min value: $' ~ '{:,}'.format(p.min_value | int)) %}{% endif %}
+            {% if p.get('status') and p.status %}{% set _ = parts.append('Status: ' ~ p.status) %}{% endif %}
+            {% if parts %}{{ parts | join(' · ') }}{% else %}All contracts{% endif %}
+          {% else %}All contracts{% endif %}
+        </td>
+        <td class="muted">{{ s.created_at[:10] }}</td>
+        <td>
+          <a href="{{ s.url }}" class="btn btn-ghost" style="padding:3px 8px;font-size:12px">Run</a>
+          <button onclick="deleteSearch({{ s.id }}, this)" class="btn-link" style="margin-left:8px;font-size:12px">Delete</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state-rich">
+  <div class="empty-icon">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="8"/>
+      <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </svg>
+  </div>
+  <p class="empty-title">No saved searches yet</p>
+  <p class="empty-desc">Go to Contracts, apply filters for agency, priority, or value, then click <strong>"Save this search"</strong> to pin it here for quick access.</p>
+  <a href="/contracts" class="btn btn-primary">Go to Contracts</a>
+</div>
+{% endif %}
+
+<script>
+function deleteSearch(id, btn) {
+  fetch('/searches/' + id, {method: 'DELETE'})
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        var row = document.getElementById('search-row-' + id);
+        if (row) row.remove();
+        var countEl = document.querySelector('.page-meta');
+        if (countEl) {
+          var match = countEl.textContent.match(/^(\d+)/);
+          if (match) {
+            var n = parseInt(match[1]) - 1;
+            countEl.textContent = n + ' saved search' + (n !== 1 ? 'es' : '');
+          }
+        }
+      }
+    });
+}
+</script>
+{% endblock %}

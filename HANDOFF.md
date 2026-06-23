@@ -32,85 +32,189 @@ M .gitignore
 Steps would be generated here by the AI API.
 Files likely involved: tests/
 
----
+## 2026-06-18 21:12 UTC — [DOCS] Establish company operating documents
 
-## 2026-06-18 — Implement Saved Searches
-**Status:** COMPLETE  
-**Commit:** dcf7e6e
+**Role:** human-directed  
+**Outcome:** created 6 permanent operating documents  
+**Files created:** CEO.md, VISION.md, ROADMAP.md, PRODUCT.md, STYLE.md, COMPETITORS.md  
 
-**Changes:**
-- `db.py` — new `saved_searches` table + CRUD: `create_saved_search`, `get_saved_searches`, `get_saved_search`, `rename_saved_search`, `delete_saved_search`
-- `app.py` — 5 new routes: `GET /saved-searches`, `POST /saved-searches/save`, `GET /saved-searches/<id>/load`, `POST /saved-searches/<id>/rename`, `POST /saved-searches/<id>/delete`; dashboard route now passes `saved_searches` context
-- `templates/saved_searches.html` — new page listing all searches with inline rename + delete forms
-- `templates/contracts.html` — "Save Search" form above results; link to saved searches management
-- `templates/dashboard.html` — quick-load links for saved searches at top of page
-- `templates/base.html` — "Saved Searches" added to global nav
-- `tests/test_saved_searches.py` — 20 tests (8 db-layer, 12 HTTP routes), all passing
+These documents form the permanent operating system for the engineering organization.
+They define mission, success metrics, engineering principles, AI responsibilities,
+backlog governance, product vision, pricing philosophy, competitive positioning,
+architecture reference, coding standards, and phased roadmap.
 
-**Test results:** 77/77 passed
+Reviewed for cross-document duplication and consistency before commit. All tests pass.
 
----
+## 2026-06-20 — [BACKEND] Task 049: GitHub PR Builder
+**Status:** completed
+**Files changed:** ai_agent/pr_builder.py (new), tests/test_pr_builder.py (new), ai_agent/done/049-github-pr-builder.md
+**Tests:** 411 → 449 (+38)
+**Notes:** Implemented `ai_agent/pr_builder.py` with `build_pr_draft()` function that collects
+changed files (git diff), commits (git log), completed tasks from ai_agent/done/, and optional
+pytest results, then writes a Markdown draft to ai_agent/pr_drafts/. Template-based title/
+description generation; falls back gracefully when there are no commits or tasks. 38 tests cover
+all helper functions and the main public API.
 
-## 2026-06-18 — Add min_value filter to get_contracts()
-**Status:** COMPLETE
+## 2026-06-18 21:38 UTC — [BACKEND/AUTH] Production authentication system
 
-**Changes:**
-- `db.py` — `get_contracts()` now accepts `min_value=None`; appends `AND c.value >= ?` when set
-- `app.py` — `/contracts` reads `request.args.get('min_value')`, converts to float, passes to `get_contracts()`, and echoes back as `min_value` template context
-- `tests/test_min_value_filter.py` — 11 new tests: boundary conditions, combined filters, pagination, and HTTP route behaviour
+**Role:** human-directed sprint  
+**Outcome:** applied — 84 tests passing  
+**Files created:** users.py, auth.py, templates/login.html, templates/register.html, tests/test_auth.py  
+**Files modified:** db.py, app.py, templates/base.html, tests/test_app.py, Procfile, ROADMAP.md, backlog/critical.md  
 
-**Test results:** 88/88 passed
+**What was built:**
+- users table added to init_db() in db.py (idempotent, co-located with other schemas)
+- users.py: create_user, get_user_by_id, get_user_by_email, verify_password with Werkzeug scrypt hashing
+- auth.py: Flask Blueprint with /login, /register, /logout routes + load_logged_in_user before_app_request
+- Session-based auth replacing HTTP Basic Auth; SECRET_KEY from environment
+- require_login before_request protects all routes except /health, /login, /register
+- Registration auto-logs in; duplicate email, short password, mismatch all return inline errors
+- base.html shows user email + Sign out link when logged in
+- Procfile initializes DB before gunicorn starts on Railway
+- 22 new auth tests; existing test_app.py client fixture updated to pre-register a user
 
----
+**One bug fixed during test run:** duplicate-email test accessed /register while still logged in
+(view redirects authenticated users); fixed by logging out first in the test.
 
-## 2026-06-18 — Planning reorganization: sprint vs. maintenance separation
+## 2026-06-18 21:54 UTC — [DOCS] Reorganize repository documentation structure
 
-**Status:** COMPLETE (no application changes)
+**Role:** human-directed  
+**Outcome:** structure reorganized — 84 tests still passing  
 
-**What changed:**
-- `MAINTENANCE.md` created — holds all maintenance work (test coverage, logging, UI polish, etc.). Tasks migrated from old TASK.md with their original statuses preserved.
-- `TASK.md` rewritten — now contains only active customer-facing sprint tasks (Watchlists, Email Alerts, Export CSV, Dashboard Improvements). No maintenance tasks.
-- `company/SPRINT.md` updated — new sprint goal ("useful enough that a real contractor uses it daily"), priority-ordered task list, completed history section.
-- `company/CEO.md` created — records the engineering principle: customer-facing value before maintenance; maintenance only when blocking a feature, fixing a production bug, or the sprint queue is empty.
+**Moves (git mv, history preserved):**
+- CEO.md → company/CEO.md
+- VISION.md → company/VISION.md
+- ROADMAP.md → company/ROADMAP.md
+- COMPETITORS.md → company/COMPETITORS.md
+- PRODUCT.md → docs/PRODUCT.md
+- STYLE.md → docs/STYLE.md
 
-**Workflow going forward:**
-1. Work TASK.md top to bottom — these are sprint tasks only.
-2. When TASK.md is empty, consult MAINTENANCE.md for the next maintenance item.
-3. Never do maintenance while sprint tasks remain unless it directly blocks progress.
+**New files created:**
+- company/SPRINT.md — active sprint tracker
+- company/CUSTOMERS.md — customer registry / sales CRM
+- company/FEATURE_SCORECARD.md — scoring rubric for feature prioritization
+- company/PRODUCT_BACKLOG.md — long-term feature backlog (not auto-picked by agent)
+- company/RELEASE_PLAN.md — milestone-based release schedule
+- docs/ARCHITECTURE.md — full system architecture reference
 
----
+**Cross-references updated** in all moved documents to use new paths (company/ and docs/ prefixes).
+No Python code was changed. No application behavior changed.
 
-## 2026-06-18 — Sprint: Watchlists / Email Alerts / Export CSV / Dashboard
-**Status:** ALL FOUR TASKS COMPLETE
+## 2026-06-20 00:00 UTC — [BACKEND] Task 048: AI Reviewer
+**Status:** completed — commit 312c417
+**Files changed:** ai_agent/reviewer.py, ai_agent/loop.py, tests/test_reviewer.py (new)
+**Tests:** 358 → 378 (+20)
+**Notes:** Added two-stage review to the autonomous loop. Stage 1 (regex scan) already
+existed. Stage 2 (`ai_review()`) calls `claude-haiku-4-5-20251001` with a concise
+code-review prompt, parses DECISION/FINDINGS from the response, writes `ai_agent/REVIEW.md`,
+and fails open (approved=True) when the LLM is unavailable or raises an exception.
+Integrated into `loop.py` between the regex review pass and the patch save step. If the AI
+rejects a patch, the findings are recorded in `RecoveryTracker` and injected as feedback
+into the next plan attempt — this is the "fix automatically and re-review" behaviour the
+task required, reusing the existing retry loop.
 
-| Task | Commit | Tests added | Suite |
-|------|--------|-------------|-------|
-| Opportunity Watchlists | 6186270 | 18 | 106/106 |
-| Email Alerts | a91d32f | 15 | 121/121 |
-| Export Filtered Results | af04f96 | 11 | 132/132 |
-| Dashboard Improvements | f9da58f | 10 | 142/142 |
+## 2026-06-20 — [BACKEND] Task 051: Engineering Metrics
+**Status:** completed
+**Files changed:** ai_agent/metrics.py (new), tests/test_metrics.py (new), ai_agent/metrics.md (new), ai_agent/done/051-observability-dashboard.md
+**Tests:** 496 → 540 (+44)
+**Notes:** Implemented `collect_metrics()` that reads done/failed task counts, parses
+log files for elapsed time/retries/roles/commit SHAs, fetches git commit history, and
+optionally counts tests via pytest --collect-only. `generate_metrics_report()` writes
+a Markdown table to ai_agent/metrics.md. Fixed sys.executable → shutil.which("pytest")
+so test counting works outside the venv.
 
-**Key files changed:**
-- `db.py` — `watchlist` table + CRUD; `get_contracts(all_rows=True)` flag
-- `app.py` — `/watchlist`, `/watch/<id>`, `/unwatch/<id>`, `/alerts`, `/contracts.csv` routes; dashboard passes `total_contracts` + `alert_configured`
-- `alerts.py` — new module; SMTP email builder + sender
-- `templates/` — `watchlist.html`, `alerts.html`; updated `base.html`, `contract_detail.html`, `contracts.html`, `dashboard.html`
-- `tests/` — `test_watchlist.py`, `test_alerts.py`, `test_export_csv.py`, `test_dashboard.py`
+## 2026-06-20 — [BACKEND] Task 050: GitHub Issues Sync
+**Status:** completed — commit 9a23b0b
+**Files changed:** ai_agent/github_issues.py (new), tests/test_github_issues.py (new), ai_agent/done/050-github-issues-sync.md
+**Tests:** 449 → 496 (+47)
+**Notes:** Implemented `sync_issues()` that imports open GitHub issues into ai_agent/queue/.
+Uses gh CLI first, falls back to GITHUB_TOKEN + requests. Deduplicates by scanning queue/,
+done/, and failed/ for existing issue-{number}-*.md files. Preserves ordering by sorting on
+issue number. dry_run=True reports what would be imported without writing files.
 
-**TASK.md is now empty.** Maintenance work available in MAINTENANCE.md.
+## 2026-06-20 — [BACKEND] Task 052: Daemon Mode
+**Status:** completed — commit 3b3e13c
+**Files changed:** ai_agent/daemon.py (new), ai_agent/loop.py, tests/test_daemon.py (new)
+**Tests:** 378 → 411 (+33)
+**Notes:** DaemonConfig/DaemonRunner with SIGTERM/SIGINT safe shutdown, 12 usage-limit
+error patterns, sleep-after-limit, max_tasks_per_window, max_runtime_minutes caps.
+loop.py gained --daemon, --max-tasks, --sleep-after-limit, --max-runtime CLI flags.
 
----
+## 2026-06-20 — [BACKEND] Task 053: Human Escalation
+**Status:** completed
+**Files changed:** ai_agent/escalation.py (new), tests/test_escalation.py (new), ai_agent/done/053-human-escalation.md
+**Tests:** 540 → 589 (+49)
+**Notes:** Three escalation triggers: `check_task_ambiguity()` flags tasks with
+bodies < 30 chars or < 5 words or purely vague verbs. `check_repeated_failures()`
+fires at a configurable threshold (default 3). `check_risky_code()` scans patches
+for 14 sensitive patterns (schema changes, auth, payment, AWS, config files).
+`write_escalation_report()` writes structured ESCALATE.md (append or overwrite).
+`should_escalate()` helper to test any trigger list. Complements the existing
+`AutonomousLoop._escalate()` method which handles the consecutive-failures gate.
 
-## 2026-06-18 — Sprint 4: Vendor Intelligence Dashboard
-**Status:** COMPLETE
+## 2026-06-20 — Queue reconciliation (Tasks 049–052)
+**Status:** reconciled
+**Root cause:** Commit daeea92 removed stale queue entries 049/050/051; its revert
+(1a7f3c5) put them back. Task 052 implementation existed in 3b3e13c but queue file
+was never moved to done/. This commit removes the three stale queue entries and moves
+052 to done. No implementation code was changed.
 
-**New files:**
-- `charts.py` — reusable Chart.js data formatters: `bar_chart`, `pie_chart`, `priority_pie`, `agency_bar`, `monthly_bar`
-- `templates/vendor.html` — full rewrite; 7 summary cards, risk banner, 3 charts, agency breakdown, upcoming recompetes table, CSS timeline, related vendors
-- `tests/test_vendor_intelligence.py` — 54 tests across 7 test classes
+## 2026-06-20 — [BACKEND] Task 054: Cost Budgeting
+**Status:** completed
+**Files changed:** ai_agent/budget.py (new), ai_agent/llm.py, tests/test_budget.py (new), ai_agent/done/054-cost-budgeting.md
+**Tests:** 589 → 655 (+66)
+**Notes:** Implemented `ai_agent/budget.py` with `MODEL_PRICING` dict (7 models),
+`estimate_cost()`, `UsageRecord` / `BudgetConfig` dataclasses, and `BudgetTracker`
+class. BudgetTracker tracks per-session and cumulative token/cost usage, enforces
+optional session/daily/total USD limits, persists records to `budget_usage.json`
+(append-across-sessions), and generates a Markdown report. Daily limit filtering
+uses ISO timestamp prefix matching against the injected clock. All functions are
+fail-open (no limits → should_pause() returns False). Added `call_with_usage()` to
+`llm.py` that returns `(text, input_tokens, output_tokens)` for budget integration.
 
-**Modified files:**
-- `analytics.py` — `vendor_profile_analytics` completely replaced: 7-card extended summary, agency breakdown with pipeline_value + avg_score, full upcoming list (no 10-row cap), chart data via charts.py, risk indicators, related vendors; single connection, no duplicate SQL
-- `templates/base.html` — added `{% block scripts %}` hook for page-specific JS
+## 2026-06-20 — [BACKEND] Task 055: AI CTO (Strategic Planning)
+**Status:** completed
+**Files changed:** ai_agent/cto.py (new), tests/test_cto.py (new), ai_agent/CTO_REPORT.md (new), ai_agent/done/055-ai-cto.md, company/ROADMAP.md (updated)
+**Tests:** 655 → 726 (+71)
+**Notes:** Implemented `ai_agent/cto.py` — a read-only strategic planning module.
+`scan_queue()` parses all queue task files extracting number, title, complexity
+(XS/S/M/L/XL), and hard dependencies. `scan_tech_debt()` greps Python source for
+5 debt patterns (subprocess.Popen, sqlite3.connect, TODO, FIXME, HACK). `score_task()`
+ranks each task: complexity base score (XS=5→XL=1) + 3×direct-unblocks bonus −
+100×unmet-dep penalty. `recommend_next_task()` picks the highest-scoring task.
+`generate_cto_report()` produces a full snapshot + recommendation + roadmap notes.
+`write_report()` writes ai_agent/CTO_REPORT.md. `update_roadmap()` appends a CTO
+Review section to company/ROADMAP.md. Module is advisory only — never implements.
+Live report recommends Task 061 (PostgreSQL, score=10) as highest ROI because it
+directly unblocks tasks 062 and 063 (which cascade to 064 and 065).
 
-**Test results:** 196/196 passed
+## 2026-06-22 — [DATA] Ingest persistence fix + days_remaining index
+**Status:** completed (local commit only)
+**Files changed:** janitorial_recompete_report.py, db.py, migrations/004_contracts_days_remaining_index.sql, tests/test_ingest_persistence.py, docs/ARCHITECTURE.md
+
+**What & why:**
+- **Reliability:** the scheduled `tasks.run_ingest` job calls
+  `janitorial_recompete_report.main()`, which previously only wrote a CSV and
+  never persisted to the database — so the nightly ingest fetched data but the
+  contracts the app serves were never updated (the task even counts `contracts`
+  afterward, confirming the intent). Added `save_snapshot()` + `detect_changes()`
+  to the pipeline, reusing the proven path from `recompete_report.py`.
+  `save_snapshot()` is idempotent (upsert by `internal_id`, UNIQUE on
+  `(run_date, internal_id)`, FTS rebuild) and calls `init_db()`, so the job is
+  safe to rerun and recovers from partial failures.
+- **Scalability:** added `idx_contracts_days_remaining` (SQLite `init_db()` +
+  PostgreSQL migration 004). `days_remaining` is filtered/sorted by the dashboard
+  upcoming list, the open/expired status filter, watchlist expiry alerts, and
+  every vendor/agency profile, but had no index. Verified the planner now uses it
+  for the dashboard range scan (also satisfies the ORDER BY, avoiding a sort).
+
+**Tests:** 3 new tests in test_ingest_persistence.py (persistence, idempotent
+rerun, FTS searchable). 149/149 data-layer tests pass. Full-suite template
+failures are from a concurrent frontend session's in-progress base.html edit
+(`block 'content' defined twice`), not this change.
+
+**Follow-up:** `should_enrich()` gates on `row["internal_id"]`, but the ingest only
+populates `generated_internal_id` (the API field) — so Tier-A award enrichment
+never runs and scoring uses un-enriched data. Affects both report scripts equally.
+Also: `janitorial_recompete_report.py` and `recompete_report.py` are ~250 lines of
+duplicated logic; worth extracting a shared module.

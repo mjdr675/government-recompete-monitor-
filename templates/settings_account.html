@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Account Settings — Recompete{% endblock %}
+{% block content %}
+<h1>Account Settings</h1>
+<div class="page-meta" style="margin-bottom:20px">Manage your account and password.</div>
+
+<div class="settings-page">
+
+  <div class="settings-card">
+    <h2>Account</h2>
+    <p style="margin:0 0 4px"><strong>Email:</strong> {{ user.email }}</p>
+    <p style="margin:0 0 4px"><strong>Company:</strong> {{ user.company_name or '—' }}</p>
+    <p style="margin:0 0 12px;font-size:13px;color:var(--text-muted)">
+      Subscription:
+      {% if user.subscription_status == 'active' %}
+        <span style="color:#16a34a;font-weight:600">Active</span>
+      {% elif user.subscription_status == 'trialing' %}
+        <span style="color:#d97706;font-weight:600">Trial</span>{% if user.trial_ends_at %} — expires {{ user.trial_ends_at[:10] }}{% endif %}
+      {% else %}
+        <span style="color:var(--badge-critical-bg);font-weight:600">{{ user.subscription_status | capitalize }}</span>
+      {% endif %}
+    </p>
+    {% if user.stripe_customer_id %}
+      <form method="post" action="/billing/portal" style="display:inline;margin:0">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-secondary" style="font-size:13px">Manage subscription →</button>
+      </form>
+    {% else %}
+      <a href="/subscribe" class="btn btn-primary" style="font-size:13px">Upgrade to Pro →</a>
+    {% endif %}
+  </div>
+
+  <div class="settings-card">
+    <h2>Company Name</h2>
+    {% if company_error %}
+      <div class="auth-error" style="margin-bottom:16px">{{ company_error }}</div>
+    {% endif %}
+    {% if company_success %}
+      <div class="auth-success" style="margin-bottom:16px">{{ company_success }}</div>
+    {% endif %}
+    <form method="post" action="/settings/account/company">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="company_name">Company name <span class="hint">(shown in your workspace)</span></label>
+        <input type="text" id="company_name" name="company_name" maxlength="120"
+               value="{{ user.company_name or '' }}" placeholder="Your company or agency"
+               autocomplete="organization">
+      </div>
+      <button type="submit" class="btn btn-primary" style="margin-top:4px">Save company name</button>
+    </form>
+  </div>
+
+  <div class="settings-card">
+    <h2>Change Password</h2>
+
+    {% if error %}
+      <div class="auth-error" style="margin-bottom:16px">{{ error }}</div>
+    {% endif %}
+    {% if success %}
+      <div class="auth-success" style="margin-bottom:16px">{{ success }}</div>
+    {% endif %}
+
+    <form method="post" action="/settings/account">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="current_password">Current password</label>
+        <input type="password" id="current_password" name="current_password" required autocomplete="current-password">
+      </div>
+      <div class="field">
+        <label for="new_password">New password <span class="hint">(8 characters minimum)</span></label>
+        <input type="password" id="new_password" name="new_password" required autocomplete="new-password">
+      </div>
+      <div class="field">
+        <label for="confirm_password">Confirm new password</label>
+        <input type="password" id="confirm_password" name="confirm_password" required autocomplete="new-password">
+      </div>
+      <button type="submit" class="btn btn-primary" style="margin-top:4px">Update password</button>
+    </form>
+  </div>
+
+  <p style="font-size:13px;color:var(--text-muted)">
+    <a href="/settings/workspace">Workspace settings →</a>
+    &nbsp;·&nbsp;
+    <a href="/settings/alerts">Alert settings →</a>
+  </p>
+
+</div>
+{% endblock %}

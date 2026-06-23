@@ -189,7 +189,7 @@ def edit_files(plan: str) -> bool:
 def run_tests() -> bool:
     """Run the test suite and return True if it passes."""
     result = subprocess.run(
-        ["python", "-m", "pytest", "--tb=short", "-q"],
+        [sys.executable, "-m", "pytest", "--tb=short", "-q"],
         cwd=REPO_ROOT, capture_output=True, text=True
     )
     print(result.stdout)

@@ -1,51 +1,317 @@
 {% extends "base.html" %}
+{% import "_score_explainer.html" as score_help %}
 {% block title %}Contract {{ row["award_id"] or row["internal_id"] }}{% endblock %}
 
 {% block content %}
-<h1>{{ row["award_id"] or row["internal_id"] }}</h1>
-<div class="muted" style="display:flex;align-items:center;gap:16px;">
-  <span>{{ row["internal_id"] }}</span>
-  {% if watched %}
-  <form method="post" action="/unwatch/{{ row["internal_id"] }}" style="display:inline;">
-    <button type="submit" style="background:#b00020;color:white;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;">&#9733; Watching — Remove</button>
-  </form>
-  {% else %}
-  <form method="post" action="/watch/{{ row["internal_id"] }}" style="display:inline;">
-    <button type="submit" style="background:#1f4f8f;color:white;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;">&#9733; Watch this contract</button>
-  </form>
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<script>(function(){if(window.innerWidth<=768)document.body.classList.add('has-contract-cta');})()</script>
+
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:4px">
+  <div>
+    <h1>{{ row["award_id"] or row["internal_id"] }}</h1>
+    <div class="page-meta" style="margin-bottom:6px">{{ row["internal_id"] }}</div>
+  </div>
+  {% if g.user %}
+  <div class="detail-desktop-actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <button id="watch-btn" data-id="{{ row['internal_id'] }}" onclick="watchToggle(this)" class="btn"
+            style="font-size:14px;padding:8px 18px;border:2px solid var(--accent);border-radius:var(--radius-sm);background:{{ 'var(--accent)' if is_bookmarked else 'transparent' }};color:{{ 'var(--bg)' if is_bookmarked else 'var(--accent)' }};font-weight:600;cursor:pointer" title="Watch this contract">
+      {{ "★ Watching" if is_bookmarked else "☆ Watch" }}
+    </button>
+    {% if pipeline_opp %}
+    <a href="/pipeline/{{ pipeline_opp['id'] }}" class="btn" style="padding:8px 14px;font-size:13px;background:#d1fae5;color:#065f46;font-weight:600;text-decoration:none;border:none">&#10003; In Pipeline</a>
+    <form method="post" action="/pipeline/remove/{{ row['internal_id'] }}" style="margin:0">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" onclick="return confirm('Remove from pipeline?')" class="btn btn-ghost"
+              style="font-size:13px">Remove</button>
+    </form>
+    {% else %}
+    <form method="post" action="/pipeline/add/{{ row['internal_id'] }}" style="margin:0">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn"
+              style="font-size:14px;padding:8px 18px;border:2px solid #10b981;background:transparent;color:#059669;font-weight:600">+ Add to Pipeline</button>
+    </form>
+    {% endif %}
+  </div>
   {% endif %}
 </div>
 
-<div class="cards" style="margin-top:18px;">
-  <div class="card">
-    <div class="muted">Value</div>
-    <div class="num">${{ "{:,.0f}".format(row["value"] or 0) }}</div>
+{# ── Mobile sticky CTA bar (hidden on desktop) ──────────── #}
+{% if g.user %}
+<div class="contract-mobile-cta m-show" aria-label="Contract actions">
+  <button id="mobile-watch-btn" data-id="{{ row['internal_id'] }}" onclick="watchToggleMobile(this)" class="contract-cta-btn {{ 'contract-cta-watching' if is_bookmarked else '' }}">
+    {{ "★ Watching" if is_bookmarked else "☆ Watch" }}
+  </button>
+  {% if pipeline_opp %}
+  <a href="/pipeline/{{ pipeline_opp['id'] }}" class="contract-cta-btn contract-cta-pipeline">&#10003; In Pipeline</a>
+  {% else %}
+  <form method="post" action="/pipeline/add/{{ row['internal_id'] }}" style="margin:0;flex:1">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="contract-cta-btn contract-cta-add" style="width:100%">+ Add to Pipeline</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="summary-box">
+  {# Quick-scan badges: category + location #}
+  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+    {% if category and category != "Other" %}
+    <span data-testid="category-badge" style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:9999px;background:var(--surface);border:1px solid var(--border);color:var(--text-muted)">{{ category }}</span>
+    {% endif %}
+    {% if performance_state %}
+    <span data-testid="location-badge" style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:9999px;background:var(--surface);border:1px solid var(--border);color:var(--text-muted)">
+      📍 {% if performance_city %}{{ performance_city }}, {% endif %}{{ performance_state }}
+    </span>
+    {% endif %}
   </div>
-  <div class="card">
-    <div class="muted">Recompete Score</div>
-    <div class="num">{{ row["recompete_score"] }}</div>
+  <strong>Summary:</strong>
+  This contract{% if row["vendor"] %} is held by <strong>{{ row["vendor"] }}</strong>{% endif %}{% if row["agency"] %} for <strong>{{ row["agency"] }}</strong>{% if row["sub_agency"] %} ({{ row["sub_agency"] }}){% endif %}{% endif %}{% if row["value"] %}, valued at <strong>${{ "{:,.0f}".format(row["value"]) }}</strong>{% endif %}.
+  {% if row["description"] %}<br><span style="color:var(--text-muted)">{{ row["description"][:200] }}{% if row["description"]|length > 200 %}…{% endif %}</span>{% endif %}
+  <br><strong>Where:</strong>
+  {% if performance_city and performance_state %}{{ performance_city }}, {{ performance_state }}{% elif performance_state %}{{ performance_state }}{% else %}<span class="muted">Location not recorded</span>{% endif %}.
+  <br><strong>When:</strong>
+  {% if row["end_date"] %}Runs through <strong>{{ row["end_date"] }}</strong>{% if row["days_remaining"] is not none %} ({{ row["days_remaining"] }} days remaining){% endif %}.{% else %}No end date on file.{% endif %}
+  {% if row["competition_type"] %} Awarded via {{ row["competition_type"]|lower }}.{% endif %}
+  <br><strong>Priority:</strong>
+  {% if row["priority"] %}<span class="priority-badge priority-{{ row['priority'].lower() }}">{{ row["priority"] }}</span> (score {{ row["recompete_score"] or "—" }}){% else %}<span class="muted">Not scored</span>{% endif %}
+</div>
+
+{% if row.get("description") %}
+<div style="margin-top:12px;padding:14px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);line-height:1.6">
+  <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Contract Description</div>
+  <div style="font-size:14px">{{ row["description"] }}</div>
+</div>
+{% endif %}
+
+{% if action %}
+<div style="margin-top:14px;padding:16px 18px;background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:var(--radius-sm);line-height:1.6">
+  <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);margin-bottom:6px">Next Recommended Action</div>
+  <div style="font-size:17px;font-weight:600;margin-bottom:6px">{{ action.action }}</div>
+  <div class="muted">{{ action.explanation }}</div>
+</div>
+{% endif %}
+
+{% if why_matters %}
+<div style="margin-top:10px;padding:14px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);line-height:1.6">
+  <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Why This Opportunity Matters</div>
+  <ul style="margin:0;padding-left:18px;list-style:disc">
+    {% for bullet in why_matters %}
+    <li style="margin-bottom:3px">{{ bullet }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if next_step %}
+<div style="margin-top:10px;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--radius-sm);line-height:1.6">
+  <div style="font-weight:600;color:var(--accent);margin-bottom:4px">Recompete timing: {{ next_step.timing }}</div>
+  <div class="muted" style="margin-bottom:8px">{{ next_step.detail }}</div>
+  <div><strong>Suggested approach:</strong> {{ next_step.action }}</div>
+</div>
+{% endif %}
+
+<div class="kpi-row" style="grid-template-columns:repeat(4,1fr)">
+  <div class="kpi-card">
+    <div class="kpi-label">Value</div>
+    <div class="kpi-value" style="font-size:20px">${{ "{:,.0f}".format(row["value"] or 0) }}</div>
   </div>
-  <div class="card">
-    <div class="muted">Days Remaining</div>
-    <div class="num">{{ row["days_remaining"] }}</div>
+  <div class="kpi-card" data-testid="score-kpi">
+    <div class="kpi-label">Recompete Score <button type="button" class="score-info-btn" style="font-size:11px" onclick="openScoreModal()" aria-haspopup="dialog" aria-label="How the Recompete Score is calculated" title="How is this calculated?">&#9432;</button></div>
+    <div class="kpi-value">{{ row["recompete_score"] or "—" }}</div>
+    {% if row["recompete_score"] is not none %}
+    <div class="score-bar" style="margin-top:6px;height:4px;background:var(--border);border-radius:2px;overflow:hidden">
+      <div class="score-bar-fill" style="height:4px;border-radius:2px;width:{{ [row['recompete_score']|int, 100]|min }}%;background:{% if row['recompete_score']|int >= 90 %}var(--badge-critical-bg,#dc2626){% elif row['recompete_score']|int >= 75 %}#d97706{% elif row['recompete_score']|int >= 60 %}var(--accent){% else %}var(--text-faint){% endif %}"></div>
+    </div>
+    {% endif %}
   </div>
-  <div class="card">
-    <div class="muted">Priority</div>
-    <div class="num">
+  <div class="kpi-card">
+    <div class="kpi-label">Days Remaining</div>
+    <div class="kpi-value">{{ row["days_remaining"] }}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Priority</div>
+    <div class="kpi-value" style="font-size:14px;padding-top:4px">
       <span class="priority-badge priority-{{ (row["priority"] or "unknown").lower() }}">{{ row["priority"] }}</span>
     </div>
   </div>
 </div>
 
-<table style="margin-top:8px;">
-  <tr><th>Vendor</th><td><a href="/vendor/{{ row["vendor"]|urlencode }}">{{ row["vendor"] }}</a></td></tr>
-  <tr><th>Agency</th><td><a href="/agency/{{ row["agency"]|urlencode }}">{{ row["agency"] }}</a></td></tr>
-  <tr><th>Sub-Agency</th><td>{{ row["sub_agency"] }}</td></tr>
-  <tr><th>Award ID</th><td>{{ row["award_id"] }}</td></tr>
-  <tr><th>Solicitation ID</th><td>{{ row["solicitation_id"] }}</td></tr>
-  <tr><th>Competition Type</th><td>{{ row["competition_type"] }}</td></tr>
-  <tr><th>Start Date</th><td>{{ row["start_date"] }}</td></tr>
-  <tr><th>End Date</th><td>{{ row["end_date"] }}</td></tr>
-  <tr><th>Updated</th><td>{{ row["updated_at"] }}</td></tr>
-</table>
+{% if biz_match_score is not none %}
+<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:var(--radius-sm);padding:16px 20px;margin-bottom:16px">
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:10px">
+    <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.05em">Why this matches your business</div>
+    <div style="font-size:22px;font-weight:700;color:var(--accent)">{{ biz_match_score }}% match</div>
+  </div>
+  {% if biz_match_reasons %}
+  <ul style="margin:0;padding-left:18px;list-style:disc">
+    {% for r in biz_match_reasons %}
+    <li style="font-size:14px;margin-bottom:3px">{{ r }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if biz_mismatch_reasons %}
+  <div style="margin-top:10px;font-size:13px;color:var(--text-muted)">
+    This contract is outside parts of your company profile:
+    <ul style="margin:4px 0 0;padding-left:18px;list-style:disc">
+      {% for r in biz_mismatch_reasons %}
+      <li>{{ r }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  {% if not biz_match_reasons and not biz_mismatch_reasons %}
+  <div class="muted" style="font-size:13px">This contract is outside parts of your company profile.</div>
+  {% endif %}
+  <div style="margin-top:10px;font-size:12px;color:var(--text-muted)"><a href="/company-profile">Edit your Company Profile</a></div>
+</div>
+{% endif %}
+
+<details id="score-explainer" class="score-explainer" data-testid="score-explainer">
+  <summary>Why is this contract scored {{ row["recompete_score"] or "—" }}?</summary>
+  <div class="explainer-body">
+    {# Per-contract interpretation (from main) — answers the summary question first. #}
+    {% if row["recompete_score"] is not none %}
+    <div style="margin-bottom:12px;font-size:13px">
+      This contract scores <strong>{{ row["recompete_score"] }}</strong>
+      {% set s = row["recompete_score"]|int %}
+      {% if s >= 90 %} — <strong>CRITICAL</strong>: strong candidate, act now.
+      {% elif s >= 75 %} — <strong>HIGH</strong>: worth pursuing soon.
+      {% elif s >= 60 %} — <strong>MEDIUM</strong>: monitor and plan.
+      {% else %} — <strong>LOW</strong>: limited urgency, continue watching.
+      {% endif %}
+    </div>
+    {% endif %}
+    {# Canonical scoring breakdown (shared partial) — same content, single source of truth. #}
+    {{ score_help.score_breakdown() }}
+  </div>
+</details>
+
+{# Accessible modal version of the same explanation, opened from the score info icon. #}
+{{ score_help.score_modal() }}
+
+<div class="table-wrapper">
+  <table class="detail-table">
+    <tbody>
+      <tr><th>Incumbent / Vendor</th><td><a href="/vendor/{{ row["vendor"]|urlencode }}">{{ row["vendor"] or "—" }}</a></td></tr>
+      <tr><th>Agency</th><td><a href="/agency/{{ row["agency"]|urlencode }}">{{ row["agency"] or "—" }}</a></td></tr>
+      <tr><th>Sub-Agency</th><td>{{ row["sub_agency"] or "—" }}</td></tr>
+      <tr><th>Location</th><td data-testid="location-field">
+        {% if performance_city and performance_state %}<a href="/contracts?state={{ performance_state|urlencode }}">{{ performance_city }}, {{ performance_state }}</a>
+        {% elif performance_state %}<a href="/contracts?state={{ performance_state|urlencode }}">{{ performance_state }}</a>
+        {% else %}<span class="muted">Not recorded</span>{% endif %}
+      </td></tr>
+      {% if category and category != "Other" %}
+      <tr><th>Category</th><td data-testid="category-field"><a href="/contracts?category={{ category|urlencode }}"><span style="font-size:12px;padding:2px 8px;border-radius:9999px;background:var(--surface);border:1px solid var(--border)">{{ category }}</span></a></td></tr>
+      {% endif %}
+      {% if row.get("naics_code") %}<tr><th>NAICS Code</th><td>{{ row["naics_code"] }}</td></tr>{% endif %}
+      <tr><th>Award ID</th><td>{{ row["award_id"] or "—" }}</td></tr>
+      <tr><th>Solicitation ID</th><td>{{ row["solicitation_id"] or "—" }}</td></tr>
+      <tr><th>Competition Type</th><td>{{ row["competition_type"] or "—" }}</td></tr>
+      <tr><th>Start Date</th><td>{{ row["start_date"] or "—" }}</td></tr>
+      <tr><th>End Date</th><td>{{ row["end_date"] or "—" }}</td></tr>
+      <tr><th>Updated</th><td>{{ row["updated_at"] or "—" }}</td></tr>
+    </tbody>
+  </table>
+</div>
+
+{% if timeline %}
+<div style="margin-top:16px">
+  <h2 style="margin-bottom:10px">Contract Activity</h2>
+  <div style="position:relative;padding-left:24px">
+    <div style="position:absolute;left:7px;top:0;bottom:0;width:2px;background:var(--border)"></div>
+    {% for event in timeline %}
+    <div style="position:relative;margin-bottom:14px;display:flex;gap:12px;align-items:flex-start">
+      <div style="position:absolute;left:-20px;top:4px;width:10px;height:10px;border-radius:50%;background:{% if event.type == 'end' %}var(--accent){% elif event.type == 'start' %}var(--badge-high-bg, #2d6a4f){% else %}var(--border){% endif %};border:2px solid var(--surface)"></div>
+      <div>
+        <div style="font-size:12px;color:var(--text-muted)">{{ event.date }}</div>
+        <div style="font-size:14px;font-weight:{% if event.type == 'end' %}600{% else %}400{% endif %}">{{ event.event }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if g.user %}
+<div class="notes-section">
+  <h2>Notes</h2>
+  <ul id="notes-list" class="notes-list">
+    {% for n in notes %}
+    <li class="note-item">
+      <div>{{ n.body }}</div>
+      <div class="note-date">{{ n.created_at[:10] }}</div>
+    </li>
+    {% else %}
+    <li id="notes-empty" class="muted">No notes yet.</li>
+    {% endfor %}
+  </ul>
+  <textarea id="note-body" rows="3" style="width:100%;max-width:600px;padding:8px;" placeholder="Add a private note&hellip;"></textarea><br>
+  <button onclick="addNote()" class="btn btn-secondary" style="margin-top:6px">Add note</button>
+  <span id="note-error" class="muted" style="margin-left:8px;color:var(--badge-critical-bg);display:none"></span>
+</div>
+{% endif %}
+
+<script>
+function _applyWatchState(btn, watching) {
+  if (btn.classList.contains('contract-cta-btn')) {
+    btn.textContent = watching ? '★ Watching' : '☆ Watch';
+    if (watching) btn.classList.add('contract-cta-watching');
+    else btn.classList.remove('contract-cta-watching');
+  } else {
+    btn.textContent = watching ? '★ Watching' : '☆ Watch';
+    btn.style.background = watching ? 'var(--accent)' : 'transparent';
+    btn.style.color = watching ? 'var(--bg)' : 'var(--accent)';
+  }
+}
+function _doWatch(id, isWatching) {
+  var url = isWatching ? '/watchlist/remove' : '/watchlist/add';
+  var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  return fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({internal_id: id, csrf_token: token})
+  }).then(function(r) { return r.json(); });
+}
+function watchToggle(btn) {
+  var id = btn.dataset.id;
+  var isWatching = btn.textContent.trim().startsWith('★');
+  _doWatch(id, isWatching).then(function(data) {
+    if (!data.ok && !data.already) return;
+    _applyWatchState(btn, !isWatching);
+    var mob = document.getElementById('mobile-watch-btn');
+    if (mob) _applyWatchState(mob, !isWatching);
+  });
+}
+function watchToggleMobile(btn) {
+  var id = btn.dataset.id;
+  var isWatching = btn.textContent.trim().startsWith('★');
+  _doWatch(id, isWatching).then(function(data) {
+    if (!data.ok && !data.already) return;
+    _applyWatchState(btn, !isWatching);
+    var desk = document.getElementById('watch-btn');
+    if (desk) _applyWatchState(desk, !isWatching);
+  });
+}
+function addNote() {
+  var body = document.getElementById('note-body').value.trim();
+  var errEl = document.getElementById('note-error');
+  errEl.style.display = 'none';
+  if (!body) { errEl.textContent = 'Note cannot be empty.'; errEl.style.display = 'inline'; return; }
+  var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  fetch('/contract/{{ row["internal_id"] }}/note', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({body: body, csrf_token: token})
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (!data.ok) { errEl.textContent = data.error || 'Error'; errEl.style.display = 'inline'; return; }
+    var empty = document.getElementById('notes-empty');
+    if (empty) empty.remove();
+    var li = document.createElement('li');
+    li.className = 'note-item';
+    li.innerHTML = '<div>' + body.replace(/</g,'&lt;') + '</div><div class="note-date">' + data.created_at.slice(0,10) + '</div>';
+    document.getElementById('notes-list').prepend(li);
+    document.getElementById('note-body').value = '';
+  }).catch(function() { errEl.textContent = 'Could not save note.'; errEl.style.display = 'inline'; });
+}
+</script>
 {% endblock %}

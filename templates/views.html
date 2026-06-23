@@ -1,16 +1,39 @@
 {% extends "base.html" %}
-{% block title %}Intelligence Views{% endblock %}
+{% block title %}Views — Recompete{% endblock %}
 
 {% block content %}
-<h1>Intelligence Views</h1>
-<div class="muted">Saved filters for common research scenarios.</div>
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px">
+  <div>
+    <h1>Views</h1>
+    <p class="page-subtitle">Pre-built contract filters for common research scenarios. Click any view to open it as a live search.</p>
+  </div>
+</div>
 
-<div class="cards" style="margin-top:20px;">
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-top:4px" data-testid="views-grid">
   {% for key, v in views.items() %}
-    <a class="card" href="/views/{{ key }}" style="text-decoration:none;color:inherit;min-width:200px;">
-      <div style="font-weight:bold;font-size:15px;">{{ v.label }}</div>
-      <div class="muted" style="margin-top:6px;font-size:13px;">{{ v.filters.items() | map('join', ': ') | join(', ') }}</div>
+    <a class="card view-card" href="/views/{{ key }}" style="display:flex;flex-direction:column;gap:8px;cursor:pointer;text-decoration:none;padding:18px 20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <span class="view-card-label" style="font-weight:600;font-size:15px;color:var(--text)">{{ v.label }}</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent);flex-shrink:0">
+          <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+        </svg>
+      </div>
+      {% if v.description %}
+      <p class="view-card-desc" style="font-size:13px;color:var(--text-muted);margin:0;line-height:1.5">{{ v.description }}</p>
+      {% endif %}
+      <div class="view-card-filter" style="font-size:11.5px;color:var(--text-faint);border-top:1px solid var(--border);padding-top:8px;margin-top:2px">
+        Filter: {{ format_filter_summary(v.filters) }}
+      </div>
     </a>
   {% endfor %}
+</div>
+
+<div class="score-how-it-works" style="margin-top:28px;padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm)">
+  <div style="font-weight:600;font-size:13px;margin-bottom:4px">How scoring &amp; priority work</div>
+  <p style="font-size:13px;color:var(--text-muted);margin:0;line-height:1.6">
+    Each contract gets a <strong>Recompete Score</strong> (0–100) based on competition type, contract value, and time remaining before expiration.
+    <strong>CRITICAL</strong> (90+) and <strong>HIGH</strong> (75–89) contracts offer the best combination of opportunity size and urgency.
+    Open any contract to see its full score breakdown.
+  </p>
 </div>
 {% endblock %}

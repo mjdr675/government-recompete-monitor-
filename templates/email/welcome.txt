@@ -1,0 +1,16 @@
+{% extends "email/base.txt" %}
+{% block text_content %}
+Welcome, {{ user_email }}!
+
+You now have access to Gov Recompete Monitor — the fastest way to find expiring
+federal contracts before your competitors do.
+
+Browse upcoming recompete opportunities, bookmark the ones you care about, and
+get alerts when contracts you're tracking are about to expire.
+
+Browse contracts:
+{{ app_url }}/contracts
+
+View your dashboard:
+{{ app_url }}
+{% endblock %}

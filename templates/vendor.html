@@ -2,30 +2,14 @@
 {% block title %}{{ vendor }} — Vendor Intelligence{% endblock %}
 
 {% block content %}
-<div style="margin-bottom:6px;font-size:13px;" class="muted">
-  <a href="/contracts">Contracts</a> &rsaquo; Vendor Profile
-</div>
-<h1>{{ vendor }}</h1>
-<div class="muted">Vendor intelligence profile &nbsp;·&nbsp; {{ profile.summary.contracts }} active contract{{ 's' if profile.summary.contracts != 1 else '' }}</div>
-
-{# ── Risk banner ─────────────────────────────────────────────────── #}
-{% set risks = [] %}
-{% if profile.risk.expiring_soon %}{% set _ = risks.append(profile.risk.expiring_soon|length ~ " contract" ~ ("s" if profile.risk.expiring_soon|length != 1 else "") ~ " expiring within 90 days") %}{% endif %}
-{% if profile.risk.critical %}{% set _ = risks.append(profile.risk.critical|length ~ " CRITICAL contract" ~ ("s" if profile.risk.critical|length != 1 else "")) %}{% endif %}
-{% if profile.risk.agencies_multi_recompete %}{% set _ = risks.append(profile.risk.agencies_multi_recompete|length ~ " agency cluster" ~ ("s" if profile.risk.agencies_multi_recompete|length != 1 else "") ~ " with multiple recompetes") %}{% endif %}
-{% if risks %}
-<div style="background:#fef2f2;border-left:4px solid #b00020;padding:12px 16px;border-radius:0 6px 6px 0;margin:16px 0 24px;">
-  <strong style="color:#b00020;">&#9888; Risk Indicators</strong>
-  <ul style="margin:6px 0 0;padding-left:20px;color:#7f1d1d;">
-    {% for r in risks %}<li>{{ r }}</li>{% endfor %}
-    {% if profile.risk.largest_contract %}
-    <li>Largest contract: <a href="/contract/{{ profile.risk.largest_contract.internal_id }}" style="color:#7f1d1d;">
-      ${{ "{:,.0f}".format(profile.risk.largest_contract.value or 0) }} · {{ profile.risk.largest_contract.agency }}
-    </a></li>
+<div style="margin-bottom:16px">
+  <h1>{{ vendor }}</h1>
+  <div class="muted">Vendor intelligence profile
+    {% if profile.vendor_website %}
+    &nbsp;·&nbsp; <a href="{{ profile.vendor_website }}" target="_blank" rel="noopener noreferrer" data-testid="vendor-website-link" style="font-size:13px">&#127758; Website ↗</a>
     {% endif %}
-  </ul>
+  </div>
 </div>
-{% endif %}
 
 {# ── Summary cards (7) ───────────────────────────────────────────── #}
 <div class="cards">
@@ -42,8 +26,16 @@
     <div class="num">{{ "{:.1f}".format(profile.summary.avg_score or 0) }}</div>
   </div>
   <div class="card">
-    <div class="muted">Critical Contracts</div>
-    <div class="num" style="color:{% if profile.summary.critical_contracts %}#b00020{% endif %};">{{ profile.summary.critical_contracts }}</div>
+    <div class="muted">Active</div>
+    <div class="num">{{ profile.summary.active_contracts or 0 }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Expired</div>
+    <div class="num">{{ profile.summary.expired_contracts or 0 }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Critical</div>
+    <div class="num">{{ profile.summary.critical_contracts }}</div>
   </div>
   <div class="card">
     <div class="muted">Avg Days Remaining</div>
@@ -78,136 +70,222 @@
     <div style="font-weight:bold;margin-bottom:10px;font-size:14px;">Contracts Expiring per Month</div>
     <canvas id="chartMonthly" height="220"></canvas>
   </div>
+  <div class="card">
+    <div class="muted">Top Score</div>
+    <div class="num">{{ profile.summary.max_score or 0 }}</div>
+  </div>
+</div>
 
+<h2 id="active-contracts">Active Contracts</h2>
+{% if profile.active %}
+<div style="overflow-x:auto">
+<table>
+<tr>
+<th>Priority</th>
+<th>Contract</th>
+<th>Agency</th>
+<th>Value</th>
+<th>Start Date</th>
+<th>End Date</th>
+<th>Days Remaining</th>
+<th>Score</th>
+</tr>
+{% for r in profile.active %}
+<tr>
+<td><span class="priority-badge priority-{{ (r.priority or 'unknown').lower().replace(' ','-').replace('_','-') }}">{{ r.priority or '—' }}</span></td>
+<td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
+<td><a href="/agency/{{ r.agency|urlencode }}">{{ r.agency }}</a></td>
+<td>${{ "{:,.0f}".format(r.value or 0) }}</td>
+<td>{{ r.start_date or '—' }}</td>
+<td>{{ r.end_date or '—' }}</td>
+<td>{{ r.days_remaining }}</td>
+<td>{{ r.recompete_score or '—' }}</td>
+</tr>
+{% endfor %}
+</table>
+</div>
+{% else %}
+<p class="muted">No active contracts found for this vendor.</p>
+{% endif %}
+
+<h2>Contract Timeline</h2>
+<div style="max-width:700px;margin-bottom:28px">
+  <canvas id="timeline-chart"></canvas>
+</div>
+
+<h2>Win / Loss Indicators</h2>
+<div class="cards" style="margin-bottom:16px">
+{% for r in profile.win_loss_summary %}
+<div class="card">
+  <div class="muted">{{ r.status }}</div>
+  <div class="num">{{ r.contracts }}</div>
+  <div class="muted" style="font-size:12px">${{ "{:,.0f}".format(r.total_value or 0) }}</div>
+</div>
+{% endfor %}
+</div>
+{% if profile.change_events %}
+<h3 style="margin-top:0">Recent Events</h3>
+<div style="overflow-x:auto">
+<table>
+<tr><th>Event</th><th>Date</th><th>Contract</th><th>Agency</th><th>Value</th><th>Priority</th></tr>
+{% for e in profile.change_events %}
+<tr>
+  <td>
+    {% if e.change_type == 'NEW' %}
+      <span class="priority-badge" style="background:#16a34a">Won</span>
+    {% else %}
+      <span class="priority-badge" style="background:#b00020">Ended</span>
+    {% endif %}
+  </td>
+  <td>{{ e.run_date }}</td>
+  <td>{{ e.award_id or '—' }}</td>
+  <td>{{ e.agency or '—' }}</td>
+  <td>${{ "{:,.0f}".format(e.value or 0) }}</td>
+  <td>{{ e.priority or '—' }}</td>
+</tr>
+{% endfor %}
+</table>
 </div>
 {% endif %}
 
-{# ── Agency Breakdown ────────────────────────────────────────────── #}
-<h2>Agency Breakdown</h2>
+<h2>Recompete Score Analysis</h2>
+<p class="muted">Vendor avg: <strong>{{ "{:.1f}".format(profile.summary.avg_score or 0) }}</strong> &nbsp;|&nbsp; Platform avg: <strong>{{ "{:.1f}".format(profile.summary.platform_avg_score or 0) }}</strong></p>
+<div style="overflow-x:auto">
 <table>
+<tr><th>Score Bucket</th><th>Contracts</th></tr>
+{% for r in profile.score_distribution %}
+<tr><td>{{ r.bucket }}</td><td>{{ r.contracts }}</td></tr>
+{% endfor %}
+</table>
+</div>
+
+<h2>Pipeline by Priority</h2>
+<div style="max-width:360px;margin-bottom:20px">
+  <canvas id="priority-chart"></canvas>
+</div>
+<div style="overflow-x:auto">
+<table>
+<tr><th>Priority</th><th>Contracts</th><th>Total Value</th><th>Avg Value</th></tr>
+{% for r in profile.pipeline_by_priority %}
 <tr>
-  <th>Agency</th>
-  <th>Contracts</th>
-  <th>Pipeline Value</th>
-  <th>Avg Score</th>
+  <td><span class="priority-badge priority-{{ (r.priority or 'unknown').lower().replace(' ','-').replace('_','-') }}">{{ r.priority or 'Unknown' }}</span></td>
+  <td>{{ r.contracts }}</td>
+  <td>${{ "{:,.0f}".format(r.total_value or 0) }}</td>
+  <td>${{ "{:,.0f}".format(r.avg_value or 0) }}</td>
 </tr>
+{% endfor %}
+</table>
+</div>
+{% endif %}
+
+<h2>Agencies Served</h2>
+<div style="overflow-x:auto">
+<table>
+<tr><th>Agency</th><th>Contracts</th><th>Active</th><th>Pipeline Value</th><th>Share</th><th>Top Score</th></tr>
 {% for a in profile.agencies %}
 <tr>
   <td><a href="/agency/{{ a.agency|urlencode }}">{{ a.agency }}</a></td>
   <td>{{ a.contracts }}</td>
-  <td>${{ "{:,.0f}".format(a.pipeline_value or 0) }}</td>
-  <td>{{ "{:.1f}".format(a.avg_score or 0) }}</td>
+  <td>{{ a.active_contracts }}</td>
+  <td>${{ "{:,.0f}".format(a.total_value or 0) }}</td>
+  <td>{{ "{:.0f}".format(100 * (a.total_value or 0) / (profile.summary.pipeline_value or 1)) }}%</td>
+  <td>{{ a.top_score or '—' }}</td>
 </tr>
-{% else %}
-<tr><td colspan="4">No agency data.</td></tr>
 {% endfor %}
 </table>
+</div>
 
-{# ── Upcoming Recompetes ─────────────────────────────────────────── #}
-<h2>Upcoming Recompetes</h2>
+<h2>Upcoming Expirations</h2>
+<div style="overflow-x:auto">
 <table>
 <tr>
-  <th>Contract</th>
-  <th>Agency</th>
-  <th>Value</th>
-  <th>End Date</th>
-  <th>Days</th>
-  <th>Priority</th>
-  <th>Score</th>
+<th>Priority</th>
+<th>Contract</th>
+<th>Agency</th>
+<th>Value</th>
+<th>End Date</th>
+<th>Days Remaining</th>
+<th>Competition</th>
+<th>Score</th>
 </tr>
 {% for r in profile.upcoming %}
-<tr {% if (r.days_remaining or 9999) < 90 %}style="background:#fff7f7;"{% endif %}>
-  <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
-  <td><a href="/agency/{{ r.agency|urlencode }}">{{ r.agency }}</a></td>
-  <td>${{ "{:,.0f}".format(r.value or 0) }}</td>
-  <td>{{ r.end_date }}</td>
-  <td>
-    {% if (r.days_remaining or 9999) < 90 %}
-    <strong style="color:#b00020;">{{ r.days_remaining }}</strong>
-    {% else %}
-    {{ r.days_remaining }}
-    {% endif %}
-  </td>
-  <td><span class="priority-badge priority-{{ (r.priority or 'unknown').lower() }}">{{ r.priority }}</span></td>
-  <td>{{ r.recompete_score }}</td>
-</tr>
-{% else %}
-<tr><td colspan="7">No contracts found.</td></tr>
-{% endfor %}
-</table>
-
-{# ── Timeline ────────────────────────────────────────────────────── #}
-{% if profile.upcoming %}
-<h2>Expiration Timeline</h2>
-<div style="background:white;border-radius:10px;padding:20px;box-shadow:0 1px 4px #ddd;margin-bottom:28px;">
-  {% set max_value = profile.upcoming | map(attribute='value') | select | max | default(1) %}
-  {% for r in profile.upcoming %}
-  {% set bar_pct = [((r.value or 0) / (max_value or 1) * 85), 4] | max %}
-  {% set urgency = (r.days_remaining or 9999) < 90 %}
-  <div style="display:flex;align-items:center;margin-bottom:10px;gap:12px;">
-    <div style="width:90px;text-align:right;font-size:12px;color:#666;flex-shrink:0;">{{ r.end_date or "—" }}</div>
-    <div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:{{ "#b00020" if urgency else ("#d97706" if r.priority == "HIGH" else "#2563eb") }};"></div>
-    <div style="flex:1;background:#f3f4f6;border-radius:4px;height:22px;position:relative;overflow:hidden;">
-      <div style="width:{{ bar_pct }}%;height:100%;background:{{ "#fee2e2" if urgency else "#dbeafe" }};border-radius:4px;"></div>
-      <div style="position:absolute;top:3px;left:8px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-        <a href="/contract/{{ r.internal_id }}" style="color:#1f4f8f;">{{ r.award_id or r.internal_id }}</a>
-        <span style="color:#888;margin-left:6px;">{{ r.agency }}</span>
-      </div>
-    </div>
-    <div style="width:70px;text-align:right;font-size:12px;flex-shrink:0;{% if urgency %}color:#b00020;font-weight:bold;{% else %}color:#666;{% endif %}">
-      {{ r.days_remaining }}d
-    </div>
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
-
-{# ── Related Vendors ─────────────────────────────────────────────── #}
-{% if profile.related_vendors %}
-<h2>Related Vendors</h2>
-<div class="muted" style="margin-top:-12px;">Competitors present in the same agencies.</div>
-<table>
-<tr><th>Vendor</th><th>Shared Agencies</th><th>Their Contracts</th></tr>
-{% for v in profile.related_vendors %}
+{% set days = r.days_remaining %}
 <tr>
-  <td><a href="/vendor/{{ v.vendor|urlencode }}">{{ v.vendor }}</a></td>
-  <td>{{ v.shared_agencies }}</td>
-  <td>{{ v.contracts }}</td>
+<td>
+<span class="priority-badge priority-{{ (r.priority or 'unknown').lower().replace(' ','-').replace('_','-') }}">
+{{ r.priority or '—' }}
+</span>
+</td>
+<td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
+<td><a href="/agency/{{ r.agency|urlencode }}">{{ r.agency }}</a></td>
+<td>${{ "{:,.0f}".format(r.value or 0) }}</td>
+<td>{{ r.end_date or '—' }}</td>
+{% if days is none %}
+  <td>—</td>
+{% elif days <= 0 %}
+  <td style="color:#b00020;font-weight:bold">{{ days }}</td>
+{% elif days <= 30 %}
+  <td style="color:#d97706;font-weight:bold">{{ days }}</td>
+{% elif days <= 90 %}
+  <td style="color:#2563eb">{{ days }}</td>
+{% else %}
+  <td>{{ days }}</td>
+{% endif %}
+<td>{{ r.competition_type or '—' }}</td>
+<td>{{ r.recompete_score or '—' }}</td>
 </tr>
 {% endfor %}
 </table>
-{% endif %}
-
+</div>
 {% endblock %}
 
-{# ── Chart.js scripts ────────────────────────────────────────────── #}
 {% block scripts %}
-{% if profile.summary.contracts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script>
-const _opts = {
-  responsive: true,
-  plugins: { legend: { display: false } },
-  scales: { y: { beginAtZero: true } },
-};
+(function() {
+  var timelineData = {{ profile.timeline | tojson }};
+  if (timelineData.length > 0) {
+    new Chart(document.getElementById('timeline-chart'), {
+      type: 'bar',
+      data: {
+        labels: timelineData.map(function(r) { return r.year + ' ' + r.quarter; }),
+        datasets: [{
+          label: 'Contract Value',
+          data: timelineData.map(function(r) { return r.total_value; }),
+          backgroundColor: '#1f4f8f'
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { ticks: { callback: function(v) { return '$' + (v/1e6).toFixed(1) + 'M'; } } }
+        }
+      }
+    });
+  }
 
-new Chart(document.getElementById("chartAgency"), {
-  type: "bar",
-  data: {{ profile.charts.pipeline_by_agency | tojson }},
-  options: { ...structuredClone(_opts), plugins: { legend: { display: false } } },
-});
-
-new Chart(document.getElementById("chartPriority"), {
-  type: "doughnut",
-  data: {{ profile.charts.priority | tojson }},
-  options: { responsive: true, plugins: { legend: { position: "bottom" } } },
-});
-
-new Chart(document.getElementById("chartMonthly"), {
-  type: "bar",
-  data: {{ profile.charts.expiring_by_month | tojson }},
-  options: _opts,
-});
+  var priorityColors = { 'CRITICAL': '#b00020', 'HIGH': '#d97706', 'MEDIUM': '#2563eb', 'LOW': '#4b5563' };
+  var priorityData = {{ profile.pipeline_by_priority | tojson }};
+  if (priorityData.length > 0) {
+    new Chart(document.getElementById('priority-chart'), {
+      type: 'doughnut',
+      data: {
+        labels: priorityData.map(function(r) { return r.priority || 'Unknown'; }),
+        datasets: [{
+          data: priorityData.map(function(r) { return r.total_value; }),
+          backgroundColor: priorityData.map(function(r) { return priorityColors[r.priority] || '#999'; })
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'right' },
+          tooltip: { callbacks: { label: function(ctx) { return '$' + ctx.raw.toLocaleString(); } } }
+        }
+      }
+    });
+  }
+})();
 </script>
-{% endif %}
 {% endblock %}

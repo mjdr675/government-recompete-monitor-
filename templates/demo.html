@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Request a Demo{% endblock %}
+
+{% block content %}
+<h1>Request a Demo</h1>
+<div class="muted" style="margin-bottom:20px;">
+  See the Recompete Intelligence Platform in action. We'll reach out within one business day.
+</div>
+
+{% if message %}
+<p style="color:#1a7f4b;margin-bottom:16px;font-weight:bold;">{{ message }}</p>
+{% endif %}
+
+{% if error %}
+<p style="color:#b00020;margin-bottom:16px;">{{ error }}</p>
+{% endif %}
+
+{% if not message %}
+<form method="post" style="max-width:480px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div style="margin-bottom:14px;">
+    <label style="display:block;margin-bottom:4px;font-weight:bold;">Full Name</label>
+    <input type="text" name="name" placeholder="Jane Smith"
+           style="width:100%;padding:9px;box-sizing:border-box;">
+  </div>
+  <div style="margin-bottom:14px;">
+    <label style="display:block;margin-bottom:4px;font-weight:bold;">Email <span style="color:#b00020;">*</span></label>
+    <input type="email" name="email" required autofocus
+           style="width:100%;padding:9px;box-sizing:border-box;">
+  </div>
+  <div style="margin-bottom:14px;">
+    <label style="display:block;margin-bottom:4px;font-weight:bold;">Company</label>
+    <input type="text" name="company" placeholder="Acme Facilities Inc."
+           style="width:100%;padding:9px;box-sizing:border-box;">
+  </div>
+  <div style="margin-bottom:14px;">
+    <label style="display:block;margin-bottom:4px;font-weight:bold;">Phone</label>
+    <input type="tel" name="phone" placeholder="+1 (555) 000-0000"
+           style="width:100%;padding:9px;box-sizing:border-box;">
+  </div>
+  <div style="margin-bottom:18px;">
+    <label style="display:block;margin-bottom:4px;font-weight:bold;">Notes / Questions</label>
+    <textarea name="notes" rows="4"
+              style="width:100%;padding:9px;box-sizing:border-box;"></textarea>
+  </div>
+  <button type="submit" style="width:100%;padding:10px;">Request Demo</button>
+</form>
+{% endif %}
+{% endblock %}

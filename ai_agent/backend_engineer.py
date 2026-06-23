@@ -51,12 +51,8 @@ def _build_context(task: dict, memory) -> str:
     sections: list[str] = []
     task_text = (task["title"] + " " + task["body"]).lower()
 
-    # Collect function sources for any function named in the task
-    found_fns: set[str] = set()
-    for fn in memory.find_function(""):  # iterate isn't exposed; use targeted calls below
-        pass
-
     # Targeted: pull source for any known function mentioned in task text
+    found_fns: set[str] = set()
     all_fns = memory._con.execute("SELECT name FROM functions").fetchall()
     for row in all_fns:
         name = row[0]

@@ -1,0 +1,16 @@
+{% extends "email/base.txt" %}
+{% block text_content %}
+Your trial ends in 4 days
+
+Hi {{ user_email }},
+
+You have 4 days left on your Gov Recompete Monitor trial.
+After {{ trial_ends_date }}, you'll need a subscription to continue tracking
+federal contracts and receiving expiry alerts.
+
+Subscribe now to keep uninterrupted access:
+
+{{ app_url }}/subscribe
+
+$49/month. Cancel anytime.
+{% endblock %}
