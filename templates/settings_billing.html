@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Billing — Recompete{% endblock %}
+{% block content %}
+<h1>Billing &amp; Plan</h1>
+<div class="page-meta" style="margin-bottom:20px">Manage your workspace subscription.</div>
+
+<div class="settings-page">
+
+  {% if expired %}
+    <div class="auth-error" style="margin-bottom:16px">Your trial has ended. Choose a plan to keep access.</div>
+  {% endif %}
+  {% if upgraded %}
+    <div class="auth-success" style="margin-bottom:16px">Subscription updated. Thank you!</div>
+  {% endif %}
+  {% if error %}
+    <div class="auth-error" style="margin-bottom:16px">{{ error }}</div>
+  {% endif %}
+
+  <div class="settings-card">
+    <h2>Current Plan</h2>
+    <p style="margin:0 0 4px"><strong>Plan:</strong> {{ (billing.plan or 'starter') | capitalize }}</p>
+    <p style="margin:0 0 4px">
+      <strong>Status:</strong>
+      {% if billing.subscription_status == 'active' %}
+        <span style="color:#16a34a;font-weight:600">Active</span>
+      {% elif billing.subscription_status == 'trialing' %}
+        <span style="color:#d97706;font-weight:600">Trial</span>
+        {% if trial_days_remaining is not none %} — {{ trial_days_remaining }} day{{ 's' if trial_days_remaining != 1 }} remaining{% endif %}
+      {% elif billing.subscription_status == 'past_due' %}
+        <span style="color:var(--badge-critical-bg);font-weight:600">Past due</span>
+      {% else %}
+        <span style="color:var(--badge-critical-bg);font-weight:600">{{ (billing.subscription_status or 'inactive') | capitalize }}</span>
+      {% endif %}
+    </p>
+    {% if not active %}
+      <p style="margin:8px 0 0;font-size:13px;color:var(--text-muted)">Access is currently restricted. Choose a plan below to continue.</p>
+    {% endif %}
+  </div>
+
+  <div class="settings-card">
+    <h2>Plans</h2>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      {% for plan in plans %}
+      <form method="post" action="/settings/billing" style="margin:0">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="upgrade">
+        <input type="hidden" name="plan" value="{{ plan }}">
+        <button type="submit"
+                class="btn {{ 'btn-secondary' if billing.plan == plan and billing.subscription_status == 'active' else 'btn-primary' }}"
+                style="font-size:13px"
+                {{ 'disabled' if billing.plan == plan and billing.subscription_status == 'active' }}>
+          {% if billing.plan == plan and billing.subscription_status == 'active' %}Current: {{ plan | capitalize }}{% else %}Choose {{ plan | capitalize }}{% endif %}
+        </button>
+      </form>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if billing.stripe_customer_id %}
+  <div class="settings-card">
+    <h2>Manage Subscription</h2>
+    <form method="post" action="/settings/billing" style="margin:0">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="portal">
+      <button type="submit" class="btn btn-secondary" style="font-size:13px">Open billing portal →</button>
+    </form>
+  </div>
+  {% endif %}
+
+  <p style="font-size:13px;color:var(--text-muted)"><a href="/settings/workspace">Workspace settings →</a></p>
+
+</div>
+{% endblock %}

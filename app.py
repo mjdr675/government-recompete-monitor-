@@ -21,8 +21,11 @@ from flask import Flask, flash, g, jsonify, redirect, render_template, request, 
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
+from werkzeug.utils import secure_filename
 
 from auth import bp as auth_bp
+from access import get_access_state, is_access_granted
+from access_observability import log_access_decision
 from email_service import send_email
 from change_detector import detect_changes
 from update_detector import detect_field_changes
@@ -122,12 +125,27 @@ if _sentry_dsn:
     )
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+# Unified access control (domain state + web routing split). Default OFF: the
+# legacy require_login/require_active_workspace gates remain authoritative until
+# parity is proven and the flag is flipped. See access.py for the domain layer.
+UNIFIED_ACCESS_ENABLED = os.getenv("UNIFIED_ACCESS_ENABLED", "").lower() in ("1", "true", "yes")
 STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
 STRIPE_PRICE_ID_YEARLY = os.getenv("STRIPE_PRICE_ID_YEARLY")
+# Workspace plan tiers → Stripe price ids (set per environment).
+STRIPE_PRICE_IDS = {
+    "starter": os.getenv("STRIPE_PRICE_ID_STARTER", ""),
+    "growth": os.getenv("STRIPE_PRICE_ID_GROWTH", ""),
+    "pro": os.getenv("STRIPE_PRICE_ID_PRO", ""),
+}
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("RAILWAY_ENVIRONMENT") == "production"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+# Company logo uploads: cap request size and define the storage location under
+# the served static/ tree. Kept small — logos are tiny.
+app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2 MB
+WORKSPACE_LOGO_DIR = os.path.join(app.static_folder, "uploads", "logos")
+ALLOWED_LOGO_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp", "svg"}
 csrf = CSRFProtect(app)
 limiter = Limiter(app=app, key_func=get_remote_address, default_limits=[])
 app.register_blueprint(auth_bp)
@@ -256,6 +274,7 @@ _PUBLIC_PATHS = frozenset({
 _SUBSCRIPTION_EXEMPT = frozenset({
     "/subscribe",
     "/billing/portal",
+    "/settings/billing",
     "/logout",
     "/create-checkout-session",
     "/success",
@@ -280,8 +299,10 @@ def require_login():
         return None
     if "user_id" not in session:
         return redirect(url_for("auth.login", next=request.path))
-    # Trial / subscription gate
-    if request.path not in _SUBSCRIPTION_EXEMPT:
+    # Trial / subscription gate (legacy). Authentication above always runs; the
+    # billing branch is suppressed when the unified gate is enabled so the two
+    # never both decide billing.
+    if not UNIFIED_ACCESS_ENABLED and request.path not in _SUBSCRIPTION_EXEMPT:
         user = g.get("user")
         if user and user.get("subscription_status") != "active":
             trial_ends_at = user.get("trial_ends_at")
@@ -290,7 +311,125 @@ def require_login():
                 if trial_end.tzinfo is None:
                     trial_end = trial_end.replace(tzinfo=timezone.utc)
                 if datetime.now(timezone.utc) > trial_end:
+                    log_access_decision(
+                        user.get("id"), None, "expired",
+                        "/subscribe?expired=1", "legacy", request.path,
+                    )
                     return redirect(url_for("subscribe", expired="1"))
+
+
+# Paths gated by workspace billing state. Kept to the core product surfaces the
+# task specifies — narrow by design to avoid disturbing other routes.
+_WORKSPACE_GATED_PREFIXES = ("/dashboard", "/contracts", "/compare", "/pipeline")
+
+
+@app.before_request
+def require_active_workspace():
+    """Redirect to /settings/billing when the user's workspace is inactive.
+
+    Legacy workspace gate. Dormant when the unified gate is enabled, so billing
+    is never decided by two authorities at once.
+    """
+    if UNIFIED_ACCESS_ENABLED:
+        return None
+    if "user_id" not in session:
+        return None
+    path = request.path
+    if not any(path == p or path.startswith(p + "/") for p in _WORKSPACE_GATED_PREFIXES):
+        return None
+    user = g.get("user")
+    if not user:
+        return None
+    workspace = get_workspace_for_user(user["id"])
+    if workspace and not is_workspace_active(workspace["id"]):
+        # Decision uses the unchanged legacy check above; get_access_state is used
+        # only to label the log line in the shared 4-state vocabulary.
+        label = get_access_state(user, get_workspace_billing(workspace["id"]))
+        log_access_decision(
+            user["id"], workspace["id"], label,
+            "/settings/billing?expired=1", "legacy", request.path,
+        )
+        return redirect(url_for("settings_billing", expired="1"))
+
+
+# --- Web layer: pure state -> destination mapping (no business logic) --------
+# Maps a domain access state (from access.get_access_state) to a canonical
+# billing destination, or None when access is permitted. URLs live ONLY here.
+_ACCESS_REDIRECTS = {
+    "billing_required": "/settings/billing",
+    "expired": "/settings/billing?expired=1",
+}
+
+
+def get_access_redirect(state):
+    """Return the canonical redirect path for a denied state, else None."""
+    return _ACCESS_REDIRECTS.get(state)
+
+
+@app.before_request
+def require_access():
+    """Unified billing gate: domain state -> web redirect. Default OFF.
+
+    Orchestration only — it holds no entitlement rules (those live in
+    access.get_access_state) and no URL knowledge (that lives in
+    get_access_redirect). Authentication remains require_login's job.
+    """
+    if not UNIFIED_ACCESS_ENABLED:
+        return None
+    if request.path in _PUBLIC_PATHS or request.path in _SUBSCRIPTION_EXEMPT:
+        return None
+    if "user_id" not in session:
+        return None  # auth handled by require_login
+    user = g.get("user")
+    if not user:
+        return None
+    workspace = get_workspace_for_user(user["id"])
+    billing = get_workspace_billing(workspace["id"]) if workspace else None
+    state = get_access_state(user, billing)
+    target = get_access_redirect(state)
+    log_access_decision(
+        user["id"], workspace["id"] if workspace else None,
+        state, target, "unified", request.path,
+    )
+    if target:
+        return redirect(target)
+
+
+@app.before_request
+def observe_access_decision():
+    """Shadow observer: when the unified gate is OFF, record the decision the
+    unified engine *would* make, so it can be compared against the legacy logs
+    for parity — without enforcing anything. Pure instrumentation."""
+    if UNIFIED_ACCESS_ENABLED:
+        return None  # enforcement path already logs mode="unified"
+    if request.path in _PUBLIC_PATHS or request.path in _SUBSCRIPTION_EXEMPT:
+        return None
+    if "user_id" not in session:
+        return None
+    user = g.get("user")
+    if not user:
+        return None
+    workspace = get_workspace_for_user(user["id"])
+    billing = get_workspace_billing(workspace["id"]) if workspace else None
+    state = get_access_state(user, billing)
+    log_access_decision(
+        user["id"], workspace["id"] if workspace else None,
+        state, get_access_redirect(state), "shadow", request.path,
+    )
+    return None  # never enforces
+
+
+@app.context_processor
+def inject_workspace():
+    """Expose the current user's workspace (name + logo) to every template so
+    company branding renders app-wide. Read-only; never raises for anon users."""
+    user = g.get("user")
+    if not user:
+        return {"workspace": None}
+    try:
+        return {"workspace": get_workspace_for_user(user["id"])}
+    except Exception:
+        return {"workspace": None}
 
 
 @app.context_processor
@@ -840,6 +979,54 @@ def billing_portal():
         return redirect(url_for("dashboard"))
 
 
+def _apply_workspace_billing_event(event):
+    """Update workspace billing from a Stripe event (additive to user-level).
+
+    No-ops when the event carries no workspace linkage, so existing user-level
+    webhook behavior is unaffected.
+    """
+    etype = event.get("type")
+    obj = event.get("data", {}).get("object", {}) or {}
+    event_id = event.get("id")
+
+    if etype == "checkout.session.completed":
+        # create_workspace_checkout_session sets client_reference_id=workspace_id.
+        ref = obj.get("client_reference_id") or (obj.get("metadata") or {}).get("workspace_id")
+        if not ref:
+            return
+        try:
+            workspace_id = int(ref)
+        except (ValueError, TypeError):
+            return
+        plan = (obj.get("metadata") or {}).get("plan")
+        update_workspace_subscription_status(
+            workspace_id,
+            "active",
+            plan=plan if plan in VALID_PLANS else None,
+            stripe_customer_id=obj.get("customer") or None,
+            stripe_subscription_id=obj.get("subscription") or None,
+        )
+        record_workspace_billing_event(workspace_id, etype, event_id, json.dumps(obj, default=str))
+
+    elif etype in ("customer.subscription.updated", "customer.subscription.deleted"):
+        customer = obj.get("customer") or ""
+        if not customer:
+            return
+        workspace = get_workspace_by_stripe_customer(customer)
+        if not workspace:
+            return
+        if etype == "customer.subscription.deleted":
+            status = "canceled"
+        else:
+            status = obj.get("status") or "active"
+        update_workspace_subscription_status(
+            workspace["id"],
+            status,
+            stripe_subscription_id=obj.get("id") or None,
+        )
+        record_workspace_billing_event(workspace["id"], etype, event_id, json.dumps(obj, default=str))
+
+
 @app.route("/stripe/webhook", methods=["POST"])
 @csrf.exempt
 def stripe_webhook():
@@ -889,6 +1076,13 @@ def stripe_webhook():
             user = get_user_by_stripe_customer(stripe_customer_id)
             if user:
                 set_subscription(user["id"], stripe_customer_id, "canceled")
+
+    # Workspace-level billing update (additive; no-ops without workspace linkage).
+    try:
+        _apply_workspace_billing_event(event)
+    except Exception as exc:
+        sentry_sdk.capture_exception(exc)
+        logging.exception("Workspace billing webhook update failed: %s", exc)
 
     return "", 200
 
@@ -1647,6 +1841,180 @@ def settings_account_company():
     update_company_name(user["id"], company_name)
     flash("Company name updated.")
     return redirect(url_for("settings_account"))
+
+
+def _save_workspace_logo(workspace_id, file_storage):
+    """Validate and persist an uploaded logo. Returns (logo_path, error).
+
+    logo_path is the static-relative path on success, else None with an error
+    string. Rejects empty uploads, disallowed extensions, and oversized files.
+    """
+    filename = (file_storage.filename or "").strip()
+    if not filename:
+        return None, "No file selected."
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext not in ALLOWED_LOGO_EXTENSIONS:
+        return None, "Logo must be a PNG, JPG, GIF, WEBP, or SVG image."
+    os.makedirs(WORKSPACE_LOGO_DIR, exist_ok=True)
+    # Deterministic per-workspace name avoids collisions and stale files.
+    stored_name = secure_filename(f"workspace_{workspace_id}.{ext}")
+    abs_path = os.path.join(WORKSPACE_LOGO_DIR, stored_name)
+    file_storage.save(abs_path)
+    if os.path.getsize(abs_path) == 0:
+        os.remove(abs_path)
+        return None, "Uploaded file was empty."
+    # Path relative to the static folder, for url_for('static', ...).
+    return f"uploads/logos/{stored_name}", None
+
+
+@app.route("/settings/workspace", methods=["GET", "POST"])
+def settings_workspace():
+    user = g.get("user")
+    if not user:
+        return redirect(url_for("auth.login"))
+    workspace = get_or_create_workspace_for_user(user["id"])
+    error = None
+    success = None
+    if request.method == "POST":
+        action = request.form.get("action", "save")
+        if action == "remove_logo":
+            update_workspace(workspace["id"], logo_path="")
+            flash("Logo removed.")
+            return redirect(url_for("settings_workspace"))
+
+        name = request.form.get("workspace_name", "").strip()
+        logo_path = None
+        upload = request.files.get("logo")
+        if upload and (upload.filename or "").strip():
+            logo_path, error = _save_workspace_logo(workspace["id"], upload)
+        if not error:
+            update_workspace(workspace["id"], name=name, logo_path=logo_path)
+            success = "Workspace updated."
+            workspace = get_workspace_for_user(user["id"])
+
+    members = list_workspace_members(workspace["id"]) if workspace else []
+    return render_template(
+        "settings_workspace.html",
+        user=user,
+        workspace=workspace,
+        members=members,
+        error=error,
+        success=success,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Workspace billing — Stripe foundation
+# ---------------------------------------------------------------------------
+
+def create_workspace_stripe_customer(workspace):
+    """Create (and persist) a Stripe customer for a workspace if absent.
+
+    Returns the stripe_customer_id. Reuses an existing one when present.
+    """
+    billing = get_workspace_billing(workspace["id"])
+    if billing and billing.get("stripe_customer_id"):
+        return billing["stripe_customer_id"]
+    customer = stripe.Customer.create(
+        name=workspace.get("name") or f"Workspace {workspace['id']}",
+        metadata={"workspace_id": str(workspace["id"])},
+    )
+    update_workspace_subscription_status(
+        workspace["id"],
+        billing.get("subscription_status") if billing else "trialing",
+        stripe_customer_id=customer["id"],
+    )
+    return customer["id"]
+
+
+def create_workspace_checkout_session(workspace, plan):
+    """Create a Stripe Checkout session to subscribe a workspace to a plan."""
+    price_id = STRIPE_PRICE_IDS.get(plan)
+    if not price_id:
+        raise ValueError(f"No Stripe price configured for plan '{plan}'")
+    customer_id = create_workspace_stripe_customer(workspace)
+    return stripe.checkout.Session.create(
+        mode="subscription",
+        customer=customer_id,
+        client_reference_id=str(workspace["id"]),
+        line_items=[{"price": price_id, "quantity": 1}],
+        metadata={"workspace_id": str(workspace["id"]), "plan": plan},
+        success_url=url_for("settings_billing", _external=True) + "?upgraded=1",
+        cancel_url=url_for("settings_billing", _external=True),
+    )
+
+
+def create_workspace_billing_portal_session(workspace):
+    """Create a Stripe billing-portal session for a workspace's customer."""
+    billing = get_workspace_billing(workspace["id"])
+    customer_id = billing.get("stripe_customer_id") if billing else None
+    if not customer_id:
+        return None
+    return stripe.billing_portal.Session.create(
+        customer=customer_id,
+        return_url=url_for("settings_billing", _external=True),
+    )
+
+
+def _workspace_trial_days_remaining(billing):
+    """Whole days left in the workspace trial, or None when not on trial."""
+    if not billing or not billing.get("trial_end_at"):
+        return None
+    try:
+        trial_end = datetime.fromisoformat(billing["trial_end_at"])
+    except (ValueError, TypeError):
+        return None
+    if trial_end.tzinfo is None:
+        trial_end = trial_end.replace(tzinfo=timezone.utc)
+    delta = trial_end - datetime.now(timezone.utc)
+    return max(0, delta.days + (1 if delta.seconds or delta.microseconds else 0))
+
+
+@app.route("/settings/billing", methods=["GET", "POST"])
+def settings_billing():
+    user = g.get("user")
+    if not user:
+        return redirect(url_for("auth.login"))
+    workspace = get_or_create_workspace_for_user(user["id"])
+    error = None
+
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        if action == "portal":
+            try:
+                portal = create_workspace_billing_portal_session(workspace)
+            except Exception as exc:
+                sentry_sdk.capture_exception(exc)
+                portal = None
+            if portal:
+                return redirect(portal.url, code=303)
+            error = "No billing account yet. Choose a plan to get started."
+        elif action == "upgrade":
+            plan = request.form.get("plan", "")
+            if plan not in VALID_PLANS:
+                error = "Unknown plan."
+            else:
+                try:
+                    checkout = create_workspace_checkout_session(workspace, plan)
+                    return redirect(checkout.url, code=303)
+                except Exception as exc:
+                    sentry_sdk.capture_exception(exc)
+                    error = "Could not start checkout. Please try again."
+
+    billing = get_workspace_billing(workspace["id"])
+    return render_template(
+        "settings_billing.html",
+        user=user,
+        workspace=workspace,
+        billing=billing,
+        plans=VALID_PLANS,
+        in_trial=is_workspace_in_trial(workspace["id"]),
+        trial_days_remaining=_workspace_trial_days_remaining(billing),
+        active=is_workspace_active(workspace["id"]),
+        expired=request.args.get("expired") == "1",
+        upgraded=request.args.get("upgraded") == "1",
+        error=error,
+    )
 
 
 @app.route("/settings/alerts", methods=["GET", "POST"])

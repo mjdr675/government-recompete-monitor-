@@ -99,11 +99,18 @@
       <span class="brand-mark" aria-hidden="true">R</span>
       <span class="brand-name">Recompete</span>
     </a>
-    {% if g.user.get('company_name') %}
-    <div class="sidebar-workspace">
-      <span class="sidebar-workspace-avatar" aria-hidden="true">{{ g.user['company_name'][0].upper() }}</span>
-      <span class="sidebar-workspace-name" title="{{ g.user['company_name'] }}">{{ g.user['company_name'] }}</span>
-    </div>
+    {% set ws_name = (workspace.name if workspace else None) or g.user.get('company_name') %}
+    {% if ws_name or (workspace and workspace.logo_path) %}
+    <a class="sidebar-workspace" href="/settings/workspace" style="text-decoration:none;color:inherit">
+      {% if workspace and workspace.logo_path %}
+      <img class="sidebar-workspace-logo" src="{{ url_for('static', filename=workspace.logo_path) }}"
+           alt="{{ ws_name or 'Workspace' }} logo"
+           style="width:24px;height:24px;border-radius:6px;object-fit:cover">
+      {% else %}
+      <span class="sidebar-workspace-avatar" aria-hidden="true">{{ (ws_name or 'W')[0].upper() }}</span>
+      {% endif %}
+      <span class="sidebar-workspace-name" title="{{ ws_name or 'Workspace' }}">{{ ws_name or 'Workspace' }}</span>
+    </a>
     {% endif %}
     <nav class="sidebar-nav">
       <a href="/dashboard" class="{{ 'active' if p == '/dashboard' }}">
