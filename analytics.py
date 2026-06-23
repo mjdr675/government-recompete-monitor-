@@ -231,6 +231,100 @@ def business_opportunities(user_id, limit=5):
     return scored[:limit]
 
 
+def suggested_matches(user_id, limit=5):
+    """Suggest contracts similar to what the user is already tracking."""
+    if not user_id:
+        return []
+    engine = get_engine()
+    with engine.connect() as conn:
+        tracked_rows = conn.execute(text("""
+            SELECT DISTINCT c.internal_id, c.agency, c.value
+            FROM contracts c
+            JOIN user_watchlist w ON w.internal_id = c.internal_id
+            WHERE w.user_id = :uid AND c.agency IS NOT NULL
+        """), {"uid": user_id}).mappings().fetchall()
+        pipeline_rows = conn.execute(text("""
+            SELECT DISTINCT c.internal_id, c.agency, c.value
+            FROM contracts c
+            JOIN opportunities o ON o.internal_id = c.internal_id
+            WHERE o.user_id = :uid AND c.agency IS NOT NULL
+        """), {"uid": user_id}).mappings().fetchall()
+    all_tracked = list(tracked_rows) + list(pipeline_rows)
+    if not all_tracked:
+        return []
+    tracked_ids = {r["internal_id"] for r in all_tracked}
+    agencies = list({r["agency"] for r in all_tracked if r["agency"]})
+    values = [r["value"] for r in all_tracked if r["value"] is not None]
+    avg_value = sum(values) / len(values) if values else None
+    if not agencies:
+        return []
+    placeholders = ", ".join(f":a{i}" for i in range(len(agencies)))
+    agency_params = {f"a{i}": a for i, a in enumerate(agencies)}
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(f"""
+                SELECT internal_id, award_id, vendor, agency, value, end_date,
+                       days_remaining, priority, recompete_score
+                FROM contracts
+                WHERE agency IN ({placeholders})
+                  AND COALESCE(days_remaining, 0) > 0
+                ORDER BY recompete_score DESC, days_remaining ASC
+                LIMIT 50
+            """),
+            agency_params,
+        ).mappings().fetchall()
+    results = []
+    for row in rows:
+        r = dict(row)
+        if r["internal_id"] in tracked_ids:
+            continue
+        reason = f"Same agency as a contract you track ({r['agency']})"
+        if avg_value is not None and r.get("value"):
+            pct = abs(r["value"] - avg_value) / avg_value if avg_value else 1
+            if pct < 0.5:
+                reason += ", similar value range"
+        r["suggestion_reason"] = reason
+        r["suggestion_type"] = "similar_agency"
+        results.append(r)
+        if len(results) >= limit:
+            break
+    return results
+
+
+def my_contracts_summary(user_id):
+    """Return the user's explicitly tracked contracts for the dashboard."""
+    if not user_id:
+        return {"watchlist": [], "pipeline": [], "total": 0}
+    engine = get_engine()
+    with engine.connect() as conn:
+        watchlist = conn.execute(text("""
+            SELECT c.internal_id, c.award_id, c.vendor, c.agency, c.value,
+                   c.end_date, c.days_remaining, c.priority, c.recompete_score,
+                   'watchlist' as source
+            FROM contracts c
+            JOIN user_watchlist w ON w.internal_id = c.internal_id
+            WHERE w.user_id = :uid
+            ORDER BY c.days_remaining ASC NULLS LAST
+            LIMIT 10
+        """), {"uid": user_id}).mappings().fetchall()
+        pipeline = conn.execute(text("""
+            SELECT c.internal_id, c.award_id, c.vendor, c.agency, c.value,
+                   c.end_date, c.days_remaining, c.priority, c.recompete_score,
+                   o.stage, o.next_action, o.next_action_due,
+                   'pipeline' as source
+            FROM contracts c
+            JOIN opportunities o ON o.internal_id = c.internal_id
+            WHERE o.user_id = :uid AND o.stage NOT IN ('won', 'lost', 'no_bid')
+            ORDER BY o.next_action_due ASC NULLS LAST, c.days_remaining ASC NULLS LAST
+            LIMIT 10
+        """), {"uid": user_id}).mappings().fetchall()
+    return {
+        "watchlist": [dict(r) for r in watchlist],
+        "pipeline": [dict(r) for r in pipeline],
+        "total": len(watchlist) + len(pipeline),
+    }
+
+
 def agency_summary(run_date, limit=10):
     engine = get_engine()
     with engine.connect() as conn:
