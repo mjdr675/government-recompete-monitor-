@@ -69,6 +69,10 @@ _MIGRATION_PROBES: dict = {
         "SELECT COUNT(*) FROM information_schema.tables "
         "WHERE table_schema = 'public' AND table_name = 'contracts'"
     ),
+    "001_initial_pg.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'contracts'"
+    ),
     "002_contract_snapshots.sql": (
         "SELECT COUNT(*) FROM information_schema.tables "
         "WHERE table_schema = 'public' AND table_name = 'contract_snapshots'"
@@ -86,6 +90,10 @@ _MIGRATION_PROBES: dict = {
         "WHERE table_schema = 'public' AND table_name = 'users'"
     ),
     "006_user_companies.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'user_companies'"
+    ),
+    "006_company_profile.sql": (
         "SELECT COUNT(*) FROM information_schema.tables "
         "WHERE table_schema = 'public' AND table_name = 'user_companies'"
     ),
