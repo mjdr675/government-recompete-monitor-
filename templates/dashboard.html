@@ -247,30 +247,6 @@
         </div>
         {% endif %}
 
-        {# Recent Updates: field-level changes on contracts you track #}
-        {% if recent_updates %}
-        <div class="table-wrapper" style="margin-bottom:12px">
-          <div class="table-header">
-            <h2>Recent Updates</h2>
-            <span style="font-size:12px;color:var(--text-muted);font-weight:400">Changes on contracts you track</span>
-          </div>
-          <table>
-            <thead><tr>
-              <th>Contract</th><th>Field</th><th>Change</th><th class="col-r">When</th>
-            </tr></thead>
-            <tbody>
-              {% for u in recent_updates %}
-              <tr>
-                <td><a href="/contract/{{ u.contract_id }}">{{ u.award_id or u.contract_id }}</a></td>
-                <td>{{ u.field_name.replace('_', ' ') }}</td>
-                <td style="font-size:12px;color:var(--text-muted)">{{ u.old_value if u.old_value is not none else '&mdash;' }} &rarr; {{ u.new_value if u.new_value is not none else '&mdash;' }}</td>
-                <td class="col-r" style="font-size:12px;color:var(--text-muted)">{{ u.changed_at }}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-        {% endif %}
 
         {# For My Business: personalized contracts based on profile #}
         {% if for_business %}

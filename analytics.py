@@ -470,28 +470,9 @@ def recent_updates_for_user(user_id, limit=10):
     """
     if not user_id:
         return []
-    # Idempotent — guarantees the table exists on fresh installs that have not
-    # yet run an ingest/detect cycle, so the dashboard never 500s.
-    from db import init_contract_field_changes_table
-    init_contract_field_changes_table()
-
-    engine = get_engine()
-    with engine.connect() as conn:
-        rows = conn.execute(text("""
-            SELECT f.contract_id, f.field_name, f.old_value, f.new_value,
-                   f.changed_at, f.run_date,
-                   c.award_id, c.vendor, c.agency
-            FROM contract_field_changes f
-            JOIN contracts c ON c.internal_id = f.contract_id
-            WHERE f.contract_id IN (
-                SELECT internal_id FROM user_watchlist WHERE user_id = :uid
-                UNION
-                SELECT internal_id FROM opportunities WHERE user_id = :uid
-            )
-            ORDER BY f.changed_at DESC, f.id DESC
-            LIMIT :lim
-        """), {"uid": user_id, "lim": limit}).mappings().fetchall()
-    return [dict(r) for r in rows]
+    from db import init_field_changes_table, get_recent_updates_for_user as _db_get
+    init_field_changes_table()
+    return _db_get(user_id, limit=limit)
 
 
 def agency_summary(run_date, limit=10):

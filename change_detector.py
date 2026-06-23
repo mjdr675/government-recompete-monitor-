@@ -3,7 +3,7 @@ from db import (
     clear_changes_for_date,
     insert_change,
     clear_field_changes_for_date,
-    insert_field_change,
+    insert_field_changes,
 )
 
 _PRIORITY_RANK = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
@@ -117,20 +117,21 @@ def detect_changes(run_date):
             priority_count += 1
 
         # Field-level diff across the tracked fields.
+        field_records = []
         for field in _TRACKED_FIELDS:
             old_value = old_row[field]
             new_value = new_row[field]
             if old_value != new_value:
-                insert_field_change(
-                    run_date,
-                    internal_id,
-                    field,
-                    _norm(old_value),
-                    _norm(new_value),
-                    old_snapshot_id=old_row["id"],
-                    new_snapshot_id=new_row["id"],
-                )
-                field_count += 1
+                field_records.append({
+                    "internal_id": internal_id,
+                    "field_name": field,
+                    "old_value": _norm(old_value),
+                    "new_value": _norm(new_value),
+                    "change_kind": "UPDATED",
+                })
+        if field_records:
+            insert_field_changes(run_date, field_records)
+            field_count += len(field_records)
 
     print(
         f"Changes: NEW={new_count}, "
