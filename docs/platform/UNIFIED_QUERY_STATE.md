@@ -4,7 +4,7 @@
 > **Type:** Platform Spec — *defines truth; lanes implement.* This document contains **no implementation**.
 > **Owning lane:** Platform Foundations (this spec) → **Integration/Data** (implementation) → **UI** (Phase 3 rendering only).
 > **Supersedes:** nothing yet. **Implemented by:** `search-discovery-foundation` lane.
-> **Base commit:** `origin/main @ 2e5e489` (PR #10 "search-discovery-saved-views").
+> **Base commit:** `origin/main @ 9a251af` (re-verified; supersedes the original `2e5e489` anchor). Includes active-view detection (§2.5).
 
 ---
 
@@ -19,6 +19,8 @@ Search-related state is currently expressed by **three separately-implemented sy
 | ③ | **Quick Views** (preset shortcuts) | `SAVED_VIEWS[*].filters` dict | code constant | `views.py` `SAVED_VIEWS`, `quick_views()`, `build_view_query()` |
 
 **Key observation — they already converge.** Quick Views (`build_view_query` → `redirect /contracts?…`) and Saved Views (`query_params_json` rebuilt into a `/contracts?…` URL) both reduce to **the Filters param dict**, and all three are executed by the single function `db.get_contracts(...)`. The duplication is in *representation and lifecycle*, not in execution. Unifying the **representation** is therefore low-risk and high-value.
+
+A fourth, **derived** read also exists: `active_view_id()` identifies which Quick View the current filters equal, so the active preset can be highlighted. It is a read-only derivation over the canonical model — formalized in §2.5 and §6 V2.
 
 ---
 
@@ -85,10 +87,22 @@ The split between `FilterSet` and `context` is defined by **one rule**:
 
 **Membership test:** "Does this field's effect depend on the identity of the requester?" → **Yes** = `context`; **No** = `FilterSet`.
 
+**Selection-only subset.** For *view-identity* / equality comparisons (§2.5), only the **selection** fields are considered — the eight explicit filters `q, agency, category, state, priority, status, days, min_value` — **excluding** the ordering fields (`sort`, `dir`) and `page`. Two queries are "the same view" iff their selection-only subsets are equal; changing sort, direction, or page does not change which view you are in.
+
 #### Known implementation divergence — `_PRESERVED_PARAMS`
 `views.py` defines `_PRESERVED_PARAMS = ("sort", "dir", "for_my_business", "in_pipeline", "discover")` (used to build active-filter-chip removal URLs). This **conflates the boundary**: it bundles `FilterSet` ordering fields (`sort`, `dir`) together with `context` modifiers in a single bucket, and it omits `page` (chips intentionally reset pagination on filter removal).
 
 This is **intentional legacy behavior** and **MUST NOT be changed in Phase 2.** `_PRESERVED_PARAMS` exists to keep chip-removal URLs stable; reclassifying its members to match this Boundary Contract is a **Phase 3** structural correction, never an adapter concern.
+
+### 2.5 Active-view detection (normative, derived)
+
+`active_view_id(query)` returns the `scope: "quick"` `id` whose `SAVED_VIEWS` filters **exactly equal** the query's **selection-only subset** (§2.4), or `null` when none match. It answers "*which preset am I currently inside*" and drives the active Quick-View highlight.
+
+- **Equality is over the selection-only subset** — `sort`, `dir`, and `page` are ignored, so reordering or paging never clears the active-view indication.
+- **Pure and read-only** — no side effects, no execution; it compares a (temporary-scope) `UnifiedQueryState` against the quick-scope templates. It introduces no new query state and overrides nothing.
+- **Implementation:** `views.active_view_id()` (search-discovery lane); consumed by the `/contracts` route and rendered as the active chip in the UI lane.
+
+> Formalized from a prior behavioral extension. Per the model, this declaration is what upgrades active-view detection from observed behavior to a documented contract; nothing else (usage, tests, UX-centrality) does.
 
 ---
 
@@ -165,7 +179,7 @@ The current implementation **stores raw request params verbatim**: `POST /search
 ## 6. Validation (acceptance criteria)
 
 - **V1.** Every search request resolves to exactly one `UnifiedQueryState` before execution.
-- **V2.** Switching to a saved/quick view preserves unrelated `context` (e.g. an active `in_pipeline` toggle) unless the view explicitly sets it.
+- **V2.** Switching to a saved/quick view preserves unrelated `context` (e.g. an active `in_pipeline` toggle) unless the view explicitly sets it. **Active-view detection (§2.5)** identifies the current preset for highlighting and MUST compare the *selection-only subset*, so that changing `sort`/`dir`/`page` does not drop the active-view indication.
 - **V3.** A saved view is a **fully replayable query** — reloading it reproduces identical `filters` and results, independent of who saved it. *(Target state. The current implementation does **not** satisfy V3 — see §4.1; achieving it is a Phase 3 task, and Phase 2 must not attempt it.)*
 - **V4.** Quick views behave as **presets only** (templates), never as user-owned persisted state.
 - **V5.** After Phase 4, no duplicate query-state assembly remains: `get_contracts` has exactly one caller-side construction path, and `build_view_query`/raw kwarg assembly are gone.
@@ -182,4 +196,4 @@ The current implementation **stores raw request params verbatim**: `POST /search
 
 ## 8. Hand-off
 
-Implement Phases 1–4 in the **`search-discovery-foundation`** lane (it already owns `views.py`, `SAVED_VIEWS`, `quick_views()`, `active_filter_chips()`, and `user_saved_searches`). The UI lane (`ui-polish-education`) picks up **only** the Phase-3 rendering slice once the Data lane exposes the `UnifiedQueryState` shape.
+Implement Phases 1–4 in the **`search-discovery-foundation`** lane (it already owns `views.py`, `SAVED_VIEWS`, `quick_views()`, `active_filter_chips()`, `active_view_id()`, and `user_saved_searches`). The UI lane (`ui-polish-education`) picks up **only** the Phase-3 rendering slice once the Data lane exposes the `UnifiedQueryState` shape.
