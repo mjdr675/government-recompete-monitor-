@@ -3,8 +3,11 @@
 
 {% block content %}
 <meta name="csrf-token" content="{{ csrf_token() }}">
-<h1>Contracts</h1>
-<div class="page-meta">Showing {{ start }}&ndash;{{ end }} of {{ total }} matching contracts</div>
+<div style="margin-bottom:16px">
+  <h1>Contracts</h1>
+  <p class="page-subtitle">Government contracts expiring soon — scored and ranked by recompete attractiveness.</p>
+  <div class="page-meta" style="margin-top:4px">Showing {{ start }}&ndash;{{ end }} of {{ total }} matching contracts</div>
+</div>
 
 <form method="get" class="filter-bar">
   <div class="filter-row">
@@ -168,7 +171,11 @@
         {% if for_my_business %}<td class="col-r" style="font-weight:600;color:var(--accent)">{% if r.get("match_score") is not none %}{{ r.get("match_score") }}%{% endif %}</td>{% endif %}
       </tr>
       {% else %}
-      <tr><td colspan="{{ 10 if for_my_business else 9 }}" class="muted">No contracts found.</td></tr>
+      <tr>
+        <td colspan="{{ 10 if for_my_business else 9 }}" style="text-align:center;padding:40px 20px;color:var(--text-muted)">
+          No contracts match your current filters. <a href="/contracts">Clear all filters</a> to see the full list.
+        </td>
+      </tr>
       {% endfor %}
     </tbody>
   </table>
@@ -212,7 +219,10 @@
     </div>
   </div>
   {% else %}
-  <div class="mobile-card" style="text-align:center;color:var(--text-muted)">No contracts found.</div>
+  <div class="mobile-card" style="text-align:center;padding:40px 16px;color:var(--text-muted)">
+    No contracts match your current filters.<br>
+    <a href="/contracts" style="color:var(--accent);font-size:14px;margin-top:8px;display:inline-block">Clear filters</a>
+  </div>
   {% endfor %}
 </div>
 
