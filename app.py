@@ -1589,11 +1589,17 @@ def compare():
     a = contracts[0][0] if contracts else None
     b = contracts[1][0] if len(contracts) > 1 else None
 
+    # Analytical synthesis across the found contracts (None for < 2 found).
+    from contract_summary import compare_insights
+    found_rows = [c[0] for c in contracts if c[0]]
+    compare_insight = compare_insights(found_rows)
+
     return render_template(
         "compare.html",
         contracts=contracts,
         raw_ids=raw_ids,
         slots=_SLOTS,
+        compare_insight=compare_insight,
         # Legacy vars — kept so existing bookmarks/links using ?a=&b= still work.
         a=a, b=b, id_a=id_a, id_b=id_b,
     )
