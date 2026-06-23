@@ -218,3 +218,65 @@ populates `generated_internal_id` (the API field) — so Tier-A award enrichment
 never runs and scoring uses un-enriched data. Affects both report scripts equally.
 Also: `janitorial_recompete_report.py` and `recompete_report.py` are ~250 lines of
 duplicated logic; worth extracting a shared module.
+
+## 2026-06-23 — [FRONTEND/BACKEND] Category filter fix + daily cron pipeline
+
+**Role:** human-directed  
+**Status:** completed — merged to samgov-integration  
+**Files changed:** db.py, app.py, railway.toml (new), nixpacks.toml (new)
+
+### What was broken
+1. **Category filter returned 0 results** — the frontend sent `?category=Cleaning` but
+   `app.py` never read the `category` query param and `get_contracts()` had no category
+   argument. The filter was silently dropped on every request.
+2. **No daily data refresh** — no scheduler existed. Contracts were only updated by
+   manually hitting `/ingest` in the UI. Data would go stale indefinitely.
+3. **Build crash on Railway** — Nixpacks auto-detected `init_db()` and added a release
+   command `python -c "from db import init_db; init_db()"` that ran at Docker build
+   time before `DATABASE_URL` was available, crashing every deploy.
+
+### What was fixed
+
+**Category filter (db.py + app.py):**
+- Added `CATEGORY_KEYWORDS` map at the top of `db.py` mapping UI category values to
+  keyword lists matched against the `description` field (the free-text award description
+  from USASpending, e.g. "CUSTODIAL SERVICES"):
+  - `Cleaning` → custodial, janitorial, cleaning, housekeeping, sanitation
+  - `Grounds` → grounds, landscaping, mowing, turf, lawn, pest control, snow removal
+  - `IT` → information technology, software, hardware, network, cloud, helpdesk, etc.
+  - `Cybersecurity` → cybersecurity, cyber security, infosec, soc, siem, vulnerability, etc.
+- Added `description` as a real column in the contracts table (with `ALTER TABLE` migration
+  guard for existing DBs). Stored in `upsert_contract()` and `save_snapshot()`.
+- `get_contracts()` gained a `category` param that builds OR-chained `LIKE` clauses
+  from the keyword list. Falls back to raw value match for unknown categories.
+- `app.py` `/contracts` route now reads `category` from request args and passes it
+  through to `get_contracts()` and the template. `/contracts.csv` and
+  `saved_searches_save` also updated to carry `category` through.
+
+**Daily cron (app.py + railway.toml):**
+- Added `POST /ingest/run` endpoint to `app.py`, protected by `CRON_SECRET` bearer
+  token (read from env var). Exempt from login middleware. Fires `recompete_report.py`
+  as a subprocess and returns 202 immediately.
+- Added `railway.toml` defining a `daily-ingest` cron service that POSTs to
+  `/ingest/run` at `0 6 * * *` (6 AM UTC daily).
+- `CRON_SECRET` env var must be set in Railway on both the web service and the cron
+  service. The cron service start command uses the Python urllib one-liner (curl is
+  not available in the Nixpacks container).
+
+**Build fix (nixpacks.toml):**
+- Added `nixpacks.toml` suppressing the auto-detected release phase. Sets start
+  command explicitly to gunicorn. `init_db()` still runs at app startup via `app.py`
+  where `DATABASE_URL` is available.
+
+### Outstanding / known issues
+- Category filter only works for contracts whose `description` column is populated.
+  Rows imported before this change have an empty `description` — a fresh API pull
+  via `/ingest` is needed to backfill them.
+- The `psc_description` column added in an earlier pass of this session is now
+  superseded by keyword matching on `description`. `psc_description` remains in
+  the schema but is unused for filtering.
+- `should_enrich()` in `recompete_report.py` gates on `row["internal_id"]` but the
+  API only returns `generated_internal_id`, so Tier-A enrichment (which would
+  populate `psc_description`) never fires. Pre-existing issue.
+- Railway "Run Now" button on the cron service fails with `curl: command not found`
+  — this is a Railway UI limitation, not a production issue. Scheduled runs work.
