@@ -77,6 +77,10 @@ _MIGRATION_PROBES: dict = {
         "SELECT COUNT(*) FROM information_schema.tables "
         "WHERE table_schema = 'public' AND table_name = 'contract_snapshots'"
     ),
+    "002_subscription_and_alerts.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'user_subscriptions'"
+    ),
     "003_changes.sql": (
         "SELECT COUNT(*) FROM information_schema.tables "
         "WHERE table_schema = 'public' AND table_name = 'changes'"
@@ -112,6 +116,15 @@ _MIGRATION_PROBES: dict = {
     "010_discovery_columns.sql": (
         "SELECT COUNT(*) FROM information_schema.columns "
         "WHERE table_name = 'contracts' AND column_name = 'place_of_performance_state'"
+    ),
+    "003_company_name.sql": (
+        "SELECT 1"
+    ),
+    "004_contracts_days_remaining_index.sql": (
+        "SELECT 1"
+    ),
+    "005_contracts_description_search.sql": (
+        "SELECT 1"
     ),
 }
 
