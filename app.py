@@ -417,7 +417,6 @@ def dashboard():
         show_onboarding=show_onboarding,
         pipeline_summary=pipeline_summary,
         pipeline_stages=PIPELINE_STAGES,
-        recent_updates=recent_updates,
     )
 
 
