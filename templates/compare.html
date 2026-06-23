@@ -125,6 +125,14 @@
     {% for r in rows %}<td>{{ r['competition_type'] or '—' }}</td>{% endfor %}
   </tr>
   <tr>
+    <td>NAICS</td>
+    {% for r in rows %}<td>{{ r['naics_code'] or '—' }}</td>{% endfor %}
+  </tr>
+  <tr>
+    <td>State</td>
+    {% for r in rows %}<td>{{ r['place_of_performance_state'] or '—' }}</td>{% endfor %}
+  </tr>
+  <tr>
     <td>Sub-Agency</td>
     {% for r in rows %}<td>{{ r['sub_agency'] or '—' }}</td>{% endfor %}
   </tr>
