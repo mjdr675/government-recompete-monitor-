@@ -59,15 +59,6 @@ jobs:
           EOF
           chmod 644 $RUNNER_TEMP/deploy_key
 
-      - name: Validate key
-        run: |
-          echo "=== size ==="
-          wc -c < $RUNNER_TEMP/deploy_key
-          echo "=== lines ==="
-          wc -l < $RUNNER_TEMP/deploy_key
-          echo "=== ssh-keygen ==="
-          ssh-keygen -l -f $RUNNER_TEMP/deploy_key 2>&1 || echo "INVALID KEY FORMAT"
-
       - name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
