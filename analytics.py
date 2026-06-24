@@ -724,6 +724,7 @@ def vendor_profile_analytics(vendor):
             LIMIT 10
         """), {"vendor": vendor}).mappings().fetchall()]
 
+        # Build chart data for vendor profile page
         priority_counts = {r["priority"]: r["contracts"] for r in pipeline_by_priority}
         agency_pairs = [(a["agency"], a["pipeline_value"]) for a in agencies]
         month_pairs = [
