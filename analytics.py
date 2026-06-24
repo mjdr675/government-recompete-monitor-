@@ -333,7 +333,7 @@ def personalized_for_business(user_id, profile, limit=10):
             WITH scored_contracts AS (
                 SELECT
                     c.internal_id, c.award_id, c.vendor, c.agency, c.value,
-                    c.end_date, c.days_remaining, c.priority, c.recompete_score,
+                    c.start_date, c.end_date, c.days_remaining, c.priority, c.recompete_score,
                     c.category, c.naics_code, c.place_of_performance_state,
                     c.description,
                     COALESCE(
@@ -407,6 +407,21 @@ def personalized_for_business(user_id, profile, limit=10):
             reasons.append(f"{row['agency']} contract")
 
         r["match_reason"] = ", ".join(reasons) if reasons else "Profile match"
+
+        # Enriched display fields for the dashboard row
+        from contract_summary import (
+            work_label as _wl,
+            location_label as _ll,
+            contract_length_label as _cll,
+            action_signal as _as,
+            match_summary as _ms,
+        )
+        r["work_label"] = _wl(r)
+        r["location_label"] = _ll(r)
+        r["length_label"] = _cll(r)
+        r["action_signal"] = _as(r)
+        r["match_summary"] = _ms(r, reasons)
+
         results.append(r)
         if len(results) >= limit:
             break

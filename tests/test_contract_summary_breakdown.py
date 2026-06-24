@@ -1,7 +1,15 @@
-"""Tests for recompete_score_breakdown() in contract_summary.py."""
+"""Tests for recompete_score_breakdown() and dashboard row enrichment helpers
+in contract_summary.py."""
 
 import pytest
-from contract_summary import recompete_score_breakdown
+from contract_summary import (
+    recompete_score_breakdown,
+    work_label,
+    location_label,
+    contract_length_label,
+    action_signal,
+    match_summary,
+)
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -278,3 +286,170 @@ class TestTotalAndStructure:
         assert "Agency bonus" in names[3:]
         assert "Solicitation on file" in names[3:]
         assert "Office signal" in names[3:]
+
+
+# ── work_label ────────────────────────────────────────────────────────────────
+
+class TestWorkLabel:
+    def test_returns_category_when_set(self):
+        assert work_label({"category": "Janitorial", "description": "ignored"}) == "Janitorial"
+
+    def test_skips_category_other(self):
+        result = work_label({"category": "Other", "description": "Lawn mowing and grounds"})
+        assert "Lawn" in result
+
+    def test_skips_category_unknown(self):
+        result = work_label({"category": "Unknown", "description": "Pest control services"})
+        assert "Pest" in result
+
+    def test_falls_back_to_description(self):
+        result = work_label({"category": None, "description": "Custodial services for federal building"})
+        assert "Custodial" in result
+
+    def test_truncates_long_description(self):
+        long_desc = "A " * 40
+        result = work_label({"category": None, "description": long_desc})
+        assert len(result) <= 60
+
+    def test_truncated_description_ends_with_ellipsis(self):
+        long_desc = "word " * 20
+        result = work_label({"category": None, "description": long_desc})
+        assert result.endswith("…")
+
+    def test_fallback_when_no_data(self):
+        assert work_label({}) == "Contract services"
+        assert work_label({"category": None, "description": None}) == "Contract services"
+
+    def test_empty_category_string_falls_back(self):
+        result = work_label({"category": "", "description": "Grounds maintenance"})
+        assert "Grounds" in result
+
+
+# ── location_label ────────────────────────────────────────────────────────────
+
+class TestLocationLabel:
+    def test_city_and_state(self):
+        row = {"performance_city": "Houston", "place_of_performance_state": "TX"}
+        assert location_label(row) == "Houston, TX"
+
+    def test_state_only(self):
+        row = {"place_of_performance_state": "VA", "performance_city": None}
+        assert location_label(row) == "VA"
+
+    def test_place_of_performance_city_key(self):
+        row = {"place_of_performance_city": "Denver", "place_of_performance_state": "CO"}
+        assert location_label(row) == "Denver, CO"
+
+    def test_no_location_data_returns_fallback(self):
+        assert location_label({}) == "Location not listed"
+        assert location_label({"place_of_performance_state": None}) == "Location not listed"
+        assert location_label({"place_of_performance_state": ""}) == "Location not listed"
+
+    def test_city_without_state_shows_fallback(self):
+        row = {"performance_city": "Boston", "place_of_performance_state": ""}
+        assert location_label(row) == "Location not listed"
+
+
+# ── contract_length_label ─────────────────────────────────────────────────────
+
+class TestContractLengthLabel:
+    def test_12_months(self):
+        result = contract_length_label({"start_date": "2024-01-01", "end_date": "2025-01-01"})
+        assert result == "1 year"
+
+    def test_6_months(self):
+        result = contract_length_label({"start_date": "2024-01-01", "end_date": "2024-07-01"})
+        assert result == "6 months"
+
+    def test_2_years(self):
+        result = contract_length_label({"start_date": "2023-01-01", "end_date": "2025-01-01"})
+        assert result == "2 years"
+
+    def test_multi_year_range_format(self):
+        result = contract_length_label({"start_date": "2022-06-01", "end_date": "2025-03-01"})
+        assert "2022" in result and "2025" in result
+
+    def test_end_date_only(self):
+        result = contract_length_label({"start_date": None, "end_date": "2025-09-30"})
+        assert "2025" in result
+
+    def test_no_dates_returns_fallback(self):
+        assert contract_length_label({}) == "Length not listed"
+        assert contract_length_label({"start_date": None, "end_date": None}) == "Length not listed"
+
+    def test_bad_date_format_returns_fallback(self):
+        result = contract_length_label({"start_date": "not-a-date", "end_date": "also-bad"})
+        assert result == "Length not listed"
+
+
+# ── action_signal ─────────────────────────────────────────────────────────────
+
+class TestActionSignal:
+    def test_urgent_expiry_within_30_days(self):
+        assert action_signal({"days_remaining": 15}) == "Review: urgent expiry"
+        assert action_signal({"days_remaining": 30}) == "Review: urgent expiry"
+        assert action_signal({"days_remaining": 0}) == "Review: urgent expiry"
+
+    def test_high_fit_for_high_score(self):
+        assert action_signal({"days_remaining": 90, "recompete_score": 80}) == "Click: high fit"
+        assert action_signal({"days_remaining": 200, "recompete_score": 75}) == "Click: high fit"
+
+    def test_urgent_expiry_takes_priority_over_high_score(self):
+        result = action_signal({"days_remaining": 10, "recompete_score": 90})
+        assert result == "Review: urgent expiry"
+
+    def test_critical_priority(self):
+        result = action_signal({"days_remaining": 200, "recompete_score": 50, "priority": "CRITICAL"})
+        assert result == "Click: high priority"
+
+    def test_default_review(self):
+        result = action_signal({"days_remaining": 300, "recompete_score": 40, "priority": "LOW"})
+        assert result == "Review"
+
+    def test_none_days_does_not_trigger_urgent(self):
+        result = action_signal({"days_remaining": None, "recompete_score": 40})
+        assert result == "Review"
+
+    def test_empty_row_returns_review(self):
+        assert action_signal({}) == "Review"
+
+
+# ── match_summary ─────────────────────────────────────────────────────────────
+
+class TestMatchSummary:
+    def test_prepends_work_label_when_useful(self):
+        row = {"category": "Janitorial", "description": None}
+        result = match_summary(row, ["Preferred agency"])
+        assert "Janitorial" in result
+        assert "Preferred agency" in result
+
+    def test_reformats_bare_agency_reason(self):
+        row = {"category": "Facilities", "description": None}
+        result = match_summary(row, ["Department of Defense contract"])
+        assert "Department of Defense contract" not in result
+        assert "Preferred agency" in result
+
+    def test_preserves_non_agency_reasons(self):
+        row = {"category": None, "description": None}
+        result = match_summary(row, ["Work in TX", "IT category"])
+        assert "Work in TX" in result
+        assert "IT category" in result
+
+    def test_no_reasons_returns_work_label(self):
+        row = {"category": "Grounds maintenance"}
+        result = match_summary(row, [])
+        assert "Grounds maintenance" in result
+
+    def test_no_reasons_no_category_returns_profile_match(self):
+        result = match_summary({}, [])
+        assert result == "Matches your profile"
+
+    def test_work_label_not_duplicated_when_in_reasons(self):
+        row = {"category": "IT"}
+        result = match_summary(row, ["IT category"])
+        assert result.count("IT") < 3
+
+    def test_generic_agency_string_not_literal_output(self):
+        row = {"category": "Custodial"}
+        result = match_summary(row, ["Department of Defense contract"])
+        assert result != "Department of Defense contract"

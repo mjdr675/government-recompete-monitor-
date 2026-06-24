@@ -136,6 +136,152 @@ def recompete_score_breakdown(row) -> dict | None:
     total = sum(c["earned"] for c in components)
     return {"total": total, "components": components}
 
+
+# ---------------------------------------------------------------------------
+# Dashboard row enrichment helpers (Contract Intelligence lane)
+#
+# Pure functions over a contract row dict — no DB, no external/AI calls.
+# Used by analytics.personalized_for_business() to attach richer display
+# fields to each matched opportunity before the dashboard template renders.
+# ---------------------------------------------------------------------------
+
+def work_label(row) -> str:
+    """Plain-English description of the work this contract covers.
+
+    Prefers the stored ``category`` field (already human-readable), falls back
+    to a truncated ``description``, and finally returns "Contract services" so
+    there is always a non-empty label.
+    """
+    cat = (row.get("category") or "").strip()
+    if cat and cat.lower() not in ("other", "unknown", ""):
+        return cat
+
+    desc = (row.get("description") or "").strip()
+    if desc:
+        if len(desc) <= 55:
+            return desc
+        truncated = desc[:55]
+        last_space = truncated.rfind(" ")
+        return (truncated[:last_space] if last_space > 20 else truncated) + "…"
+
+    return "Contract services"
+
+
+def location_label(row) -> str:
+    """City + state, state alone, or honest fallback.
+
+    Checks ``performance_city`` / ``place_of_performance_city`` (raw-json
+    derived fields) first, then ``place_of_performance_state`` (direct column).
+    Returns "Location not listed" rather than empty string when no data exists.
+    """
+    city = (
+        row.get("performance_city")
+        or row.get("place_of_performance_city")
+        or ""
+    ).strip()
+    state = (row.get("place_of_performance_state") or "").strip()
+
+    if city and state:
+        return f"{city}, {state}"
+    if state:
+        return state
+    return "Location not listed"
+
+
+def contract_length_label(row) -> str:
+    """Human-readable contract period derived from start and end dates.
+
+    Returns month/year ranges when both dates are available and parseable.
+    Falls back to the end-year alone, then "Length not listed".
+    """
+    from datetime import date as _date
+    start_raw = (row.get("start_date") or "").strip()
+    end_raw = (row.get("end_date") or "").strip()
+
+    if not start_raw and not end_raw:
+        return "Length not listed"
+
+    try:
+        if start_raw and end_raw:
+            s = _date.fromisoformat(start_raw[:10])
+            e = _date.fromisoformat(end_raw[:10])
+            months = (e.year - s.year) * 12 + (e.month - s.month)
+            if months <= 0:
+                return f"{s.year}–{e.year}" if s.year != e.year else str(s.year)
+            if months == 12:
+                return "1 year"
+            if months < 12:
+                return f"{months} months"
+            years = months // 12
+            rem = months % 12
+            if rem == 0:
+                return f"{years} year{'s' if years > 1 else ''}"
+            return f"{s.year}–{e.year}"
+        if end_raw:
+            return _date.fromisoformat(end_raw[:10]).strftime("%b %Y")
+    except (ValueError, TypeError):
+        pass
+
+    return "Length not listed"
+
+
+def action_signal(row) -> str:
+    """Short pass/click signal for a dashboard row.
+
+    Returns a concise imperative label that helps users decide whether to open
+    the contract page. Based only on stored fields — no profile dependency.
+    """
+    try:
+        days = int(row["days_remaining"]) if row.get("days_remaining") is not None else None
+    except (TypeError, ValueError):
+        days = None
+
+    try:
+        score = int(row["recompete_score"]) if row.get("recompete_score") is not None else None
+    except (TypeError, ValueError):
+        score = None
+
+    priority = (row.get("priority") or "").upper()
+
+    if days is not None and days <= 30:
+        return "Review: urgent expiry"
+    if score is not None and score >= 75:
+        return "Click: high fit"
+    if priority in ("CRITICAL", "HIGH"):
+        return "Click: high priority"
+    return "Review"
+
+
+def match_summary(row, reasons: list[str]) -> str:
+    """Rich one-line match context for the dashboard "Why it matches" cell.
+
+    Takes the existing ``reasons`` list built by ``personalized_for_business``
+    (e.g. ``["Work in TX", "IT category"]``) and formats it alongside the
+    work label so the user sees something meaningful instead of a bare
+    "Department of Defense contract" agency string.
+
+    The work label is prepended only when it adds context beyond what the
+    reasons already describe.  Bare "Agency contract" reasons are reformatted
+    to "Preferred agency" so the agency name does not become the headline.
+    """
+    wl = work_label(row)
+
+    formatted = []
+    for r in reasons:
+        if r.endswith(" contract"):
+            formatted.append("Preferred agency")
+        else:
+            formatted.append(r)
+
+    if not formatted:
+        return wl if wl != "Contract services" else "Matches your profile"
+
+    reason_text = " · ".join(formatted)
+    if wl and wl != "Contract services" and wl.lower() not in reason_text.lower():
+        return f"{wl} · {reason_text}"
+    return reason_text
+
+
 def format_contract_update(row):
     """Format a field-change row for compact dashboard display."""
     field = row.get("field_name", "")

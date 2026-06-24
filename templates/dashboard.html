@@ -411,20 +411,40 @@
             <h2>For My Business</h2>
             <span style="font-size:12px;color:var(--text-muted);font-weight:400">Matched to your profile</span>
           </div>
-          <table>
+          <table data-testid="for-business-table">
             <thead><tr>
-              <th>Contract</th><th>Vendor</th><th>Agency</th>
-              <th class="col-r">Value</th><th class="col-r">Days</th><th>Match</th>
+              <th>Contract</th>
+              <th>Work</th>
+              <th>Location</th>
+              <th>Agency</th>
+              <th class="col-r">Value</th>
+              <th class="col-r">Length</th>
+              <th class="col-r">Days</th>
+              <th>Why it matches</th>
             </tr></thead>
             <tbody>
               {% for r in for_business %}
               <tr>
                 <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
-                <td>{{ r.vendor or '&mdash;' }}</td>
-                <td>{{ r.agency or '&mdash;' }}</td>
+                <td style="font-size:13px;font-weight:500" data-testid="work-label">{{ r.work_label if r.work_label is defined else (r.category or '&mdash;') }}</td>
+                <td style="font-size:12px;color:var(--text-muted)" data-testid="location-label">{{ r.location_label if r.location_label is defined else '&mdash;' }}</td>
+                <td style="font-size:12px">{{ r.agency or '&mdash;' }}</td>
                 <td class="col-r">${{ "{:,.0f}".format(r.value or 0) }}</td>
-                <td class="col-r">{{ r.days_remaining if r.days_remaining is not none else '&mdash;' }}</td>
-                <td style="font-size:12px;color:var(--text-muted)">{{ r.match_reason }}</td>
+                <td class="col-r" style="font-size:12px;color:var(--text-muted)" data-testid="length-label">{{ r.length_label if r.length_label is defined else '&mdash;' }}</td>
+                <td class="col-r" data-testid="days-cell">
+                  {% if r.days_remaining is not none %}
+                    {% if r.days_remaining <= 30 %}<span style="color:#d97706;font-weight:600">{{ r.days_remaining }}d</span>
+                    {% else %}{{ r.days_remaining }}d{% endif %}
+                  {% else %}&mdash;{% endif %}
+                </td>
+                <td style="font-size:12px">
+                  <div style="color:var(--text-muted)" data-testid="match-summary">{{ r.match_summary if r.match_summary is defined else r.match_reason }}</div>
+                  {% if r.action_signal is defined %}
+                  <div style="margin-top:3px">
+                    <span data-testid="action-signal" style="font-size:11px;font-weight:600;padding:1px 7px;border-radius:9999px;border:1px solid var(--border);background:{% if 'Click' in r.action_signal %}var(--accent){% else %}var(--surface){% endif %};color:{% if 'Click' in r.action_signal %}var(--bg,#fff){% else %}var(--text-muted){% endif %}">{{ r.action_signal }}</span>
+                  </div>
+                  {% endif %}
+                </td>
               </tr>
               {% endfor %}
             </tbody>
