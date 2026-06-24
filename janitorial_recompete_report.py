@@ -53,12 +53,11 @@ def fetch_contracts():
                 "Awarding Sub Agency",
                 "Description",
                 "generated_internal_id",
-                "NAICS Code",
-                # Place of performance — available from search endpoint directly
-                "Place of Performance City Name",
-                "Place of Performance State/Province",
+                "NAICS",
+                # Valid place-of-performance fields for the search endpoint.
+                # These return a state code and zip5 (not full city names).
+                "Place of Performance State Code",
                 "Place of Performance Zip5",
-                "Place of Performance Country Name",
             ],
             "page": page,
             "limit": 100,
@@ -181,7 +180,7 @@ def enrichment_from_detail(data):
         "recipient_country": recipient_loc.get("country_name") or recipient_loc.get("location_country_code") or "",
         "recipient_address": recipient_loc.get("address_line1") or "",
         "recipient_zip": recipient_loc.get("zip5") or recipient_loc.get("zip4") or recipient_loc.get("foreign_postal_code") or "",
-        # Enrichment overrides search-level pop fields with more precise data
+        # Enrichment provides full city + state names (better than search-level state code)
         "performance_city": pop.get("city_name") or "",
         "performance_state": pop.get("state_code") or pop.get("state_name") or "",
         "performance_country": pop.get("country_name") or pop.get("location_country_code") or "",
@@ -211,11 +210,9 @@ def main():
 
         days_left = (end - TODAY).days
 
-        # Pull place of performance directly from search results
-        pop_city = c.get("Place of Performance City Name") or ""
-        pop_state = c.get("Place of Performance State/Province") or ""
+        # Search endpoint gives a state code + zip5 (no city name); city comes from enrichment
+        pop_state = c.get("Place of Performance State Code") or ""
         pop_zip = c.get("Place of Performance Zip5") or ""
-        pop_country = c.get("Place of Performance Country Name") or ""
 
         rows.append({
             "score": score(amount, days_left),
@@ -228,7 +225,7 @@ def main():
             "agency": c.get("Awarding Agency"),
             "sub_agency": c.get("Awarding Sub Agency"),
             "description": c.get("Description", ""),
-            "naics_code": c.get("NAICS Code", ""),
+            "naics_code": c.get("NAICS", ""),
             "generated_internal_id": c.get("generated_internal_id"),
             "internal_id": c.get("internal_id"),
             "solicitation_id": "",
@@ -240,11 +237,11 @@ def main():
             "recipient_country": "",
             "recipient_address": "",
             "recipient_zip": "",
-            # Populated from search results for every contract
-            "performance_city": pop_city,
-            "performance_state": pop_state,
-            "performance_country": pop_country,
-            "performance_zip": pop_zip,
+            # State code + zip available for every contract; city filled in by enrichment
+            "performance_city": "",
+            "performance_state": str(pop_state) if pop_state else "",
+            "performance_country": "",
+            "performance_zip": str(pop_zip) if pop_zip else "",
             "competition_type": "",
             "solicitation_procedure": "",
             "pricing_type": "",
