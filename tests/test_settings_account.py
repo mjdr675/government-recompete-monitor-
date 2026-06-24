@@ -114,9 +114,11 @@ class TestPasswordChange:
 
 
 class TestCompanyNameSettings:
-    def test_settings_page_shows_company_name_form(self, logged_in_client):
+    def test_company_name_form_available_on_profile(self, logged_in_client):
+        # Company name editing moved from /settings/account to /company-profile
+        # (the account page now links to it as "Company Profile →").
         client, user = logged_in_client
-        resp = client.get("/settings/account")
+        resp = client.get("/company-profile")
         assert resp.status_code == 200
         body = resp.data.decode()
         assert "Company Name" in body
