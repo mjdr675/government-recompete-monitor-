@@ -1455,7 +1455,8 @@ def get_changes(run_date, change_type):
 
 
 def init_field_changes_table():
-    with get_engine().begin() as conn:
+    engine = get_engine()
+    with engine.begin() as conn:
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS contract_field_changes (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1469,6 +1470,10 @@ def init_field_changes_table():
             UNIQUE(run_date, internal_id, field_name)
         )
         """))
+        # Migrate existing tables that may be missing internal_id (added later)
+        existing_cols = {r[1] for r in conn.execute(text("PRAGMA table_info(contract_field_changes)")).fetchall()}
+        if "internal_id" not in existing_cols:
+            conn.execute(text("ALTER TABLE contract_field_changes ADD COLUMN internal_id TEXT NOT NULL DEFAULT ''"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_field_changes_run_date ON contract_field_changes(run_date)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_field_changes_internal_id ON contract_field_changes(internal_id)"))
 
