@@ -29,7 +29,7 @@ def login_required(f):
 @bp.before_app_request
 def load_logged_in_user() -> None:
     """Populate g.user for every request so templates can reference it."""
-    from db import get_engine
+    from db import get_engine, get_company_profile
     from sqlalchemy import text as sa_text
     user_id = session.get("user_id")
     g.user = get_user_by_id(user_id) if user_id else None
@@ -40,6 +40,15 @@ def load_logged_in_user() -> None:
                 {"uid": g.user["id"]},
             ).fetchone()
             g.watchlist_count = row[0] if row else 0
+        # Company Profile is the source of truth for company name.
+        # Overlay it onto g.user so the sidebar always reflects the profile.
+        try:
+            profile = get_company_profile(g.user["id"])
+            if profile and profile.get("company_name"):
+                g.user = dict(g.user)
+                g.user["company_name"] = profile["company_name"]
+        except Exception:
+            pass
     else:
         g.watchlist_count = 0
 

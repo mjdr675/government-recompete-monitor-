@@ -9,7 +9,14 @@
   <div class="settings-card">
     <h2>Account</h2>
     <p style="margin:0 0 4px"><strong>Email:</strong> {{ user.email }}</p>
-    <p style="margin:0 0 4px"><strong>Company:</strong> {{ user.company_name or '—' }}</p>
+    <p style="margin:0 0 4px">
+      <strong>Company:</strong>
+      {% if profile_company_name %}
+        {{ profile_company_name }}
+      {% else %}
+        <span style="color:var(--text-muted)">Not set</span>
+      {% endif %}
+    </p>
     <p style="margin:0 0 12px;font-size:13px;color:var(--text-muted)">
       Subscription:
       {% if user.subscription_status == 'active' %}
@@ -20,14 +27,17 @@
         <span style="color:var(--badge-critical-bg);font-weight:600">{{ user.subscription_status | capitalize }}</span>
       {% endif %}
     </p>
-    {% if user.stripe_customer_id %}
-      <form method="post" action="/billing/portal" style="display:inline;margin:0">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn btn-secondary" style="font-size:13px">Manage subscription →</button>
-      </form>
-    {% else %}
-      <a href="/subscribe" class="btn btn-primary" style="font-size:13px">Upgrade to Pro →</a>
-    {% endif %}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      {% if user.stripe_customer_id %}
+        <form method="post" action="/billing/portal" style="display:inline;margin:0">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-secondary" style="font-size:13px">Manage subscription →</button>
+        </form>
+      {% else %}
+        <a href="/subscribe" class="btn btn-primary" style="font-size:13px">Upgrade to Pro →</a>
+      {% endif %}
+      <a href="/company-profile" class="btn btn-ghost" style="font-size:13px">Edit company profile →</a>
+    </div>
   </div>
 
   <div class="settings-card">

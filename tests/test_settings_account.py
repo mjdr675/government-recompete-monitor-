@@ -114,59 +114,59 @@ class TestPasswordChange:
 
 
 class TestCompanyNameSettings:
-    def test_company_name_form_available_on_profile(self, logged_in_client):
-        # Company name editing moved from /settings/account to /company-profile
-        # (the account page now links to it as "Company Profile →").
+    def test_no_duplicate_company_name_form(self, logged_in_client):
         client, user = logged_in_client
-        resp = client.get("/company-profile")
-        assert resp.status_code == 200
-        body = resp.data.decode()
-        assert "Company Name" in body
-        assert 'name="company_name"' in body
+        body = client.get("/settings/account").get_data(as_text=True)
+        # The editable company name card and its Save button must be gone
+        assert 'name="company_name"' not in body
+        assert "Save company name" not in body
 
-    def test_settings_page_shows_existing_company_name(self, db, client):
-        user = users_module.create_user("co@example.com", "Pass1234!", company_name="Apex Gov")
+    def test_shows_not_set_when_no_profile(self, logged_in_client):
+        client, user = logged_in_client
+        body = client.get("/settings/account").get_data(as_text=True)
+        assert "Not set" in body
+
+    def test_shows_company_name_from_profile(self, db, client):
+        from db import save_company_profile
+        user = users_module.create_user("co@example.com", "Pass1234!")
+        set_trial(user["id"], days=7)
+        save_company_profile(user["id"], {"company_name": "Apex Gov Solutions"})
+        with client.session_transaction() as sess:
+            sess["user_id"] = user["id"]
+        body = client.get("/settings/account").get_data(as_text=True)
+        assert "Apex Gov Solutions" in body
+
+    def test_does_not_show_users_table_company_name(self, db, client):
+        user = users_module.create_user("legacy@example.com", "Pass1234!", company_name="Old Users Table Name")
         set_trial(user["id"], days=7)
         with client.session_transaction() as sess:
             sess["user_id"] = user["id"]
-        resp = client.get("/settings/account")
-        assert b"Apex Gov" in resp.data
+        body = client.get("/settings/account").get_data(as_text=True)
+        # No company profile — should show "Not set", not the users-table name
+        assert "Not set" in body
 
-    def test_shows_dash_when_no_company_name(self, logged_in_client):
+    def test_includes_edit_company_profile_link(self, logged_in_client):
         client, user = logged_in_client
         body = client.get("/settings/account").get_data(as_text=True)
-        assert "<strong>Company:</strong> —" in body or "Company:</strong> —" in body
+        assert "/company-profile" in body
+        assert "Edit company profile" in body
 
-    def test_update_company_name_post(self, db, logged_in_client):
+    def test_account_company_post_redirects_to_profile(self, logged_in_client):
         client, user = logged_in_client
-        resp = client.post("/settings/account/company", data={"company_name": "Delta Logistics"},
-                           follow_redirects=True)
-        assert resp.status_code == 200
-        fresh = users_module.get_user_by_id(user["id"])
-        assert fresh["company_name"] == "Delta Logistics"
-
-    def test_update_company_name_shows_in_sidebar(self, db, logged_in_client):
-        client, user = logged_in_client
-        client.post("/settings/account/company", data={"company_name": "Bravo Systems"},
-                    follow_redirects=True)
-        with client.session_transaction() as sess:
-            sess["onboarding_skipped"] = "1"
-        body = client.get("/dashboard").get_data(as_text=True)
-        assert "Bravo Systems" in body
-
-    def test_clear_company_name_with_blank(self, db, logged_in_client):
-        client, user = logged_in_client
-        client.post("/settings/account/company", data={"company_name": "Old Name"},
-                    follow_redirects=True)
-        client.post("/settings/account/company", data={"company_name": "   "},
-                    follow_redirects=True)
-        fresh = users_module.get_user_by_id(user["id"])
-        assert fresh["company_name"] is None
-
-    def test_update_company_name_requires_auth(self, client):
         resp = client.post("/settings/account/company", data={"company_name": "X"})
         assert resp.status_code in (301, 302)
-        assert "/login" in resp.headers["Location"]
+        assert "company-profile" in resp.headers["Location"]
+
+    def test_sidebar_shows_profile_company_name(self, db, client):
+        from db import save_company_profile
+        user = users_module.create_user("sidebar@example.com", "Pass1234!")
+        set_trial(user["id"], days=7)
+        save_company_profile(user["id"], {"company_name": "Bravo Systems LLC"})
+        with client.session_transaction() as sess:
+            sess["user_id"] = user["id"]
+            sess["onboarding_skipped"] = "1"
+        body = client.get("/dashboard").get_data(as_text=True)
+        assert "Bravo Systems LLC" in body
 
     def test_update_company_name_function_directly(self, db):
         user = users_module.create_user("direct@example.com", "Pass1234!")

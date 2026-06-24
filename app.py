@@ -2173,18 +2173,21 @@ def settings_account():
         else:
             update_password(user["id"], new_pw)
             success = "Password updated successfully."
-    return render_template("settings_account.html", user=user, error=error, success=success)
+    profile = get_company_profile(user["id"])
+    profile_company_name = (profile or {}).get("company_name") or None
+    return render_template(
+        "settings_account.html",
+        user=user,
+        error=error,
+        success=success,
+        profile_company_name=profile_company_name,
+    )
 
 
 @app.route("/settings/account/company", methods=["POST"])
 def settings_account_company():
-    user = g.get("user")
-    if not user:
-        return redirect(url_for("auth.login"))
-    company_name = request.form.get("company_name", "").strip()
-    update_company_name(user["id"], company_name)
-    flash("Company name updated.")
-    return redirect(url_for("settings_account"))
+    # Redirect to company profile — company name is now managed there.
+    return redirect(url_for("company_profile_page"))
 
 
 def _save_workspace_logo(workspace_id, file_storage):
