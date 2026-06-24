@@ -186,7 +186,29 @@
 <details id="score-explainer" class="score-explainer" data-testid="score-explainer">
   <summary>Why is this contract scored {{ row["recompete_score"] or "—" }}?</summary>
   <div class="explainer-body">
-    {# Per-contract interpretation (from main) — answers the summary question first. #}
+    {% if score_breakdown %}
+    {# Per-contract component breakdown — shows actual pts earned for this specific contract. #}
+    <div style="margin-bottom:14px;font-size:13px">
+      This contract earned <strong>{{ score_breakdown.total }}</strong> points across {{ score_breakdown.components|length }} scoring dimensions:
+    </div>
+    <div data-testid="score-breakdown-table" style="display:grid;gap:6px;margin-bottom:16px">
+      {% for c in score_breakdown.components %}
+      <div style="display:grid;grid-template-columns:160px 1fr 60px;align-items:center;gap:8px;font-size:13px">
+        <div style="color:var(--text-muted)">{{ c.name }}</div>
+        <div style="position:relative;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+          <div style="position:absolute;inset:0;width:{{ (c.earned / c.max * 100)|int if c.max else 0 }}%;background:{% if c.earned == c.max and c.max > 0 %}var(--accent){% elif c.earned > 0 %}#d97706{% else %}var(--text-faint,#9ca3af){% endif %};border-radius:3px"></div>
+        </div>
+        <div style="text-align:right;font-weight:{% if c.earned > 0 %}600{% else %}400{% endif %};color:{% if c.earned == c.max and c.max > 0 %}var(--accent){% elif c.earned > 0 %}#d97706{% else %}var(--text-faint,#9ca3af){% endif %}">{{ c.earned }}/{{ c.max }}</div>
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);padding-left:0;margin-top:-2px;margin-bottom:4px">{{ c.detail }}</div>
+      {% endfor %}
+    </div>
+    {# Also show the canonical formula so users understand what each dimension means. #}
+    <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
+    {{ score_help.score_breakdown() }}
+    </div>
+    {% else %}
+    {# Fallback when score_breakdown is unavailable. #}
     {% if row["recompete_score"] is not none %}
     <div style="margin-bottom:12px;font-size:13px">
       This contract scores <strong>{{ row["recompete_score"] }}</strong>
@@ -198,8 +220,8 @@
       {% endif %}
     </div>
     {% endif %}
-    {# Canonical scoring breakdown (shared partial) — same content, single source of truth. #}
     {{ score_help.score_breakdown() }}
+    {% endif %}
   </div>
 </details>
 

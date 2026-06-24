@@ -1267,11 +1267,12 @@ def contract_detail(internal_id):
             ).mappings().fetchall()
             notes = [dict(r) for r in note_rows]
 
-    from contract_summary import next_step, recommended_action, why_it_matters, contract_timeline
+    from contract_summary import next_step, recommended_action, why_it_matters, contract_timeline, recompete_score_breakdown
     guidance = next_step(row.get("days_remaining"), row.get("priority"))
     action = recommended_action(row)
     matters = why_it_matters(row)
     timeline = contract_timeline(row)
+    score_breakdown = recompete_score_breakdown(row)
 
     # Apply-window staging for the "How to apply" CTA on the detail page.
     stage_key, stage_label, stage_detail = apply_stage(row.get("days_remaining"))
@@ -1317,7 +1318,8 @@ def contract_detail(internal_id):
                            stage_key=stage_key,
                            stage_label=stage_label,
                            stage_detail=stage_detail,
-                           applyable=applyable)
+                           applyable=applyable,
+                           score_breakdown=score_breakdown)
 
 
 @app.route("/contract/<internal_id>/apply")

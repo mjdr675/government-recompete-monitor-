@@ -7,6 +7,135 @@ functions over already-stored fields only: no DB, no external/AI calls.
 
 from domain.policies.contract_ranking import rank_contracts
 
+
+# ---------------------------------------------------------------------------
+# Per-contract recompete score breakdown (Contract Intelligence lane)
+#
+# Mirrors the formula in recompete_report.py without importing it — that
+# module is owned by the data-pipeline lane and may be unavailable at
+# import time in test environments. Keeping a parallel read-only copy here
+# lets the intelligence layer explain scores without coupling to ingest code.
+# ---------------------------------------------------------------------------
+
+_COMPETITION_SCORES = {
+    "FULL AND OPEN COMPETITION": (40, "Full & Open Competition — any vendor may bid"),
+    "FULL AND OPEN COMPETITION AFTER EXCLUSION OF SOURCES": (35, "Full & Open after exclusion of sources"),
+    "COMPETED UNDER SAP": (30, "Competed under Simplified Acquisition Procedures"),
+}
+
+
+def _competition_component(competition_type: str) -> dict:
+    ct = (competition_type or "").upper().strip()
+    pts, label = _COMPETITION_SCORES.get(ct, (0, "Limited / no competition"))
+    return {
+        "name": "Competition type",
+        "earned": pts,
+        "max": 40,
+        "detail": label or competition_type or "Not specified",
+    }
+
+
+def _value_component(value) -> dict:
+    try:
+        v = float(value or 0)
+    except (TypeError, ValueError):
+        v = 0.0
+
+    if v >= 10_000_000:
+        pts, label = 35, f"${v:,.0f} — very high value"
+    elif v >= 5_000_000:
+        pts, label = 25, f"${v:,.0f} — high value"
+    elif v >= 2_000_000:
+        pts, label = 15, f"${v:,.0f} — mid-range value"
+    elif v >= 1_000_000:
+        pts, label = 10, f"${v:,.0f} — above $1M threshold"
+    else:
+        pts, label = 0, f"${v:,.0f} — below $1M scoring threshold" if v > 0 else "Value not recorded"
+
+    return {"name": "Contract value", "earned": pts, "max": 35, "detail": label}
+
+
+def _timing_component(days_remaining) -> dict:
+    try:
+        d = int(days_remaining) if days_remaining is not None else None
+    except (TypeError, ValueError):
+        d = None
+
+    if d is None:
+        return {"name": "Time remaining", "earned": 0, "max": 25, "detail": "End date not recorded"}
+    if d <= 0:
+        return {"name": "Time remaining", "earned": 25, "max": 25, "detail": "Expired — follow-on may already be posted"}
+    if d <= 30:
+        return {"name": "Time remaining", "earned": 25, "max": 25, "detail": f"{d} days — solicitation likely imminent"}
+    if d <= 60:
+        return {"name": "Time remaining", "earned": 20, "max": 25, "detail": f"{d} days — recompete window opening"}
+    if d <= 90:
+        return {"name": "Time remaining", "earned": 15, "max": 25, "detail": f"{d} days — begin positioning now"}
+    if d <= 180:
+        return {"name": "Time remaining", "earned": 10, "max": 25, "detail": f"{d} days — within 6-month window"}
+    return {"name": "Time remaining", "earned": 0, "max": 25, "detail": f"{d} days — more than 6 months out"}
+
+
+def _bonus_components(row) -> list[dict]:
+    bonuses = []
+
+    agency = (row.get("agency") or "").upper()
+    if "DEFENSE" in agency:
+        bonuses.append({"name": "Agency bonus", "earned": 5, "max": 5, "detail": "Department of Defense — priority agency"})
+    elif "VETERANS AFFAIRS" in agency:
+        bonuses.append({"name": "Agency bonus", "earned": 4, "max": 5, "detail": "Department of Veterans Affairs — priority agency"})
+    elif "HOMELAND SECURITY" in agency:
+        bonuses.append({"name": "Agency bonus", "earned": 3, "max": 5, "detail": "Department of Homeland Security — priority agency"})
+    else:
+        bonuses.append({"name": "Agency bonus", "earned": 0, "max": 5, "detail": "Agency not in priority list"})
+
+    if row.get("solicitation_id"):
+        bonuses.append({"name": "Solicitation on file", "earned": 5, "max": 5, "detail": f"Solicitation ID: {row['solicitation_id']}"})
+    else:
+        bonuses.append({"name": "Solicitation on file", "earned": 0, "max": 5, "detail": "No solicitation ID recorded"})
+
+    office = (row.get("awarding_office") or "").upper()
+    _priority_offices = ["697DCK", "NETWORK CONTRACT OFFICE", "DEFENSE HEALTH AGENCY", "NAVFAC", "W40M"]
+    matched_office = next((o for o in _priority_offices if o in office), None)
+    if matched_office:
+        bonuses.append({"name": "Office signal", "earned": 5, "max": 5, "detail": f"Priority contracting office: {row.get('awarding_office')}"})
+    else:
+        bonuses.append({"name": "Office signal", "earned": 0, "max": 5, "detail": "Awarding office not in priority list"})
+
+    return bonuses
+
+
+def recompete_score_breakdown(row) -> dict | None:
+    """Return a per-contract breakdown of the recompete score components.
+
+    Pure function over the stored contract row dict — no DB, no external/AI calls.
+    Returns None when no row is provided. Otherwise returns:
+
+        {
+          "total": int,               # sum of all component earned points
+          "components": [             # ordered list, largest-weight first
+            {"name": str, "earned": int, "max": int, "detail": str},
+            ...
+          ],
+        }
+
+    The components mirror the formula in recompete_report.recompete_score() exactly.
+    Bonus components (agency, solicitation, office) are grouped last.
+    """
+    if row is None:
+        return None
+
+    primary = [
+        _competition_component(row.get("competition_type")),
+        _value_component(row.get("value")),
+        _timing_component(row.get("days_remaining")),
+    ]
+    bonuses = _bonus_components(row)
+    components = primary + bonuses
+
+    total = sum(c["earned"] for c in components)
+    return {"total": total, "components": components}
+
 def format_contract_update(row):
     """Format a field-change row for compact dashboard display."""
     field = row.get("field_name", "")
