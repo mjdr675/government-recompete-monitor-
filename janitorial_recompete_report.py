@@ -13,6 +13,8 @@ AWARD_DETAIL_URL = "https://api.usaspending.gov/api/v2/awards/{award_id}/"
 TODAY = date.today()
 CUTOFF = TODAY + timedelta(days=540)
 
+MAX_CONTRACT_VALUE = 10_000_000  # $10M ceiling — right-sized for 50-100 employee companies
+
 def parse_date(s):
     try:
         return datetime.strptime(s, "%Y-%m-%d").date()
@@ -56,8 +58,8 @@ def fetch_contracts():
             ],
             "page": page,
             "limit": 100,
-            "sort": "Award Amount",
-            "order": "desc",
+            "sort": "End Date",
+            "order": "asc",  # soonest expiring first
         }
 
         success = False
@@ -73,7 +75,7 @@ def fetch_contracts():
             except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
                 print(f"search page {page} attempt {attempt} connection error: {e}")
                 time.sleep(5 * attempt)
-                session = requests.Session()  # reset session on connection error
+                session = requests.Session()
 
         if not success:
             print(f"Skipping page {page} after 5 failed attempts")
@@ -82,20 +84,24 @@ def fetch_contracts():
         data = r.json()
         results = data.get("results", [])
 
-        # Filter to contracts expiring within our window
         for c in results:
             end = parse_date(c.get("End Date"))
-            if end and TODAY <= end <= CUTOFF:
-                out.append(c)
+            if not end:
+                continue
+            if end < TODAY or end > CUTOFF:
+                continue
+            amount = money(c.get("Award Amount"))
+            if amount > MAX_CONTRACT_VALUE:
+                continue  # skip contracts too large for target market
+            out.append(c)
 
         if not data.get("page_metadata", {}).get("hasNext"):
             break
 
-        # Stop early if we have enough
         if len(out) >= 5000:
             break
 
-        time.sleep(0.2)  # be polite to the API
+        time.sleep(0.2)
 
     return out
 
@@ -135,7 +141,7 @@ def enrichment_award_id(row):
     return row.get("internal_id") or row.get("generated_internal_id")
 
 def should_enrich(row):
-    return row["value"] >= 1_000_000 and row["days_remaining"] <= 180 and bool(enrichment_award_id(row))
+    return row["value"] >= 500_000 and row["days_remaining"] <= 180 and bool(enrichment_award_id(row))
 
 def fetch_award_detail(internal_id):
     try:
@@ -193,6 +199,9 @@ def main():
             continue
 
         amount = money(c.get("Award Amount"))
+        if amount > MAX_CONTRACT_VALUE:
+            continue
+
         days_left = (end - TODAY).days
 
         rows.append({
