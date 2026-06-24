@@ -31,9 +31,11 @@ class TestSubscribePage:
         resp = client.get("/subscribe")
         assert b"49" in resp.data
 
-    def test_subscribe_shows_checkout_form(self, client):
+    def test_subscribe_shows_checkout_cta(self, client):
+        # The subscribe page now uses self-serve Stripe Payment Links (plan CTA
+        # buttons) instead of a server-side /create-checkout-session form.
         resp = client.get("/subscribe")
-        assert b"/create-checkout-session" in resp.data
+        assert b"btn-cta-primary" in resp.data
 
     def test_subscribe_shows_feature_list(self, client):
         resp = client.get("/subscribe")
