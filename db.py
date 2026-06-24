@@ -2234,12 +2234,167 @@ def list_saved_searches(user_id):
     return out
 
 
-def search_tokens(q, limit=8):
-    """Split a user search string into safe, lowercased word tokens.
+# Words that appear in natural-language contract queries but add no signal to FTS.
+# Stripped before the query reaches the index so they don't narrow results.
+_SEARCH_STOP_WORDS = frozenset([
+    "contracts", "contract", "government", "federal", "services", "service",
+    "opportunities", "opportunity", "bids", "bid", "procurement",
+    "in", "for", "the", "and", "or", "of", "a", "an", "with", "near",
+])
 
-    Strips punctuation/FTS operators (&, commas, quotes, parens, …) so real-world
-    queries like "AT&T" or "Booz, Allen" don't break the full-text query. Returns up
-    to ``limit`` tokens; an all-punctuation query yields an empty list.
+# Natural-language phrases → category name (checked longest-first).
+# Phrases are matched against the full lowercased query before tokenising, so
+# multi-word phrases like "lawn care" match before individual tokens are split.
+_INTENT_PHRASES: list[tuple[str, str]] = [
+    ("lawn care", "Grounds"),
+    ("lawn mowing", "Grounds"),
+    ("grounds maintenance", "Grounds"),
+    ("grounds keeping", "Grounds"),
+    ("groundskeeping", "Grounds"),
+    ("landscaping", "Grounds"),
+    ("janitorial", "Cleaning"),
+    ("custodial", "Cleaning"),
+    ("housekeeping", "Cleaning"),
+    ("cleaning service", "Cleaning"),
+    ("building cleaning", "Cleaning"),
+    ("office cleaning", "Cleaning"),
+    ("cyber security", "Cybersecurity"),
+    ("cybersecurity", "Cybersecurity"),
+    ("information security", "Cybersecurity"),
+    ("it support", "IT"),
+    ("help desk", "IT"),
+    ("helpdesk", "IT"),
+    ("information technology", "IT"),
+    ("managed service", "IT"),
+    ("cloud service", "IT"),
+    ("software development", "IT"),
+    ("security guard", "Security"),
+    ("guard service", "Security"),
+    ("physical security", "Security"),
+    ("armed guard", "Security"),
+    ("facility management", "Facilities"),
+    ("facilities management", "Facilities"),
+    ("building maintenance", "Facilities"),
+    ("hvac", "Facilities"),
+    ("operations and maintenance", "Facilities"),
+    ("construction", "Construction"),
+    ("renovation", "Construction"),
+    ("roofing", "Construction"),
+    ("paving", "Construction"),
+    ("logistics", "Logistics"),
+    ("supply chain", "Logistics"),
+    ("warehousing", "Logistics"),
+    ("transportation", "Logistics"),
+    ("administrative support", "Administrative"),
+    ("program support", "Administrative"),
+]
+
+# US state name → 2-letter postal code. Checked against the query with a word-
+# boundary pattern so "indiana" doesn't fire inside "indianapolis".
+# IMPORTANT: multi-word names must come before their single-word substrings so
+# "west virginia" fires before "virginia" and "washington dc" before "washington".
+_STATE_NAME_MAP: list[tuple[str, str]] = [
+    # multi-word names first
+    ("district of columbia", "DC"), ("washington dc", "DC"), ("washington d.c", "DC"),
+    ("west virginia", "WV"), ("north carolina", "NC"), ("south carolina", "SC"),
+    ("north dakota", "ND"), ("south dakota", "SD"),
+    ("new hampshire", "NH"), ("new jersey", "NJ"), ("new mexico", "NM"),
+    ("new york", "NY"), ("rhode island", "RI"),
+    # single-word names
+    ("alabama", "AL"), ("alaska", "AK"), ("arizona", "AZ"), ("arkansas", "AR"),
+    ("california", "CA"), ("colorado", "CO"), ("connecticut", "CT"),
+    ("delaware", "DE"), ("florida", "FL"), ("georgia", "GA"), ("hawaii", "HI"),
+    ("idaho", "ID"), ("illinois", "IL"), ("indiana", "IN"), ("iowa", "IA"),
+    ("kansas", "KS"), ("kentucky", "KY"), ("louisiana", "LA"), ("maine", "ME"),
+    ("maryland", "MD"), ("massachusetts", "MA"), ("michigan", "MI"),
+    ("minnesota", "MN"), ("mississippi", "MS"), ("missouri", "MO"),
+    ("montana", "MT"), ("nebraska", "NE"), ("nevada", "NV"),
+    ("ohio", "OH"), ("oklahoma", "OK"), ("oregon", "OR"), ("pennsylvania", "PA"),
+    ("tennessee", "TN"), ("texas", "TX"), ("utah", "UT"), ("vermont", "VT"),
+    ("virginia", "VA"), ("washington", "WA"),
+    ("wisconsin", "WI"), ("wyoming", "WY"),
+]
+
+# Two-letter postal codes that are unambiguous on their own (e.g. "contracts in TX").
+_STATE_ABBR = frozenset(s for _, s in _STATE_NAME_MAP)
+
+
+def parse_natural_query(q: str) -> dict:
+    """Parse a natural-language search query into structured components.
+
+    Returns a dict with three keys:
+      clean_q   — the query string with extracted facets + stop words removed,
+                  ready to pass to search_tokens() / FTS
+      state     — 2-letter state code if a US state was detected, else ""
+      category  — category name if a known intent phrase was detected, else ""
+
+    Callers should treat the returned state/category as *suggestions* — they
+    only apply when the user hasn't explicitly set those filters via the UI.
+
+    Examples:
+      "lawn care contracts in Kentucky"
+        → {clean_q: "lawn care", state: "KY", category: "Grounds"}
+      "janitorial services TX"
+        → {clean_q: "janitorial", state: "TX", category: "Cleaning"}
+      "cybersecurity contracts"
+        → {clean_q: "cybersecurity", state: "", category: "Cybersecurity"}
+      "cleaning"
+        → {clean_q: "cleaning", state: "", category: "Cleaning"}
+    """
+    if not q:
+        return {"clean_q": "", "state": "", "category": ""}
+
+    lower = q.lower().strip()
+    extracted_state = ""
+    extracted_category = ""
+
+    # --- state extraction (full name first, then abbreviation) ---
+    for name, code in _STATE_NAME_MAP:
+        # word-boundary match so "indiana" doesn't fire on "indianapolis"
+        if re.search(r"\b" + re.escape(name) + r"\b", lower):
+            extracted_state = code
+            lower = re.sub(r"\b" + re.escape(name) + r"\b", " ", lower)
+            break
+
+    if not extracted_state:
+        # bare 2-letter code at end of query: "cleaning TX" or "cleaning in TX"
+        m = re.search(r"\b([A-Z]{2})\b", q)
+        if m and m.group(1) in _STATE_ABBR:
+            extracted_state = m.group(1)
+            lower = re.sub(r"\b" + re.escape(m.group(1).lower()) + r"\b", " ", lower)
+
+    # --- category / intent extraction (longest phrase first) ---
+    for phrase, cat in _INTENT_PHRASES:
+        if phrase in lower:
+            extracted_category = cat
+            # Remove the matched phrase from the FTS portion: the category filter
+            # handles semantic matching (all synonyms), so leaving the phrase in
+            # clean_q would restrict FTS to contracts that literally say the exact
+            # words — which often don't match (e.g. "lawn care" vs "lawn mowing").
+            lower = lower.replace(phrase, " ", 1)
+            break
+
+    # --- stop word removal for FTS ---
+    tokens = [
+        t for t in re.findall(r"[a-z0-9]+", lower)
+        if t not in _SEARCH_STOP_WORDS
+    ]
+    clean_q = " ".join(tokens)
+
+    return {
+        "clean_q": clean_q,
+        "state": extracted_state,
+        "category": extracted_category,
+    }
+
+
+def search_tokens(q, limit=8):
+    """Split a pre-cleaned query string into safe FTS tokens.
+
+    Strips punctuation/FTS operators so queries like "AT&T" or "Booz, Allen"
+    never break the full-text index. Returns up to ``limit`` tokens; an
+    all-punctuation query yields an empty list. For natural-language input
+    call parse_natural_query() first to strip noise and extract facets.
     """
     return re.findall(r"[a-z0-9]+", (q or "").lower())[:limit]
 
@@ -2250,11 +2405,21 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
 
     params: dict = {}
 
-    if q:
-        tokens = search_tokens(q)
+    # Parse natural-language intent from the query string. Extracted facets
+    # (state, category) only apply when the caller hasn't set them explicitly —
+    # explicit UI filter selections always win.
+    parsed = parse_natural_query(q) if q else {"clean_q": q, "state": "", "category": ""}
+    fts_q = parsed["clean_q"]
+    if not state:
+        state = parsed["state"]
+    if not category:
+        category = parsed["category"]
+
+    if fts_q:
+        tokens = search_tokens(fts_q)
         if not tokens:
-            # a query with no usable terms (only punctuation) matches nothing — never
-            # error, and never fall through to "show everything"
+            # Residual clean_q had no usable tokens — treat the same as the
+            # original path: punctuation-only queries match nothing.
             base = "FROM contracts c WHERE 1=0"
         elif is_pg:
             # prefix match each term so partial words work ("lockhe" → "Lockheed");
@@ -2268,6 +2433,10 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
                 WHERE contracts_fts MATCH :q
             """
             params["q"] = " ".join(f"{t}*" for t in tokens)
+    elif q and not state and not category:
+        # Non-empty input that parsed to nothing (e.g. "&&&", "for the") — match
+        # nothing rather than silently returning all contracts.
+        base = "FROM contracts c WHERE 1=0"
     else:
         base = "FROM contracts c WHERE 1=1"
 

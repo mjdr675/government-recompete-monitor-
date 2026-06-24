@@ -96,6 +96,24 @@
   {% endif %}
 </form>
 
+{% if q and (intent_state or intent_category) %}
+<div style="margin:-4px 0 10px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px;color:var(--text-muted)">
+  <span>Interpreted as:</span>
+  {% if intent_category %}
+  <a href="/contracts?q={{ q }}&category={{ intent_category }}" class="saved-search-chip"
+     style="font-size:12px">{{ intent_category }}</a>
+  {% endif %}
+  {% if intent_state %}
+  <a href="/contracts?q={{ q }}&state={{ intent_state }}" class="saved-search-chip"
+     style="font-size:12px">{{ intent_state }}</a>
+  {% endif %}
+  {% if intent_state and intent_category %}
+  <a href="/contracts?q={{ q }}&state={{ intent_state }}&category={{ intent_category }}" class="saved-search-chip"
+     style="font-size:12px;background:var(--accent-subtle,#f0f4ff)">Both &rarr;</a>
+  {% endif %}
+</div>
+{% endif %}
+
 {% if quick_views %}
 <div class="quick-views" style="margin:-4px 0 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
   <span class="muted" style="font-size:12px">Quick views:</span>

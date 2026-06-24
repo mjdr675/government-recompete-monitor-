@@ -70,6 +70,7 @@ from db import (
     record_workspace_billing_event,
     is_workspace_in_trial,
     get_workspace_by_stripe_customer,
+    parse_natural_query,
 )
 from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
@@ -787,6 +788,13 @@ def contracts():
     engine = get_engine()
     all_states = list_contract_states(engine)
 
+    # Parse natural-language intent so we can show "Interpreted as: Grounds + KY"
+    # when the query contains extractable facets.  Parsed facets only apply when
+    # the user hasn't explicitly set the corresponding filter via the dropdowns.
+    search_intent = parse_natural_query(q) if q else {"clean_q": "", "state": "", "category": ""}
+    intent_state = search_intent["state"] if not state else ""
+    intent_category = search_intent["category"] if not category else ""
+
     if pipeline_ids is not None and len(pipeline_ids) == 0:
         result = {"contracts": [], "total": 0, "count": 0, "start": 0, "page": page}
     else:
@@ -874,6 +882,8 @@ def contracts():
         for_my_business=for_my_business,
         in_pipeline=in_pipeline,
         has_profile=profile is not None,
+        intent_state=intent_state,
+        intent_category=intent_category,
     )
 
 
