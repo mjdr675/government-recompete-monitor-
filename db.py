@@ -1797,10 +1797,12 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
         base += " AND c.days_remaining <= :days"
         params["days"] = int(days)
 
-    # Apply-window filter — only contracts with enough runway left to bid on.
+    # Apply-window filter — show contracts within the actionable window.
+    # The upper bound hides contracts too far out (>18 months, not yet actionable).
+    # The lower bound is NOT applied so that critically-expiring contracts
+    # (days_remaining < MIN_APPLY_DAYS) remain visible — users need to see them.
     if applyable:
-        base += " AND c.days_remaining BETWEEN :apply_min AND :apply_max"
-        params["apply_min"] = APPLY_MIN_DAYS
+        base += " AND c.days_remaining <= :apply_max"
         params["apply_max"] = APPLY_MAX_DAYS
 
     if min_value is not None:
