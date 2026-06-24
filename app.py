@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from datetime import date, datetime, timezone
 from logging.handlers import RotatingFileHandler
 
@@ -132,13 +133,9 @@ if _sentry_dsn:
     )
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
-# Unified access control (domain state + web routing split). Default OFF: the
-# legacy require_login/require_active_workspace gates remain authoritative until
-# parity is proven and the flag is flipped. See access.py for the domain layer.
 UNIFIED_ACCESS_ENABLED = os.getenv("UNIFIED_ACCESS_ENABLED", "").lower() in ("1", "true", "yes")
 STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
 STRIPE_PRICE_ID_YEARLY = os.getenv("STRIPE_PRICE_ID_YEARLY")
-# Workspace plan tiers → Stripe price ids (set per environment).
 STRIPE_PRICE_IDS = {
     "starter": os.getenv("STRIPE_PRICE_ID_STARTER", ""),
     "growth": os.getenv("STRIPE_PRICE_ID_GROWTH", ""),
@@ -148,8 +145,6 @@ app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("RAILWAY_ENVIRONMENT") == "production"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-# Company logo uploads: cap request size and define the storage location under
-# the served static/ tree. Kept small — logos are tiny.
 app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2 MB
 WORKSPACE_LOGO_DIR = os.path.join(app.static_folder, "uploads", "logos")
 ALLOWED_LOGO_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp", "svg"}
@@ -182,6 +177,38 @@ app.view_functions["auth.register"] = limiter.limit(
 app.jinja_env.globals["format_filter_summary"] = format_filter_summary
 
 init_db()
+
+# ---------------------------------------------------------------------------
+# Daily ingest scheduler — runs janitorial_recompete_report.main() at 2 AM UTC
+# inside the web process so it shares the same volume/DB as the Flask app.
+# Uses a daemon thread so it never blocks gunicorn shutdown.
+# ---------------------------------------------------------------------------
+
+def _run_daily_ingest():
+    _log = logging.getLogger("ingest.scheduler")
+    _log.info("Daily ingest scheduler started")
+    while True:
+        now = datetime.now(timezone.utc)
+        # Calculate seconds until next 2 AM UTC
+        next_run = now.replace(hour=2, minute=0, second=0, microsecond=0)
+        if next_run <= now:
+            next_run = next_run.replace(day=next_run.day + 1)
+        sleep_secs = (next_run - now).total_seconds()
+        _log.info("Next ingest scheduled in %.0f seconds (at %s UTC)", sleep_secs, next_run.isoformat())
+        time.sleep(sleep_secs)
+        try:
+            _log.info("Starting scheduled ingest")
+            from janitorial_recompete_report import main
+            main()
+            _log.info("Scheduled ingest completed successfully")
+        except Exception as exc:
+            _log.exception("Scheduled ingest failed: %s", exc)
+
+
+# Only start the scheduler in the main gunicorn worker (not in reloader child processes)
+if os.environ.get("RAILWAY_ENVIRONMENT") or not os.environ.get("WERKZEUG_RUN_MAIN"):
+    _scheduler_thread = threading.Thread(target=_run_daily_ingest, daemon=True, name="ingest-scheduler")
+    _scheduler_thread.start()
 
 # ---------------------------------------------------------------------------
 # Redis availability check (degraded mode on failure — never blocks startup)
@@ -233,13 +260,6 @@ def _capture_subprocess_output(proc: subprocess.Popen, logger: logging.Logger) -
 
 
 def _warn_if_ephemeral_db() -> None:
-    """Log a warning when deployed on Railway without a persistent volume.
-
-    Railway's filesystem is ephemeral — contracts.db is wiped on every
-    redeploy unless a volume is attached and DB_PATH points to it.
-    RAILWAY_ENVIRONMENT is set on all Railway deployments; RAILWAY_VOLUME_NAME
-    is only set when a volume is attached to the service.
-    """
     if os.environ.get("RAILWAY_ENVIRONMENT") and not os.environ.get("RAILWAY_VOLUME_NAME"):
         logging.warning(
             "DATA LOSS RISK: Running on Railway with no persistent volume. "
@@ -250,6 +270,7 @@ def _warn_if_ephemeral_db() -> None:
 
 _warn_if_ephemeral_db()
 
+_CRON_SECRET = os.environ.get("CRON_SECRET", "")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 if not STRIPE_WEBHOOK_SECRET:
     logging.warning(
@@ -275,6 +296,7 @@ _PUBLIC_PATHS = frozenset({
     "/watchlist/remove",
     "/searches/save",
     "/api/data-freshness",
+    "/ingest/run",
 })
 
 
@@ -297,7 +319,6 @@ _SUBSCRIPTION_EXEMPT = frozenset({
 def require_login():
     if request.path in _PUBLIC_PATHS:
         return None
-    # Dynamic-path JSON API routes handle their own auth (return 401 JSON)
     if request.method == "DELETE" and request.path.startswith("/searches/"):
         return None
     if request.method == "POST" and request.path.endswith("/note"):
@@ -306,9 +327,6 @@ def require_login():
         return None
     if "user_id" not in session:
         return redirect(url_for("auth.login", next=request.path))
-    # Trial / subscription gate (legacy). Authentication above always runs; the
-    # billing branch is suppressed when the unified gate is enabled so the two
-    # never both decide billing.
     if not UNIFIED_ACCESS_ENABLED and request.path not in _SUBSCRIPTION_EXEMPT:
         user = g.get("user")
         if user and user.get("subscription_status") != "active":
@@ -325,18 +343,11 @@ def require_login():
                     return redirect(url_for("subscribe", expired="1"))
 
 
-# Paths gated by workspace billing state. Kept to the core product surfaces the
-# task specifies — narrow by design to avoid disturbing other routes.
 _WORKSPACE_GATED_PREFIXES = ("/dashboard", "/contracts", "/compare", "/pipeline")
 
 
 @app.before_request
 def require_active_workspace():
-    """Redirect to /settings/billing when the user's workspace is inactive.
-
-    Legacy workspace gate. Dormant when the unified gate is enabled, so billing
-    is never decided by two authorities at once.
-    """
     if UNIFIED_ACCESS_ENABLED:
         return None
     if "user_id" not in session:
@@ -349,8 +360,6 @@ def require_active_workspace():
         return None
     workspace = get_workspace_for_user(user["id"])
     if workspace and not is_workspace_active(workspace["id"]):
-        # Decision uses the unchanged legacy check above; get_access_state is used
-        # only to label the log line in the shared 4-state vocabulary.
         label = get_access_state(user, get_workspace_billing(workspace["id"]))
         log_access_decision(
             user["id"], workspace["id"], label,
@@ -359,9 +368,6 @@ def require_active_workspace():
         return redirect(url_for("settings_billing", expired="1"))
 
 
-# --- Web layer: pure state -> destination mapping (no business logic) --------
-# Maps a domain access state (from access.get_access_state) to a canonical
-# billing destination, or None when access is permitted. URLs live ONLY here.
 _ACCESS_REDIRECTS = {
     "billing_required": "/settings/billing",
     "expired": "/settings/billing?expired=1",
@@ -369,24 +375,17 @@ _ACCESS_REDIRECTS = {
 
 
 def get_access_redirect(state):
-    """Return the canonical redirect path for a denied state, else None."""
     return _ACCESS_REDIRECTS.get(state)
 
 
 @app.before_request
 def require_access():
-    """Unified billing gate: domain state -> web redirect. Default OFF.
-
-    Orchestration only — it holds no entitlement rules (those live in
-    access.get_access_state) and no URL knowledge (that lives in
-    get_access_redirect). Authentication remains require_login's job.
-    """
     if not UNIFIED_ACCESS_ENABLED:
         return None
     if request.path in _PUBLIC_PATHS or request.path in _SUBSCRIPTION_EXEMPT:
         return None
     if "user_id" not in session:
-        return None  # auth handled by require_login
+        return None
     user = g.get("user")
     if not user:
         return None
@@ -404,11 +403,8 @@ def require_access():
 
 @app.before_request
 def observe_access_decision():
-    """Shadow observer: when the unified gate is OFF, record the decision the
-    unified engine *would* make, so it can be compared against the legacy logs
-    for parity — without enforcing anything. Pure instrumentation."""
     if UNIFIED_ACCESS_ENABLED:
-        return None  # enforcement path already logs mode="unified"
+        return None
     if request.path in _PUBLIC_PATHS or request.path in _SUBSCRIPTION_EXEMPT:
         return None
     if "user_id" not in session:
@@ -423,13 +419,11 @@ def observe_access_decision():
         user["id"], workspace["id"] if workspace else None,
         state, get_access_redirect(state), "shadow", request.path,
     )
-    return None  # never enforces
+    return None
 
 
 @app.context_processor
 def inject_workspace():
-    """Expose the current user's workspace (name + logo) to every template so
-    company branding renders app-wide. Read-only; never raises for anon users."""
     user = g.get("user")
     if not user:
         return {"workspace": None}
@@ -459,30 +453,31 @@ def inject_trial_info():
 
 @app.route("/health")
 def health():
-    # Railway polls this endpoint to confirm the app is running.
     return {"status": "ok"}, 200
 
 
 @app.route("/ingest/run", methods=["POST"])
 def ingest_run():
-    """Cron trigger endpoint. Protected by CRON_SECRET bearer token."""
+    """Manual trigger endpoint. Protected by CRON_SECRET bearer token."""
     if _CRON_SECRET:
         auth_header = request.headers.get("Authorization", "")
         if auth_header != f"Bearer {_CRON_SECRET}":
             return {"error": "unauthorized"}, 401
 
-    subprocess.Popen(
-        [sys.executable, "recompete_report.py"],
-        cwd=os.path.dirname(os.path.abspath(__file__)),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    def _run():
+        try:
+            from janitorial_recompete_report import main
+            main()
+        except Exception as exc:
+            logging.getLogger("ingest").exception("Manual ingest failed: %s", exc)
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
     return {"status": "started", "date": date.today().isoformat()}, 202
 
 
 @app.route("/")
 def index():
-    """Public landing page; authenticated users are redirected to /dashboard."""
     if "user_id" in session:
         return redirect(url_for("dashboard"))
     return render_template("landing.html")
@@ -686,7 +681,6 @@ def onboarding():
 
         return redirect(url_for("onboarding"))
 
-    # GET
     step = request.args.get("step", "1")
     if step not in ("1", "2", "3"):
         step = "1"
@@ -760,25 +754,21 @@ def contracts():
         if profile:
             pf = profile_filter_for_sql(profile)
 
-    # Build pipeline_map {internal_id: opp_id} for the current user (empty for anon).
     pipeline_map: dict = {}
     if g.user:
         for opp in list_opportunities(g.user["id"]):
             pipeline_map[opp["internal_id"]] = opp["id"]
 
-    # Discover mode: exclude pipeline contracts to surface only new opportunities.
     discover_exclude_ids = None
     if discover and g.user and pipeline_map:
         discover_exclude_ids = list(pipeline_map.keys())
     elif discover:
         discover_exclude_ids = []
 
-    # When ?in_pipeline=1, restrict to the user's own pipeline contracts.
     pipeline_ids: list | None = None
     if in_pipeline and g.user and pipeline_map:
         pipeline_ids = list(pipeline_map.keys())
     elif in_pipeline and g.user:
-        # User has no pipeline — return empty results without hitting get_contracts.
         pipeline_ids = []
 
     engine = get_engine()
@@ -818,7 +808,6 @@ def contracts():
                 {"uid": g.user["id"]},
             ).fetchall()
         watchlist_ids = {r[0] for r in wl_rows}
-        # one-click reuse of saved filters right where the user is filtering
         saved_searches = _saved_searches_with_urls(g.user["id"])
 
     with engine.connect() as conn:
@@ -1002,17 +991,11 @@ def billing_portal():
 
 
 def _apply_workspace_billing_event(event):
-    """Update workspace billing from a Stripe event (additive to user-level).
-
-    No-ops when the event carries no workspace linkage, so existing user-level
-    webhook behavior is unaffected.
-    """
     etype = event.get("type")
     obj = event.get("data", {}).get("object", {}) or {}
     event_id = event.get("id")
 
     if etype == "checkout.session.completed":
-        # create_workspace_checkout_session sets client_reference_id=workspace_id.
         ref = obj.get("client_reference_id") or (obj.get("metadata") or {}).get("workspace_id")
         if not ref:
             return
@@ -1099,7 +1082,6 @@ def stripe_webhook():
             if user:
                 set_subscription(user["id"], stripe_customer_id, "canceled")
 
-    # Workspace-level billing update (additive; no-ops without workspace linkage).
     try:
         _apply_workspace_billing_event(event)
     except Exception as exc:
@@ -1184,9 +1166,15 @@ def ingest():
                 message = f"Imported {len(rows)} contracts from CSV."
 
         elif action == "api":
-            from tasks import run_ingest
-            job = run_ingest.delay()
-            return jsonify({"task_id": job.id})
+            def _run():
+                try:
+                    from janitorial_recompete_report import main
+                    main()
+                except Exception as exc:
+                    logging.getLogger("ingest").exception("API ingest failed: %s", exc)
+            t = threading.Thread(target=_run, daemon=True)
+            t.start()
+            return jsonify({"status": "started"})
 
     return render_template("ingest.html", message=message, error=error)
 
@@ -1210,29 +1198,6 @@ def ingest_email_test():
 
 @app.route("/ingest/status")
 def ingest_status():
-    task_id = request.args.get("task_id")
-    if task_id:
-        try:
-            from tasks import tasks as celery_app
-            result = celery_app.AsyncResult(task_id)
-            status = result.status
-            if result.successful():
-                message = "Ingest completed successfully."
-                progress = 100
-            elif result.failed():
-                message = f"Ingest failed: {result.result}"
-                progress = 0
-            else:
-                message = "Ingest is running…"
-                progress = 50
-            return jsonify({"task_id": task_id, "status": status,
-                            "message": message, "progress": progress})
-        except Exception as exc:
-            sentry_sdk.capture_exception(exc)
-            logging.getLogger(__name__).warning("AsyncResult error: %s", exc)
-            return jsonify({"task_id": task_id, "status": "UNKNOWN",
-                            "message": "Unable to fetch task status.", "progress": 0})
-
     try:
         with open(INGEST_LOG_PATH, "r", encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
@@ -1375,20 +1340,12 @@ def watchlist():
     return render_template("watchlist.html", contracts=contracts, count=len(contracts))
 
 
-# ---------------------------------------------------------------------------
-# Pipeline helpers
-# ---------------------------------------------------------------------------
-
 def _safe_redirect(fallback="/pipeline"):
     ref = request.referrer or ""
     if ref.startswith(request.host_url):
         return ref
     return fallback
 
-
-# ---------------------------------------------------------------------------
-# Pipeline routes
-# ---------------------------------------------------------------------------
 
 @app.route("/pipeline")
 def pipeline():
@@ -1440,7 +1397,6 @@ def opportunity_detail(opp_id):
 
 @app.route("/pipeline/<int:opp_id>/status", methods=["POST"])
 def pipeline_status(opp_id):
-    """Quick stage-only update — used by the inline select on the pipeline list."""
     opp = get_opportunity(g.user["id"], opp_id)
     if not opp:
         flash("Opportunity not found.", "error")
@@ -1599,7 +1555,7 @@ def health_detailed():
     except Exception:
         pass
 
-    healthy = db_status == "ok" and redis_status == "ok"
+    healthy = db_status == "ok"
     return jsonify({
         "db": db_status,
         "redis": redis_status,
@@ -1667,7 +1623,6 @@ _US_STATES = [
     ("WV", "West Virginia"), ("WI", "Wisconsin"), ("WY", "Wyoming"),
 ]
 
-# Derived allowlists — used for server-side validation of company-profile POSTs.
 _VALID_SET_ASIDES = frozenset(v for v, _ in _SET_ASIDE_OPTIONS)
 _VALID_STATE_CODES = frozenset(code for code, _ in _US_STATES)
 
@@ -1696,8 +1651,6 @@ def company_profile_page():
         if geo_coverage not in ("nationwide", "states"):
             geo_coverage = "nationwide"
 
-        # NAICS codes: accept 2–6 digit numbers only; silently skip anything else
-        # so a user who types descriptions or annotations cannot store garbage.
         raw_naics = request.form.get("naics_codes", "")
         _raw_codes = [
             c.strip()
@@ -1707,9 +1660,6 @@ def company_profile_page():
         ]
         naics_codes = [c for c in _raw_codes if re.fullmatch(r"\d{2,6}", c)]
 
-        # Validate states, agencies, and set-asides against their respective
-        # allowlists.  Values not in the allowlist are silently dropped — a
-        # crafted POST cannot store arbitrary strings in these columns.
         states = [s for s in request.form.getlist("states") if s in _VALID_STATE_CODES]
         agencies = [a for a in request.form.getlist("agencies") if a in frozenset(all_agencies)]
         set_asides = [s for s in request.form.getlist("set_asides") if s in _VALID_SET_ASIDES]
@@ -1752,7 +1702,6 @@ def company_profile_page():
             })
             success = "Profile saved."
 
-    # Single read covers both GET and the re-render after a successful POST.
     profile = get_company_profile(user["id"])
     p_completion = profile_completeness(profile) if profile else 0
 
@@ -1769,7 +1718,6 @@ def company_profile_page():
 
 
 def _saved_searches_with_urls(user_id):
-    """Saved searches plus a ready-to-use reload URL for /contracts."""
     items = list_saved_searches(user_id)
     for s in items:
         s["url"] = ("/contracts?" + urllib.parse.urlencode(s["params"])) if s["params"] else "/contracts"
@@ -1796,26 +1744,20 @@ def compare():
         con.close()
         return row
 
-    # Support up to 5 contracts via params a–e; also accepts legacy ?a=X&b=Y.
     _SLOTS = ["a", "b", "c", "d", "e"]
     raw_ids = [request.args.get(s, "").strip() for s in _SLOTS]
-    # Drop empty trailing slots so the form stays minimal.
     while raw_ids and not raw_ids[-1]:
         raw_ids.pop()
-
-    # Always surface at least two slots for the form.
     while len(raw_ids) < 2:
         raw_ids.append("")
 
     contracts = [(_fetch(rid) if rid else None, rid) for rid in raw_ids]
 
-    # Legacy two-contract template vars preserved for backward compatibility.
     id_a = raw_ids[0] if raw_ids else ""
     id_b = raw_ids[1] if len(raw_ids) > 1 else ""
     a = contracts[0][0] if contracts else None
     b = contracts[1][0] if len(contracts) > 1 else None
 
-    # Analytical synthesis across the found contracts (None for < 2 found).
     from contract_summary import compare_insights
     found_rows = [c[0] for c in contracts if c[0]]
     compare_insight = compare_insights(found_rows)
@@ -1826,7 +1768,6 @@ def compare():
         raw_ids=raw_ids,
         slots=_SLOTS,
         compare_insight=compare_insight,
-        # Legacy vars — kept so existing bookmarks/links using ?a=&b= still work.
         a=a, b=b, id_a=id_a, id_b=id_b,
     )
 
@@ -1866,11 +1807,6 @@ def settings_account_company():
 
 
 def _save_workspace_logo(workspace_id, file_storage):
-    """Validate and persist an uploaded logo. Returns (logo_path, error).
-
-    logo_path is the static-relative path on success, else None with an error
-    string. Rejects empty uploads, disallowed extensions, and oversized files.
-    """
     filename = (file_storage.filename or "").strip()
     if not filename:
         return None, "No file selected."
@@ -1878,14 +1814,12 @@ def _save_workspace_logo(workspace_id, file_storage):
     if ext not in ALLOWED_LOGO_EXTENSIONS:
         return None, "Logo must be a PNG, JPG, GIF, WEBP, or SVG image."
     os.makedirs(WORKSPACE_LOGO_DIR, exist_ok=True)
-    # Deterministic per-workspace name avoids collisions and stale files.
     stored_name = secure_filename(f"workspace_{workspace_id}.{ext}")
     abs_path = os.path.join(WORKSPACE_LOGO_DIR, stored_name)
     file_storage.save(abs_path)
     if os.path.getsize(abs_path) == 0:
         os.remove(abs_path)
         return None, "Uploaded file was empty."
-    # Path relative to the static folder, for url_for('static', ...).
     return f"uploads/logos/{stored_name}", None
 
 
@@ -1925,15 +1859,7 @@ def settings_workspace():
     )
 
 
-# ---------------------------------------------------------------------------
-# Workspace billing — Stripe foundation
-# ---------------------------------------------------------------------------
-
 def create_workspace_stripe_customer(workspace):
-    """Create (and persist) a Stripe customer for a workspace if absent.
-
-    Returns the stripe_customer_id. Reuses an existing one when present.
-    """
     billing = get_workspace_billing(workspace["id"])
     if billing and billing.get("stripe_customer_id"):
         return billing["stripe_customer_id"]
@@ -1950,7 +1876,6 @@ def create_workspace_stripe_customer(workspace):
 
 
 def create_workspace_checkout_session(workspace, plan):
-    """Create a Stripe Checkout session to subscribe a workspace to a plan."""
     price_id = STRIPE_PRICE_IDS.get(plan)
     if not price_id:
         raise ValueError(f"No Stripe price configured for plan '{plan}'")
@@ -1967,7 +1892,6 @@ def create_workspace_checkout_session(workspace, plan):
 
 
 def create_workspace_billing_portal_session(workspace):
-    """Create a Stripe billing-portal session for a workspace's customer."""
     billing = get_workspace_billing(workspace["id"])
     customer_id = billing.get("stripe_customer_id") if billing else None
     if not customer_id:
@@ -1979,7 +1903,6 @@ def create_workspace_billing_portal_session(workspace):
 
 
 def _workspace_trial_days_remaining(billing):
-    """Whole days left in the workspace trial, or None when not on trial."""
     if not billing or not billing.get("trial_end_at"):
         return None
     try:
