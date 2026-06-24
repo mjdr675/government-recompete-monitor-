@@ -153,13 +153,16 @@ class TestSamApiKeyWarning:
 # ---------------------------------------------------------------------------
 
 class TestZeroResultsGuard:
-    def test_error_logged_when_no_contracts_match_filter(self, test_db, monkeypatch, caplog):
+    def test_raises_and_logs_error_when_no_contracts_match_filter(self, test_db, monkeypatch, caplog):
         """If fetch_contracts returns data but none passes the date filter,
-        main() must log an error — not silently succeed with an empty DB."""
+        main() must both log an ERROR and raise RuntimeError so callers
+        (run_ingest Celery task) record a 'failure' status — not silently
+        mark ingest as successful with 0 rows persisted."""
         expired_award = _award_ending(date(2021, 1, 1))  # far in the past
         with patch.object(jrr, "fetch_contracts", return_value=[expired_award]):
             with caplog.at_level(logging.ERROR, logger="ingest"):
-                jrr.main()
+                with pytest.raises(RuntimeError, match="0 rows matched filter"):
+                    jrr.main()
 
         assert any("0 rows" in r.message or "0 contracts" in r.message for r in caplog.records), (
             "Expected an ERROR log when ingest produces 0 matching contracts"

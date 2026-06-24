@@ -317,6 +317,28 @@ def _setup_ingest_logger() -> logging.Logger:
     return logger
 
 
+def _format_freshness_display(ts_str: str) -> str:
+    """Return a human-readable freshness string for a UTC ISO timestamp.
+
+    'Updated today at 3:04 AM' or 'Last updated Jun 24, 2026 at 3:04 AM'.
+    Returns None on parse error so callers can fall back gracefully.
+    """
+    try:
+        ts = datetime.fromisoformat(ts_str)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        hour = ts.hour % 12 or 12
+        minute = ts.strftime("%M")
+        ampm = "AM" if ts.hour < 12 else "PM"
+        time_str = f"{hour}:{minute} {ampm}"
+        if ts.date() == now.date():
+            return f"Updated today at {time_str}"
+        return f"Last updated {ts.strftime('%b %-d, %Y')} at {time_str}"
+    except (ValueError, TypeError):
+        return None
+
+
 _ingest_logger = _setup_ingest_logger()
 
 
@@ -640,11 +662,19 @@ def dashboard():
         engine = get_engine()
         last_ingest = None
         hours_ago = None
+        last_ingest_display = None
+        last_failure_display = None
         with engine.connect() as conn:
             row = conn.execute(
                 text(
                     "SELECT created_at FROM ingest_log"
                     " WHERE status = 'success' ORDER BY created_at DESC LIMIT 1"
+                )
+            ).fetchone()
+            fail_row = conn.execute(
+                text(
+                    "SELECT created_at FROM ingest_log"
+                    " WHERE status = 'failure' ORDER BY created_at DESC LIMIT 1"
                 )
             ).fetchone()
         if row:
@@ -656,6 +686,13 @@ def dashboard():
                 hours_ago = round((datetime.now(timezone.utc) - ts).total_seconds() / 3600, 1)
             except (ValueError, TypeError):
                 pass
+            last_ingest_display = _format_freshness_display(last_ingest)
+        if fail_row:
+            fail_ts = fail_row[0]
+            # Only surface the failure if it is more recent than the last success
+            # (a success after a failure means the pipeline recovered).
+            if not last_ingest or fail_ts > last_ingest:
+                last_failure_display = _format_freshness_display(fail_ts)
         show_onboarding = (
             g.get("watchlist_count", 0) == 0
             and not session.get("onboarding_dismissed")
@@ -726,6 +763,8 @@ def dashboard():
             profile_hints=p_hints,
             last_ingest=last_ingest,
             hours_ago=hours_ago,
+            last_ingest_display=last_ingest_display,
+            last_failure_display=last_failure_display,
             show_onboarding=show_onboarding,
             pipeline_summary=pipeline_summary,
             pipeline_stages=PIPELINE_STAGES,

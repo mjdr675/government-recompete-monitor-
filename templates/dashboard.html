@@ -4,6 +4,19 @@
 {% block content %}
 <div class="dash-wrap">
 
+<div class="page-meta">
+  Data as of {{ report.run_date }}
+  {% if last_ingest_display %}
+   &middot; {{ last_ingest_display }}
+  {% elif last_failure_display %}
+   &middot; Last refresh failed &mdash; {{ last_failure_display }} &mdash; <a href="/ingest">check status</a>
+  {% elif last_ingest %}
+   &middot; Data last updated {{ hours_ago }}h ago ({{ last_ingest[:10] }})
+  {% else %}
+   &middot; No successful data refresh yet
+  {% endif %}
+</div>
+
 {# ── Mobile greeting (hidden on desktop via CSS) ─────────── #}
 <div class="mobile-greeting">
   <p class="mobile-greeting-text" id="mobile-greeting-text">Welcome back</p>

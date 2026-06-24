@@ -763,10 +763,10 @@ def test_static_assets_do_not_require_login(test_db):
     assert "/login" not in rv.headers.get("Location", "")
 
 
-def test_dashboard_shows_unknown_when_no_ingest(client):
+def test_dashboard_shows_no_refresh_yet_when_no_ingest(client):
     rv = client.get("/dashboard")
     assert rv.status_code == 200
-    assert b"Data freshness unknown" in rv.data
+    assert b"No successful data refresh yet" in rv.data
 
 
 def test_dashboard_shows_freshness_banner_when_ingest_exists(client, test_db):
@@ -783,7 +783,68 @@ def test_dashboard_shows_freshness_banner_when_ingest_exists(client, test_db):
     con.close()
     rv = client.get("/dashboard")
     assert rv.status_code == 200
-    assert b"Data last updated" in rv.data
+    # Freshness should show "Updated today at ..." for a 3-hour-old run
+    assert b"Updated today at" in rv.data
+
+
+def test_dashboard_shows_last_updated_for_older_ingest(client, test_db):
+    import sqlite3
+    from datetime import datetime, timezone, timedelta
+    # Simulate ingest from yesterday
+    ts = (datetime.now(timezone.utc) - timedelta(days=1, hours=2)).isoformat()
+    con = sqlite3.connect(test_db)
+    con.execute(
+        "INSERT INTO ingest_log (run_date, source, record_count, duration_seconds, status, created_at)"
+        " VALUES (?, 'usaspending', 50, 2.0, 'success', ?)",
+        (ts[:10], ts),
+    )
+    con.commit()
+    con.close()
+    rv = client.get("/dashboard")
+    assert rv.status_code == 200
+    assert b"Last updated" in rv.data
+
+
+def test_dashboard_shows_failed_state_when_only_failures(client, test_db):
+    import sqlite3
+    from datetime import datetime, timezone, timedelta
+    ts = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    con = sqlite3.connect(test_db)
+    con.execute(
+        "INSERT INTO ingest_log (run_date, source, record_count, duration_seconds, status, error_message, created_at)"
+        " VALUES (?, 'usaspending', 0, 1.5, 'failure', '0 rows matched filter', ?)",
+        (ts[:10], ts),
+    )
+    con.commit()
+    con.close()
+    rv = client.get("/dashboard")
+    assert rv.status_code == 200
+    assert b"Last refresh failed" in rv.data
+
+
+def test_dashboard_shows_success_not_failure_when_success_is_newer(client, test_db):
+    import sqlite3
+    from datetime import datetime, timezone, timedelta
+    # Old failure, then newer success
+    fail_ts = (datetime.now(timezone.utc) - timedelta(hours=5)).isoformat()
+    ok_ts = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    con = sqlite3.connect(test_db)
+    con.execute(
+        "INSERT INTO ingest_log (run_date, source, record_count, duration_seconds, status, error_message, created_at)"
+        " VALUES (?, 'usaspending', 0, 1.5, 'failure', 'error', ?)",
+        (fail_ts[:10], fail_ts),
+    )
+    con.execute(
+        "INSERT INTO ingest_log (run_date, source, record_count, duration_seconds, status, created_at)"
+        " VALUES (?, 'usaspending', 50, 2.0, 'success', ?)",
+        (ok_ts[:10], ok_ts),
+    )
+    con.commit()
+    con.close()
+    rv = client.get("/dashboard")
+    assert rv.status_code == 200
+    assert b"Updated today at" in rv.data
+    assert b"Last refresh failed" not in rv.data
 
 
 def test_email_test_returns_ok_when_send_succeeds(client, monkeypatch):

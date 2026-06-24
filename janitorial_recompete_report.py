@@ -344,11 +344,12 @@ def main():
     detect_field_changes(run_date)
 
     if not rows:
-        logger.error(
-            "ingest complete but 0 rows matched filter today=%s — "
-            "possible API issue or date filter problem",
-            today,
+        msg = (
+            f"ingest complete but 0 rows matched filter today={today} — "
+            "possible API issue or date filter problem"
         )
+        logger.error(msg)
+        raise RuntimeError(msg)
     else:
         logger.info("ingest complete: %d contracts persisted (snapshot %s)", len(rows), run_date)
         logger.info("tier-a enrichment: %d contracts enriched", enrich_count)
