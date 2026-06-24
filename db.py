@@ -11,6 +11,12 @@ from sqlalchemy import create_engine, text
 
 DB_PATH = os.environ.get("DB_PATH", "contracts.db")
 
+# Apply-window bounds — kept in sync with apply_window.py. A contract is
+# "applyable" when an SMB has enough runway left to realistically bid:
+# at least MIN_APPLY_DAYS and at most MAX_PREP_DAYS before the incumbent ends.
+APPLY_MIN_DAYS = 60
+APPLY_MAX_DAYS = 540
+
 
 @lru_cache(maxsize=None)
 def _cached_engine(url: str):
@@ -1745,7 +1751,8 @@ def search_tokens(q, limit=8):
 
 def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort="recompete_score",
                   direction="desc", page=1, limit=25, status="", profile_filter=None,
-                  internal_ids=None, state="", category="", exclude_ids=None, all_rows=False):
+                  internal_ids=None, state="", category="", exclude_ids=None, all_rows=False,
+                  applyable=False):
     engine = get_engine()
     is_pg = engine.dialect.name == "postgresql"
     params: dict = {}
@@ -1789,6 +1796,12 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
     if days is not None:
         base += " AND c.days_remaining <= :days"
         params["days"] = int(days)
+
+    # Apply-window filter — only contracts with enough runway left to bid on.
+    if applyable:
+        base += " AND c.days_remaining BETWEEN :apply_min AND :apply_max"
+        params["apply_min"] = APPLY_MIN_DAYS
+        params["apply_max"] = APPLY_MAX_DAYS
 
     if min_value is not None:
         base += " AND c.value >= :min_value"
