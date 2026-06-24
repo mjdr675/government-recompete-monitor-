@@ -1176,15 +1176,9 @@ def ingest():
                 message = f"Imported {len(rows)} contracts from CSV."
 
         elif action == "api":
-            def _run():
-                try:
-                    from janitorial_recompete_report import main
-                    main()
-                except Exception as exc:
-                    logging.getLogger("ingest").exception("API ingest failed: %s", exc)
-            t = threading.Thread(target=_run, daemon=True)
-            t.start()
-            return jsonify({"status": "started"})
+            from tasks import run_ingest
+            job = run_ingest.delay()
+            return jsonify({"status": "started", "task_id": job.id})
 
     return render_template("ingest.html", message=message, error=error)
 
