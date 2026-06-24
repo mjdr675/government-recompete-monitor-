@@ -128,6 +128,10 @@ _MIGRATION_PROBES: dict = {
         "SELECT COUNT(*) FROM information_schema.columns "
         "WHERE table_name = 'contracts' AND column_name = 'place_of_performance_city'"
     ),
+    "016_contracts_sam_url.sql": (
+        "SELECT COUNT(*) FROM information_schema.columns "
+        "WHERE table_name = 'contracts' AND column_name = 'sam_url'"
+    ),
 }
 
 
