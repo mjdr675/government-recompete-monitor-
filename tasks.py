@@ -5,6 +5,12 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 
+# Ensure the app directory is on the path so local modules (db, analytics, etc.)
+# are importable when Celery forks worker processes.
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+if _APP_DIR not in sys.path:
+    sys.path.insert(0, _APP_DIR)
+
 import sentry_sdk
 from celery import Celery
 from celery.schedules import crontab
