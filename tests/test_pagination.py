@@ -15,10 +15,10 @@ def test_db(tmp_path):
         for i in range(30):
             con.execute(
                 "INSERT INTO contracts "
-                "(internal_id, award_id, vendor, agency, value, end_date, priority, recompete_score) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "(internal_id, award_id, vendor, agency, value, end_date, days_remaining, priority, recompete_score) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (f"ID{i:03d}", f"AWARD-{i:03d}", f"Vendor {i}", "DOD",
-                 100_000 * (i + 1), "2026-12-31", "HIGH", 50 + i),
+                 100_000 * (i + 1), "2026-12-31", 191, "HIGH", 50 + i),
             )
         con.commit()
     yield db_path
