@@ -35,7 +35,14 @@ def _seed(n=30):
 @pytest.fixture()
 def client(tmp_db):
     flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    flask_app.secret_key = "test-secret-key"
     with flask_app.test_client() as c:
+        c.post("/register", data={
+            "email": "testuser@example.com",
+            "password": "testpass123",
+            "confirm": "testpass123",
+        })
         yield c
 
 
@@ -69,19 +76,19 @@ class TestAllRows:
 class TestContractsCsv:
     def test_returns_csv_content_type(self, client, tmp_db):
         _seed(5)
-        resp = client.get("/contracts.csv")
+        resp = client.get("/contracts/export.csv")
         assert resp.status_code == 200
         assert "text/csv" in resp.content_type
 
     def test_content_disposition_attachment(self, client, tmp_db):
         _seed(5)
-        resp = client.get("/contracts.csv")
+        resp = client.get("/contracts/export.csv")
         assert "attachment" in resp.headers["Content-Disposition"]
         assert "contracts.csv" in resp.headers["Content-Disposition"]
 
     def test_csv_has_header_row(self, client, tmp_db):
         _seed(3)
-        resp = client.get("/contracts.csv")
+        resp = client.get("/contracts/export.csv")
         reader = csv.DictReader(io.StringIO(resp.data.decode()))
         assert "vendor" in reader.fieldnames
         assert "agency" in reader.fieldnames
@@ -90,14 +97,14 @@ class TestContractsCsv:
 
     def test_csv_exports_all_matching_rows(self, client, tmp_db):
         _seed(30)
-        resp = client.get("/contracts.csv")
+        resp = client.get("/contracts/export.csv")
         reader = csv.DictReader(io.StringIO(resp.data.decode()))
         rows = list(reader)
         assert len(rows) == 30
 
     def test_csv_respects_priority_filter(self, client, tmp_db):
         _seed(30)
-        resp = client.get("/contracts.csv?priority=CRITICAL")
+        resp = client.get("/contracts/export.csv?priority=CRITICAL")
         reader = csv.DictReader(io.StringIO(resp.data.decode()))
         rows = list(reader)
         assert len(rows) == 5
@@ -105,19 +112,19 @@ class TestContractsCsv:
 
     def test_csv_respects_agency_filter(self, client, tmp_db):
         _seed(10)
-        resp = client.get("/contracts.csv?agency=NASA")
+        resp = client.get("/contracts/export.csv?agency=NASA")
         reader = csv.DictReader(io.StringIO(resp.data.decode()))
         rows = list(reader)
         assert all("NASA" in r["agency"] for r in rows)
 
     def test_csv_empty_when_no_matches(self, client, tmp_db):
         _seed(5)
-        resp = client.get("/contracts.csv?priority=LOW")
+        resp = client.get("/contracts/export.csv?priority=LOW")
         reader = csv.DictReader(io.StringIO(resp.data.decode()))
         rows = list(reader)
         assert len(rows) == 0
 
     def test_export_link_on_contracts_page(self, client, tmp_db):
         resp = client.get("/contracts")
-        assert b"contracts.csv" in resp.data
-        assert b"Export CSV" in resp.data
+        assert b"export.csv" in resp.data
+        assert b"Export" in resp.data

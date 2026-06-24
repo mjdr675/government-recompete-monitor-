@@ -277,11 +277,16 @@ def _apply_migrations(migrations_dir: "Path | None" = None) -> None:
             continue
 
         _log.info("Applying migration: %s", sql_file.name)
-        statements = [
-            s.strip()
-            for s in sql_file.read_text().split(";")
-            if s.strip() and not s.strip().startswith("--")
-        ]
+        statements = []
+        for seg in sql_file.read_text().split(";"):
+            # Strip comment lines from each semicolon-delimited segment so that
+            # a CREATE TABLE preceded by a comment block isn't silently dropped.
+            body = "\n".join(
+                line for line in seg.splitlines()
+                if line.strip() and not line.strip().startswith("--")
+            ).strip()
+            if body:
+                statements.append(body)
 
         try:
             with engine.begin() as conn:
@@ -2197,7 +2202,7 @@ def search_tokens(q, limit=8):
     return re.findall(r"[a-z0-9]+", (q or "").lower())[:limit]
 
 
-def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort="recompete_score", direction="desc", page=1, limit=25, status="", profile_filter=None, internal_ids=None, state="", category="", exclude_ids=None):
+def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort="recompete_score", direction="desc", page=1, limit=25, status="", profile_filter=None, internal_ids=None, state="", category="", exclude_ids=None, all_rows=False):
     engine = get_engine()
     is_pg = engine.dialect.name == "postgresql"
 
@@ -2227,6 +2232,17 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
     if agency:
         base += " AND c.agency LIKE :agency"
         params["agency"] = f"%{agency}%"
+
+    if category:
+        _cat_map = {cat: kws for cat, kws in _CATEGORY_RULES}
+        keywords = _cat_map.get(category, [category])
+        cat_clauses = []
+        for i, kw in enumerate(keywords):
+            key = f"cat_kw_{i}"
+            params[key] = f"%{kw}%"
+            cat_clauses.append(f"c.description LIKE :{key}")
+        if cat_clauses:
+            base += f" AND ({' OR '.join(cat_clauses)})"
 
     if priority:
         base += " AND c.priority = :priority"
@@ -2300,15 +2316,25 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
         for i, eid in enumerate(exclude_ids):
             params[f"ex_{i}"] = eid
 
+    if min_value is not None:
+        base += " AND c.value >= :min_value"
+        params["min_value"] = float(min_value)
+
     col = sort if sort in _SORTABLE else "recompete_score"
     order = "ASC" if direction == "asc" else "DESC"
 
     with engine.connect() as conn:
         total = conn.execute(text(f"SELECT COUNT(*) {base}"), params).scalar()
-        rows = conn.execute(
-            text(f"SELECT c.* {base} ORDER BY c.{col} {order} LIMIT :limit OFFSET :offset"),
-            {**params, "limit": limit, "offset": (page - 1) * limit},
-        ).mappings().fetchall()
+        if all_rows:
+            rows = conn.execute(
+                text(f"SELECT c.* {base} ORDER BY c.{col} {order}"),
+                params,
+            ).mappings().fetchall()
+        else:
+            rows = conn.execute(
+                text(f"SELECT c.* {base} ORDER BY c.{col} {order} LIMIT :limit OFFSET :offset"),
+                {**params, "limit": limit, "offset": (page - 1) * limit},
+            ).mappings().fetchall()
 
     return {
         "contracts": rows,

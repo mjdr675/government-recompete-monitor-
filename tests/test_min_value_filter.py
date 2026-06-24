@@ -35,7 +35,14 @@ def _seed(values):
 @pytest.fixture()
 def client(tmp_db):
     flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    flask_app.secret_key = "test-secret-key"
     with flask_app.test_client() as c:
+        c.post("/register", data={
+            "email": "testuser@example.com",
+            "password": "testpass123",
+            "confirm": "testpass123",
+        })
         yield c
 
 

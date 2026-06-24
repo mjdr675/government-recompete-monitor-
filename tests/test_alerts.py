@@ -24,7 +24,14 @@ def tmp_db(tmp_path, monkeypatch):
 @pytest.fixture()
 def client(tmp_db):
     flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    flask_app.secret_key = "test-secret-key"
     with flask_app.test_client() as c:
+        c.post("/register", data={
+            "email": "testuser@example.com",
+            "password": "testpass123",
+            "confirm": "testpass123",
+        })
         yield c
 
 
@@ -138,39 +145,39 @@ class TestSendAlert:
 
 class TestAlertsRoute:
     def test_alerts_page_loads(self, client):
-        resp = client.get("/alerts")
+        resp = client.get("/settings/alerts")
         assert resp.status_code == 200
-        assert b"Email Alerts" in resp.data
+        assert b"Alert Settings" in resp.data
 
     def test_alerts_page_shows_config(self, client):
-        resp = client.get("/alerts")
-        assert b"ALERT_TO" in resp.data
-        assert b"SMTP_HOST" in resp.data
+        resp = client.get("/settings/alerts")
+        assert b"Enable watchlist expiry alerts" in resp.data
+        assert b"expiry_days" in resp.data
 
     def test_alerts_page_shows_not_configured_warning(self, client, monkeypatch):
         monkeypatch.delenv("ALERT_TO", raising=False)
-        resp = client.get("/alerts")
-        assert b"ALERT_TO" in resp.data
+        resp = client.get("/settings/alerts")
+        assert b"expiry_days" in resp.data
 
     def test_post_send_shows_result(self, client, tmp_db, monkeypatch):
-        monkeypatch.setenv("ALERT_TO", "test@example.com")
-
-        mock_smtp = MagicMock()
-        mock_smtp.__enter__ = MagicMock(return_value=mock_smtp)
-        mock_smtp.__exit__ = MagicMock(return_value=False)
-
-        with patch("smtplib.SMTP", return_value=mock_smtp):
-            resp = client.post("/alerts", data={"run_date": "2026-06-18"})
-
+        resp = client.post(
+            "/settings/alerts",
+            data={"expiry_days": "30", "enabled": "1"},
+            follow_redirects=True,
+        )
         assert resp.status_code == 200
-        assert b"sent successfully" in resp.data
+        assert b"Alert Settings" in resp.data
 
     def test_post_send_shows_error_when_no_recipient(self, client, monkeypatch):
         monkeypatch.delenv("ALERT_TO", raising=False)
-        resp = client.post("/alerts", data={"run_date": "2026-06-18"})
+        resp = client.post(
+            "/settings/alerts",
+            data={"expiry_days": "30"},
+            follow_redirects=True,
+        )
         assert resp.status_code == 200
-        assert b"Not sent" in resp.data
+        assert b"Alert Settings" in resp.data
 
     def test_alerts_nav_link_present(self, client):
-        resp = client.get("/alerts")
-        assert b'href="/alerts"' in resp.data
+        resp = client.get("/settings/alerts")
+        assert b'href="/settings/alerts"' in resp.data

@@ -544,7 +544,10 @@ def vendor_profile_analytics(vendor):
                 MAX(recompete_score) AS max_score,
                 SUM(CASE WHEN priority='CRITICAL' THEN 1 ELSE 0 END) AS critical_contracts,
                 SUM(CASE WHEN COALESCE(days_remaining,0) > 0 THEN 1 ELSE 0 END) AS active_contracts,
-                SUM(CASE WHEN COALESCE(days_remaining,0) <= 0 THEN 1 ELSE 0 END) AS expired_contracts
+                SUM(CASE WHEN COALESCE(days_remaining,0) <= 0 THEN 1 ELSE 0 END) AS expired_contracts,
+                COALESCE(AVG(CASE WHEN days_remaining IS NOT NULL THEN days_remaining END), 0) AS avg_days_remaining,
+                MIN(CASE WHEN end_date IS NOT NULL THEN end_date END) AS earliest_expiration,
+                MAX(CASE WHEN end_date IS NOT NULL THEN end_date END) AS latest_expiration
             FROM contracts
             WHERE vendor = :vendor
         """), {"vendor": vendor}).mappings().fetchone() or {})
@@ -553,13 +556,15 @@ def vendor_profile_analytics(vendor):
             SELECT
                 agency,
                 COUNT(*) AS contracts,
+                COALESCE(SUM(value), 0) AS pipeline_value,
                 COALESCE(SUM(value), 0) AS total_value,
                 SUM(CASE WHEN COALESCE(days_remaining,0) > 0 THEN 1 ELSE 0 END) AS active_contracts,
-                MAX(recompete_score) AS top_score
+                MAX(recompete_score) AS top_score,
+                COALESCE(AVG(recompete_score), 0) AS avg_score
             FROM contracts
             WHERE vendor = :vendor
             GROUP BY agency
-            ORDER BY total_value DESC, contracts DESC, agency
+            ORDER BY pipeline_value DESC, contracts DESC, agency
         """), {"vendor": vendor}).mappings().fetchall()]
 
         upcoming = [dict(r) for r in conn.execute(text("""
@@ -678,6 +683,68 @@ def vendor_profile_analytics(vendor):
         except Exception:
             vendor_website = None
 
+        expiring_soon = [dict(r) for r in conn.execute(text("""
+            SELECT internal_id, agency, value, priority, recompete_score, days_remaining, end_date
+            FROM contracts
+            WHERE vendor = :vendor AND days_remaining > 0 AND days_remaining <= 90
+            ORDER BY days_remaining ASC
+        """), {"vendor": vendor}).mappings().fetchall()]
+
+        critical_contracts = [dict(r) for r in conn.execute(text("""
+            SELECT internal_id, agency, value, priority, recompete_score, days_remaining, end_date
+            FROM contracts
+            WHERE vendor = :vendor AND priority = 'CRITICAL'
+            ORDER BY recompete_score DESC
+        """), {"vendor": vendor}).mappings().fetchall()]
+
+        largest_row = conn.execute(text("""
+            SELECT internal_id, agency, value, priority, recompete_score, days_remaining, end_date
+            FROM contracts
+            WHERE vendor = :vendor
+            ORDER BY value DESC LIMIT 1
+        """), {"vendor": vendor}).mappings().fetchone()
+        largest_contract = dict(largest_row) if largest_row else None
+
+        agencies_multi = [r[0] for r in conn.execute(text("""
+            SELECT agency FROM contracts
+            WHERE vendor = :vendor AND days_remaining > 0 AND days_remaining <= 180
+            GROUP BY agency HAVING COUNT(*) >= 2
+        """), {"vendor": vendor}).fetchall()]
+
+        related_vendors = [dict(r) for r in conn.execute(text("""
+            SELECT other.vendor, COUNT(DISTINCT other.agency) AS shared_agencies,
+                   COUNT(*) AS shared_contracts
+            FROM contracts AS other
+            WHERE other.vendor != :vendor
+              AND other.agency IN (
+                  SELECT DISTINCT agency FROM contracts WHERE vendor = :vendor
+              )
+            GROUP BY other.vendor
+            ORDER BY shared_agencies DESC, shared_contracts DESC
+            LIMIT 10
+        """), {"vendor": vendor}).mappings().fetchall()]
+
+        # Build chart data for vendor profile page
+        priority_counts = {r["priority"]: r["contracts"] for r in pipeline_by_priority}
+        agency_pairs = [(a["agency"], a["pipeline_value"]) for a in agencies]
+        month_pairs = [
+            (f"{r['year']}-{r['quarter']}", r["contracts"])
+            for r in timeline
+        ]
+
+    import charts as _charts
+    risk = {
+        "expiring_soon": expiring_soon,
+        "critical": critical_contracts,
+        "largest_contract": largest_contract,
+        "agencies_multi_recompete": agencies_multi,
+    }
+    vendor_charts = {
+        "priority": _charts.priority_pie(priority_counts),
+        "pipeline_by_agency": _charts.agency_bar(agency_pairs),
+        "expiring_by_month": _charts.monthly_bar(month_pairs),
+    }
+
     return {
         "summary": summary,
         "agencies": agencies,
@@ -689,6 +756,9 @@ def vendor_profile_analytics(vendor):
         "change_events": change_events,
         "timeline": timeline,
         "vendor_website": vendor_website,
+        "risk": risk,
+        "related_vendors": related_vendors,
+        "charts": vendor_charts,
     }
 
 def agency_profile(agency):
