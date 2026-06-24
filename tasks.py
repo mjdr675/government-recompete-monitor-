@@ -42,6 +42,27 @@ def _configure_json_logging() -> None:
 
 _configure_json_logging()
 
+
+def _setup_ingest_file_logger() -> None:
+    """Wire the 'ingest' logger to ingest.log in the Celery worker process.
+
+    app.py does this when the web process starts. The Celery worker never
+    imports app.py, so without this the 'ingest' logger has no file handler
+    and /ingest/status stays blank even after a successful nightly run.
+    """
+    from logging.handlers import RotatingFileHandler
+
+    log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ingest.log")
+    ingest_logger = logging.getLogger("ingest")
+    if not any(isinstance(h, RotatingFileHandler) for h in ingest_logger.handlers):
+        handler = RotatingFileHandler(log_path, maxBytes=1_000_000, backupCount=3)
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+        ingest_logger.addHandler(handler)
+        ingest_logger.setLevel(logging.INFO)
+
+
+_setup_ingest_file_logger()
+
 _redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 tasks = Celery(
     "recompete",

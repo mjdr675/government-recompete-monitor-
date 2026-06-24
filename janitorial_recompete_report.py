@@ -1,4 +1,6 @@
 import csv
+import logging
+import os
 import time
 from sam_lookup import lookup_solicitation
 from change_detector import detect_changes
@@ -7,13 +9,25 @@ from db import save_snapshot
 import requests
 from datetime import date, datetime, timedelta
 
+logger = logging.getLogger("ingest")
+
 API_URL = "https://api.usaspending.gov/api/v2/search/spending_by_award/"
 AWARD_DETAIL_URL = "https://api.usaspending.gov/api/v2/awards/{award_id}/"
 
+# TODAY is kept at module level so test fixtures can construct relative dates
+# (e.g. jrr.TODAY + timedelta(days=90)). Do NOT use TODAY inside main() — call
+# _today() instead so nightly Celery runs always get a fresh value rather than
+# the date the worker process first imported this module.
 TODAY = date.today()
 CUTOFF = TODAY + timedelta(days=540)
 
 MAX_CONTRACT_VALUE = 10_000_000  # $10M ceiling — right-sized for 50-100 employee companies
+
+
+def _today() -> date:
+    """Return today's date. Separate function so tests can monkeypatch it and
+    so Celery workers don't silently reuse the import-time date."""
+    return date.today()
 
 def parse_date(s):
     try:
@@ -69,19 +83,20 @@ def fetch_contracts():
         for attempt in range(1, 6):
             try:
                 r = session.post(API_URL, json=payload, timeout=60)
-                print("search page", page, "attempt", attempt, "status", r.status_code)
+                logger.info("fetch page=%d attempt=%d status=%d", page, attempt, r.status_code)
                 if r.status_code < 500:
                     r.raise_for_status()
                     success = True
                     break
+                logger.warning("fetch page=%d attempt=%d got %d — retrying", page, attempt, r.status_code)
                 time.sleep(3 * attempt)
             except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-                print(f"search page {page} attempt {attempt} connection error: {e}")
+                logger.warning("fetch page=%d attempt=%d connection error: %s — reconnecting", page, attempt, e)
                 time.sleep(5 * attempt)
                 session = requests.Session()
 
         if not success:
-            print(f"Skipping page {page} after 5 failed attempts")
+            logger.error("skipping page %d after 5 failed attempts", page)
             continue
 
         data = r.json()
@@ -152,11 +167,11 @@ def fetch_award_detail(internal_id):
     try:
         url = AWARD_DETAIL_URL.format(award_id=internal_id)
         r = requests.get(url, timeout=30)
-        print("detail", internal_id, "status", r.status_code)
+        logger.info("award detail award_id=%s status=%d", internal_id, r.status_code)
         r.raise_for_status()
         return r.json()
     except Exception as e:
-        print("detail failed", internal_id, e)
+        logger.error("award detail failed award_id=%s: %s", internal_id, e)
         return {}
 
 def enrichment_from_detail(data):
@@ -195,20 +210,29 @@ def enrichment_from_detail(data):
     }
 
 def main():
+    today = _today()  # fresh on every call — avoids stale-date bug in long-lived Celery workers
+    cutoff = today + timedelta(days=540)
+
+    if not os.environ.get("SAM_API_KEY"):
+        logger.warning(
+            "SAM_API_KEY is not set — SAM.gov solicitation enrichment will be skipped"
+        )
+
+    logger.info("ingest starting: today=%s cutoff=%s", today, cutoff)
     rows = []
 
     for c in fetch_contracts():
         end = parse_date(c.get("End Date"))
         start = parse_date(c.get("Start Date"))
 
-        if not end or not (TODAY <= end <= CUTOFF):
+        if not end or not (today <= end <= cutoff):
             continue
 
         amount = money(c.get("Award Amount"))
         if amount > MAX_CONTRACT_VALUE:
             continue
 
-        days_left = (end - TODAY).days
+        days_left = (end - today).days
 
         # Search endpoint gives a state code + zip5 (no city name); city comes from enrichment
         pop_state = c.get("Place of Performance State Code") or ""
@@ -308,15 +332,27 @@ def main():
         writer.writeheader()
         writer.writerows(rows)
 
-    run_date = str(TODAY)
+    # Persist to the database so the scheduled run_ingest task actually updates
+    # the contracts the app serves — previously this script only wrote a CSV, so
+    # the nightly ingest fetched data but never touched the DB. save_snapshot()
+    # is idempotent (upsert by internal_id + UNIQUE(run_date, internal_id)) and
+    # calls init_db() itself, so the job is safe to rerun. detect_changes() is
+    # likewise idempotent for the run_date (it clears that date's changes first).
+    run_date = str(today)  # today() — not module-level TODAY — so date is always current
     save_snapshot(run_date, rows)
     detect_changes(run_date)
     detect_field_changes(run_date)
 
-    print("Saved", len(rows), "upcoming recompete opportunities.")
-    print(f"Persisted {len(rows)} rows to the contracts database (snapshot {run_date}).")
-    print("Enriched", enrich_count, "Tier A opportunities.")
-    print("SAM.gov matches", sam_count, "solicitations.")
+    if not rows:
+        logger.error(
+            "ingest complete but 0 rows matched filter today=%s — "
+            "possible API issue or date filter problem",
+            today,
+        )
+    else:
+        logger.info("ingest complete: %d contracts persisted (snapshot %s)", len(rows), run_date)
+        logger.info("tier-a enrichment: %d contracts enriched", enrich_count)
+        logger.info("sam.gov enrichment: %d solicitations matched", sam_count)
 
 if __name__ == "__main__":
     main()
