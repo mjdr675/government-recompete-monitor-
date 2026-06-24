@@ -749,6 +749,20 @@ def test_csv_export_redirects_when_not_logged_in(test_db):
     assert "/login" in rv.headers["Location"]
 
 
+def test_static_assets_do_not_require_login(test_db):
+    # Static assets must be served without auth — otherwise logged-out visitors
+    # get unstyled public pages because the CSS/JS 302-redirects to /login.
+    import app as flask_app
+    flask_app.app.config["TESTING"] = True
+    flask_app.app.config["WTF_CSRF_ENABLED"] = False
+    flask_app.app.config["RATELIMIT_ENABLED"] = False
+    flask_app.app.secret_key = "test-secret"
+    with flask_app.app.test_client() as c:
+        rv = c.get("/static/css/design.css")
+    assert rv.status_code == 200
+    assert "/login" not in rv.headers.get("Location", "")
+
+
 def test_dashboard_shows_unknown_when_no_ingest(client):
     rv = client.get("/dashboard")
     assert rv.status_code == 200

@@ -398,6 +398,10 @@ _SUBSCRIPTION_EXEMPT = frozenset({
 def require_login():
     if request.path in _PUBLIC_PATHS:
         return None
+    # Static assets and the favicon must never require auth, otherwise logged-out
+    # visitors get unstyled public pages (no CSS/JS loads).
+    if request.path.startswith("/static/") or request.path == "/favicon.ico":
+        return None
     if request.method == "DELETE" and request.path.startswith("/searches/"):
         return None
     if request.method == "POST" and request.path.endswith("/note"):
@@ -462,6 +466,8 @@ def require_access():
     if not UNIFIED_ACCESS_ENABLED:
         return None
     if request.path in _PUBLIC_PATHS or request.path in _SUBSCRIPTION_EXEMPT:
+        return None
+    if request.path.startswith("/static/") or request.path == "/favicon.ico":
         return None
     if "user_id" not in session:
         return None
