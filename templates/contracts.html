@@ -220,7 +220,7 @@
         <td><a href="/vendor/{{ r["vendor"]|urlencode }}">{{ r["vendor"] }}</a></td>
         <td><a href="/agency/{{ r["agency"]|urlencode }}">{{ r["agency"] }}</a></td>
         <td>{% if r.get("category") and r["category"] != "Other" %}<a href="/contracts?category={{ r['category'] }}" style="font-size:12px;color:var(--text-muted)">{{ r["category"] }}</a>{% endif %}</td>
-        <td>{% if r.get("place_of_performance_state") %}<a href="/contracts?state={{ r['place_of_performance_state'] }}" style="font-size:12px;color:var(--text-muted)">{{ r["place_of_performance_state"] }}</a>{% endif %}</td>
+        <td>{% if r.get("place_of_performance_state") %}<a href="/contracts?state={{ r['place_of_performance_state'] }}" style="font-size:12px;color:var(--text-muted)">{% if r.get("place_of_performance_city") %}{{ r["place_of_performance_city"] }}, {% endif %}{{ r["place_of_performance_state"] }}{% if r.get("place_of_performance_zip") %} {{ r["place_of_performance_zip"] }}{% endif %}</a>{% endif %}</td>
         <td class="col-r">${{ "{:,.0f}".format(r["value"] or 0) }}</td>
         <td>{{ r["end_date"] }}</td>
         <td class="col-r">
@@ -254,7 +254,7 @@
       <a href="/contract/{{ r['internal_id'] }}" class="mobile-card-title">{{ r["vendor"] or r["award_id"] or r["internal_id"] }}</a>
       <span class="priority-badge priority-{{ (r["priority"] or "unknown").lower().replace(" ", "-").replace("_", "-") }}">{{ r["priority"] }}</span>
     </div>
-    <div class="mobile-card-agency">{{ r["agency"] or '—' }}{% if r.get("place_of_performance_state") %} &middot; {{ r["place_of_performance_state"] }}{% endif %}</div>
+    <div class="mobile-card-agency">{{ r["agency"] or '—' }}{% if r.get("place_of_performance_state") %} &middot; {% if r.get("place_of_performance_city") %}{{ r["place_of_performance_city"] }}, {% endif %}{{ r["place_of_performance_state"] }}{% if r.get("place_of_performance_zip") %} {{ r["place_of_performance_zip"] }}{% endif %}{% endif %}</div>
     <div class="mobile-card-meta">
       <span class="mobile-card-value">${{ "{:,.0f}".format(r["value"] or 0) }}</span>
       <span class="sep">·</span>

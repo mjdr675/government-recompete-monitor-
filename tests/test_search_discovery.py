@@ -520,6 +520,9 @@ class TestMigrationProbes:
     def test_010_discovery_probe_exists(self):
         assert "010_discovery_columns.sql" in db_module._MIGRATION_PROBES
 
+    def test_015_location_probe_exists(self):
+        assert "015_location_columns.sql" in db_module._MIGRATION_PROBES
+
     def test_all_known_migrations_have_probes(self):
         import glob
         from pathlib import Path
@@ -527,3 +530,172 @@ class TestMigrationProbes:
         sql_files = {Path(f).name for f in glob.glob(str(migrations_dir / "*.sql"))}
         for f in sql_files:
             assert f in db_module._MIGRATION_PROBES, f"Missing probe for {f}"
+
+
+# ---------------------------------------------------------------------------
+# TestNlQueryParser
+# ---------------------------------------------------------------------------
+
+class TestNlQueryParser:
+    def test_lawn_care_maps_to_grounds(self):
+        r = db_module.parse_nl_query("lawn care contracts")
+        assert r.get("category") == "Grounds"
+
+    def test_janitorial_services_maps_to_cleaning(self):
+        r = db_module.parse_nl_query("janitorial services")
+        assert r.get("category") == "Cleaning"
+
+    def test_cybersecurity_maps_to_cybersecurity(self):
+        r = db_module.parse_nl_query("cybersecurity contracts DOD")
+        assert r.get("category") == "Cybersecurity"
+
+    def test_it_support_maps_to_it(self):
+        r = db_module.parse_nl_query("help desk it support services")
+        assert r.get("category") == "IT"
+
+    def test_grounds_maintenance_maps_to_grounds(self):
+        r = db_module.parse_nl_query("grounds maintenance")
+        assert r.get("category") == "Grounds"
+
+    def test_state_name_extracted(self):
+        r = db_module.parse_nl_query("cleaning contracts in Texas")
+        assert r.get("state") == "TX"
+        assert r.get("category") == "Cleaning"
+
+    def test_state_name_without_in(self):
+        r = db_module.parse_nl_query("Virginia landscaping")
+        assert r.get("state") == "VA"
+        assert r.get("category") == "Grounds"
+
+    def test_multiword_state(self):
+        r = db_module.parse_nl_query("contracts in New York")
+        assert r.get("state") == "NY"
+
+    def test_west_virginia_not_confused_with_virginia(self):
+        r = db_module.parse_nl_query("contracts in West Virginia")
+        assert r.get("state") == "WV"
+
+    def test_q_remainder_strips_category_and_state(self):
+        r = db_module.parse_nl_query("lawn care contracts in Virginia")
+        assert r.get("category") == "Grounds"
+        assert r.get("state") == "VA"
+        assert r.get("q_remainder") == ""
+
+    def test_q_remainder_preserves_non_category_terms(self):
+        r = db_module.parse_nl_query("cybersecurity DOD")
+        assert r.get("category") == "Cybersecurity"
+        assert "dod" in r.get("q_remainder", "")
+
+    def test_empty_query(self):
+        r = db_module.parse_nl_query("")
+        assert r.get("q_remainder") == ""
+        assert "category" not in r
+        assert "state" not in r
+
+    def test_no_match_returns_original_q(self):
+        r = db_module.parse_nl_query("defense contracts")
+        assert "category" not in r
+        assert "state" not in r
+
+
+# ---------------------------------------------------------------------------
+# TestCategoryFilterFixed (regression for double-AND bug)
+# ---------------------------------------------------------------------------
+
+class TestCategoryFilterFixed:
+    """Regression tests for the double category filter bug.
+
+    Previously get_contracts(category=X) applied TWO AND conditions:
+    description LIKE AND c.category = X. This caused NAICS-classified contracts
+    (category set but no keyword in description) to return 0 results.
+    """
+
+    def test_naics_classified_contract_found_by_category(self, tmp_path):
+        db = _fresh_db(tmp_path)
+        # Insert contract classified via NAICS — description has NO lawn/grounds keyword
+        _insert(db, internal_id="N1", description="Exterior property services",
+                naics_code="561730", value=300000)
+        result = db.get_contracts(category="Grounds")
+        ids = [r["internal_id"] for r in result["contracts"]]
+        assert "N1" in ids
+
+    def test_keyword_classified_contract_found_by_category(self, tmp_path):
+        db = _fresh_db(tmp_path)
+        _insert(db, internal_id="K1", description="janitorial cleaning services", value=100000)
+        result = db.get_contracts(category="Cleaning")
+        assert result["total"] >= 1
+        ids = [r["internal_id"] for r in result["contracts"]]
+        assert "K1" in ids
+
+    def test_category_filter_does_not_return_wrong_category(self, tmp_path):
+        db = _fresh_db(tmp_path)
+        _insert(db, internal_id="C1", description="janitorial cleaning services", value=100000)
+        _insert(db, internal_id="G1", description="grounds maintenance", value=200000)
+        cleaning = db.get_contracts(category="Cleaning")
+        ids = [r["internal_id"] for r in cleaning["contracts"]]
+        assert "C1" in ids
+        assert "G1" not in ids
+
+
+# ---------------------------------------------------------------------------
+# TestLocationColumns
+# ---------------------------------------------------------------------------
+
+class TestLocationColumns:
+    def test_city_stored_at_ingest(self, tmp_path):
+        db = _fresh_db(tmp_path)
+        _insert(db, internal_id="L1", performance_city="Arlington", place_of_performance_state="VA")
+        with db.get_engine().connect() as conn:
+            row = conn.execute(
+                db.text("SELECT place_of_performance_city FROM contracts WHERE internal_id = 'L1'")
+            ).fetchone()
+        assert row[0] == "Arlington"
+
+    def test_zip_stored_at_ingest(self, tmp_path):
+        db = _fresh_db(tmp_path)
+        _insert(db, internal_id="L2", performance_zip="22201", place_of_performance_state="VA")
+        with db.get_engine().connect() as conn:
+            row = conn.execute(
+                db.text("SELECT place_of_performance_zip FROM contracts WHERE internal_id = 'L2'")
+            ).fetchone()
+        assert row[0] == "22201"
+
+    def test_city_zip_via_save_snapshot(self, tmp_path):
+        db = _fresh_db(tmp_path)
+        db.save_snapshot("2024-01-01", [{
+            "internal_id": "L3",
+            "vendor": "City Vendor",
+            "agency": "GSA",
+            "description": "cleaning services",
+            "value": 150000,
+            "days_remaining": 60,
+            "recompete_score": 55,
+            "priority": "MEDIUM",
+            "performance_city": "Denver",
+            "performance_zip": "80202",
+            "place_of_performance_state": "CO",
+        }])
+        with db.get_engine().connect() as conn:
+            row = conn.execute(
+                db.text("SELECT place_of_performance_city, place_of_performance_zip FROM contracts WHERE internal_id = 'L3'")
+            ).fetchone()
+        assert row[0] == "Denver"
+        assert row[1] == "80202"
+
+    def test_city_searchable_via_fts(self, tmp_path):
+        db = _fresh_db(tmp_path)
+        db.save_snapshot("2024-01-01", [{
+            "internal_id": "L4",
+            "vendor": "Arlington Cleaning",
+            "agency": "GSA",
+            "description": "cleaning services",
+            "value": 200000,
+            "days_remaining": 90,
+            "recompete_score": 60,
+            "priority": "MEDIUM",
+            "performance_city": "Springfield",
+            "place_of_performance_state": "VA",
+        }])
+        result = db.get_contracts(q="Springfield")
+        ids = [r["internal_id"] for r in result["contracts"]]
+        assert "L4" in ids

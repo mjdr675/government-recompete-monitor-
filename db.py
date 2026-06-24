@@ -124,6 +124,10 @@ _MIGRATION_PROBES: dict = {
         "SELECT COUNT(*) FROM information_schema.tables "
         "WHERE table_schema = 'public' AND table_name = 'feedback_submissions'"
     ),
+    "015_location_columns.sql": (
+        "SELECT COUNT(*) FROM information_schema.columns "
+        "WHERE table_name = 'contracts' AND column_name = 'place_of_performance_city'"
+    ),
 }
 
 
@@ -359,7 +363,8 @@ def _ensure_discovery_columns():
             return False
         cols = [r[1] for r in rows]
         added = False
-        for col_def in ("naics_code TEXT", "place_of_performance_state TEXT", "category TEXT"):
+        for col_def in ("naics_code TEXT", "place_of_performance_state TEXT", "category TEXT",
+                        "place_of_performance_city TEXT", "place_of_performance_zip TEXT"):
             col_name = col_def.split()[0]
             if col_name not in cols:
                 conn.execute(text(f"ALTER TABLE contracts ADD COLUMN {col_def}"))
@@ -394,6 +399,8 @@ def init_db():
             description TEXT,
             naics_code TEXT,
             place_of_performance_state TEXT,
+            place_of_performance_city TEXT,
+            place_of_performance_zip TEXT,
             category TEXT,
             value REAL,
             start_date TEXT,
@@ -417,28 +424,29 @@ def init_db():
         conn.execute(text("""
         CREATE VIRTUAL TABLE IF NOT EXISTS contracts_fts USING fts5(
             internal_id UNINDEXED,
-            vendor, agency, award_id, description, naics_code, place_of_performance_state,
+            vendor, agency, award_id, description, naics_code,
+            place_of_performance_state, place_of_performance_city,
             content='contracts', content_rowid='rowid'
         )
         """))
         conn.execute(text("""
         CREATE TRIGGER IF NOT EXISTS contracts_ai AFTER INSERT ON contracts BEGIN
-            INSERT INTO contracts_fts(rowid, internal_id, vendor, agency, award_id, description, naics_code, place_of_performance_state)
-            VALUES (new.rowid, new.internal_id, new.vendor, new.agency, new.award_id, new.description, new.naics_code, new.place_of_performance_state);
+            INSERT INTO contracts_fts(rowid, internal_id, vendor, agency, award_id, description, naics_code, place_of_performance_state, place_of_performance_city)
+            VALUES (new.rowid, new.internal_id, new.vendor, new.agency, new.award_id, new.description, new.naics_code, new.place_of_performance_state, new.place_of_performance_city);
         END
         """))
         conn.execute(text("""
         CREATE TRIGGER IF NOT EXISTS contracts_ad AFTER DELETE ON contracts BEGIN
-            INSERT INTO contracts_fts(contracts_fts, rowid, internal_id, vendor, agency, award_id, description, naics_code, place_of_performance_state)
-            VALUES ('delete', old.rowid, old.internal_id, old.vendor, old.agency, old.award_id, old.description, old.naics_code, old.place_of_performance_state);
+            INSERT INTO contracts_fts(contracts_fts, rowid, internal_id, vendor, agency, award_id, description, naics_code, place_of_performance_state, place_of_performance_city)
+            VALUES ('delete', old.rowid, old.internal_id, old.vendor, old.agency, old.award_id, old.description, old.naics_code, old.place_of_performance_state, old.place_of_performance_city);
         END
         """))
         conn.execute(text("""
         CREATE TRIGGER IF NOT EXISTS contracts_au AFTER UPDATE ON contracts BEGIN
-            INSERT INTO contracts_fts(contracts_fts, rowid, internal_id, vendor, agency, award_id, description, naics_code, place_of_performance_state)
-            VALUES ('delete', old.rowid, old.internal_id, old.vendor, old.agency, old.award_id, old.description, old.naics_code, old.place_of_performance_state);
-            INSERT INTO contracts_fts(rowid, internal_id, vendor, agency, award_id, description, naics_code, place_of_performance_state)
-            VALUES (new.rowid, new.internal_id, new.vendor, new.agency, new.award_id, new.description, new.naics_code, new.place_of_performance_state);
+            INSERT INTO contracts_fts(contracts_fts, rowid, internal_id, vendor, agency, award_id, description, naics_code, place_of_performance_state, place_of_performance_city)
+            VALUES ('delete', old.rowid, old.internal_id, old.vendor, old.agency, old.award_id, old.description, old.naics_code, old.place_of_performance_state, old.place_of_performance_city);
+            INSERT INTO contracts_fts(rowid, internal_id, vendor, agency, award_id, description, naics_code, place_of_performance_state, place_of_performance_city)
+            VALUES (new.rowid, new.internal_id, new.vendor, new.agency, new.award_id, new.description, new.naics_code, new.place_of_performance_state, new.place_of_performance_city);
         END
         """))
         if needs_fts_rebuild:
@@ -1240,6 +1248,14 @@ def upsert_contract(row):
     now = datetime.now(timezone.utc).isoformat()
     naics_code = row.get("naics_code") or row.get("naics") or ""
     pop_state = _extract_pop_state(row)
+    pop_city = (
+        row.get("place_of_performance_city") or row.get("performance_city") or
+        row.get("pop_city") or row.get("city") or ""
+    )
+    pop_zip = (
+        row.get("place_of_performance_zip") or row.get("performance_zip") or
+        row.get("pop_zip") or ""
+    )
     category = infer_category(
         description=row.get("description") or "",
         naics_code=naics_code,
@@ -1250,12 +1266,14 @@ def upsert_contract(row):
         conn.execute(text("""
         INSERT INTO contracts (
             internal_id, award_id, vendor, agency, sub_agency, description,
-            naics_code, place_of_performance_state, category,
+            naics_code, place_of_performance_state, place_of_performance_city,
+            place_of_performance_zip, category,
             value, start_date, end_date, days_remaining, competition_type,
             solicitation_id, recompete_score, priority, raw_json, updated_at
         )
         VALUES (:internal_id, :award_id, :vendor, :agency, :sub_agency, :description,
-                :naics_code, :place_of_performance_state, :category,
+                :naics_code, :place_of_performance_state, :place_of_performance_city,
+                :place_of_performance_zip, :category,
                 :value, :start_date, :end_date, :days_remaining, :competition_type,
                 :solicitation_id, :recompete_score, :priority, :raw_json, :updated_at)
         ON CONFLICT(internal_id) DO UPDATE SET
@@ -1266,6 +1284,8 @@ def upsert_contract(row):
             description=excluded.description,
             naics_code=excluded.naics_code,
             place_of_performance_state=excluded.place_of_performance_state,
+            place_of_performance_city=excluded.place_of_performance_city,
+            place_of_performance_zip=excluded.place_of_performance_zip,
             category=excluded.category,
             value=excluded.value,
             start_date=excluded.start_date,
@@ -1286,6 +1306,8 @@ def upsert_contract(row):
             "description": row.get("description"),
             "naics_code": naics_code,
             "place_of_performance_state": pop_state,
+            "place_of_performance_city": pop_city or None,
+            "place_of_performance_zip": pop_zip or None,
             "category": category,
             "value": float(row.get("value") or 0),
             "start_date": row.get("start_date"),
@@ -1338,6 +1360,14 @@ def save_snapshot(run_date, rows):
                 continue
             naics_code = row.get("naics_code") or row.get("naics") or ""
             pop_state = _extract_pop_state(row)
+            pop_city = (
+                row.get("place_of_performance_city") or row.get("performance_city") or
+                row.get("pop_city") or row.get("city") or ""
+            )
+            pop_zip = (
+                row.get("place_of_performance_zip") or row.get("performance_zip") or
+                row.get("pop_zip") or ""
+            )
             category = infer_category(
                 description=row.get("description") or "",
                 naics_code=naics_code,
@@ -1347,12 +1377,14 @@ def save_snapshot(run_date, rows):
             conn.execute(text("""
             INSERT INTO contracts (
                 internal_id, award_id, vendor, agency, sub_agency, description,
-                naics_code, place_of_performance_state, category,
+                naics_code, place_of_performance_state, place_of_performance_city,
+                place_of_performance_zip, category,
                 value, start_date, end_date, days_remaining, competition_type,
                 solicitation_id, recompete_score, priority, raw_json, updated_at
             )
             VALUES (:internal_id, :award_id, :vendor, :agency, :sub_agency, :description,
-                    :naics_code, :place_of_performance_state, :category,
+                    :naics_code, :place_of_performance_state, :place_of_performance_city,
+                    :place_of_performance_zip, :category,
                     :value, :start_date, :end_date, :days_remaining, :competition_type,
                     :solicitation_id, :recompete_score, :priority, :raw_json, CURRENT_TIMESTAMP)
             ON CONFLICT(internal_id) DO UPDATE SET
@@ -1363,6 +1395,8 @@ def save_snapshot(run_date, rows):
                 description=excluded.description,
                 naics_code=excluded.naics_code,
                 place_of_performance_state=excluded.place_of_performance_state,
+                place_of_performance_city=excluded.place_of_performance_city,
+                place_of_performance_zip=excluded.place_of_performance_zip,
                 category=excluded.category,
                 value=excluded.value,
                 start_date=excluded.start_date,
@@ -1383,6 +1417,8 @@ def save_snapshot(run_date, rows):
                 "description": row.get("description"),
                 "naics_code": naics_code,
                 "place_of_performance_state": pop_state,
+                "place_of_performance_city": pop_city or None,
+                "place_of_performance_zip": pop_zip or None,
                 "category": category,
                 "value": float(row.get("value") or 0),
                 "start_date": row.get("start_date"),
@@ -1835,6 +1871,78 @@ def search_tokens(q, limit=8):
     return re.findall(r"[a-z0-9]+", (q or "").lower())[:limit]
 
 
+_STATE_NAME_TO_CODE = {
+    "alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR",
+    "california": "CA", "colorado": "CO", "connecticut": "CT", "delaware": "DE",
+    "florida": "FL", "georgia": "GA", "hawaii": "HI", "idaho": "ID",
+    "illinois": "IL", "indiana": "IN", "iowa": "IA", "kansas": "KS",
+    "kentucky": "KY", "louisiana": "LA", "maine": "ME", "maryland": "MD",
+    "massachusetts": "MA", "michigan": "MI", "minnesota": "MN", "mississippi": "MS",
+    "missouri": "MO", "montana": "MT", "nebraska": "NE", "nevada": "NV",
+    "new hampshire": "NH", "new jersey": "NJ", "new mexico": "NM", "new york": "NY",
+    "north carolina": "NC", "north dakota": "ND", "ohio": "OH", "oklahoma": "OK",
+    "oregon": "OR", "pennsylvania": "PA", "rhode island": "RI", "south carolina": "SC",
+    "south dakota": "SD", "tennessee": "TN", "texas": "TX", "utah": "UT",
+    "vermont": "VT", "virginia": "VA", "washington": "WA", "west virginia": "WV",
+    "wisconsin": "WI", "wyoming": "WY", "district of columbia": "DC",
+}
+
+_NL_STOPWORDS = frozenset([
+    "contracts", "contract", "services", "service", "work", "jobs", "job",
+    "care", "management", "support", "operations",
+    "in", "the", "and", "for", "of", "at", "by", "on", "to", "with",
+    "federal", "government", "gov", "us", "united", "states",
+])
+
+
+def parse_nl_query(q: str) -> dict:
+    """Extract structured filters from a natural-language search query.
+
+    Returns a dict with zero or more of: 'category', 'state', 'q_remainder'.
+    q_remainder is the query with recognized category/state phrases and common
+    stopwords removed — use it as the new FTS query when filters were extracted.
+    If nothing is extracted, q_remainder equals the original query.
+
+    Examples:
+        "lawn care contracts in Virginia" → {category: "Grounds", state: "VA", q_remainder: ""}
+        "janitorial services Texas"       → {category: "Cleaning", state: "TX", q_remainder: ""}
+        "cybersecurity DOD"               → {category: "Cybersecurity", q_remainder: "dod"}
+    """
+    if not q or not q.strip():
+        return {"q_remainder": ""}
+
+    q_lower = q.lower().strip()
+    result: dict = {}
+    remaining = q_lower
+
+    # State detection — multi-word names checked first (greedy match)
+    for name, code in sorted(_STATE_NAME_TO_CODE.items(), key=lambda x: -len(x[0])):
+        in_pattern = r"\bin\s+" + re.escape(name) + r"\b"
+        bare_pattern = r"\b" + re.escape(name) + r"\b"
+        if re.search(in_pattern, remaining):
+            result["state"] = code
+            remaining = re.sub(in_pattern, " ", remaining)
+            break
+        if re.search(bare_pattern, remaining):
+            result["state"] = code
+            remaining = re.sub(bare_pattern, " ", remaining)
+            break
+
+    # Category detection — first match from _CATEGORY_RULES wins
+    for cat, keywords in _CATEGORY_RULES:
+        for kw in keywords:
+            if kw in remaining:
+                result["category"] = cat
+                remaining = remaining.replace(kw, " ")
+                break
+        if "category" in result:
+            break
+
+    tokens = [t for t in re.findall(r"[a-z0-9]+", remaining) if t not in _NL_STOPWORDS]
+    result["q_remainder"] = " ".join(tokens)
+    return result
+
+
 def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort="recompete_score",
                   direction="desc", page=1, limit=25, status="", profile_filter=None,
                   internal_ids=None, state="", category="", exclude_ids=None, all_rows=False,
@@ -1863,17 +1971,6 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
     if agency:
         base += " AND c.agency LIKE :agency"
         params["agency"] = f"%{agency}%"
-
-    if category:
-        _cat_map = {cat: kws for cat, kws in _CATEGORY_RULES}
-        keywords = _cat_map.get(category, [category])
-        cat_clauses = []
-        for i, kw in enumerate(keywords):
-            key = f"cat_kw_{i}"
-            params[key] = f"%{kw}%"
-            cat_clauses.append(f"c.description LIKE :{key}")
-        if cat_clauses:
-            base += f" AND ({' OR '.join(cat_clauses)})"
 
     if priority:
         base += " AND c.priority = :priority"
@@ -1940,8 +2037,18 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
         params["state"] = state.upper()
 
     if category:
-        base += " AND c.category = :category"
-        params["category"] = category
+        _cat_map = {cat: kws for cat, kws in _CATEGORY_RULES}
+        keywords = _cat_map.get(category, [category])
+        # Match stored category column OR description keywords — handles both
+        # contracts classified by NAICS (category set, no keyword in description)
+        # and legacy rows where the category column was never backfilled (NULL).
+        cat_clauses = ["c.category = :cat_exact"]
+        params["cat_exact"] = category
+        for i, kw in enumerate(keywords):
+            key = f"cat_kw_{i}"
+            params[key] = f"%{kw}%"
+            cat_clauses.append(f"c.description LIKE :{key}")
+        base += f" AND ({' OR '.join(cat_clauses)})"
 
     if exclude_ids is not None and len(exclude_ids) > 0:
         ex_placeholders = ", ".join(f":ex_{i}" for i in range(len(exclude_ids)))

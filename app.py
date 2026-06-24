@@ -56,6 +56,7 @@ from db import (
     update_notification_preferences,
     infer_category,
     extract_raw_field,
+    parse_nl_query,
     get_recent_updates_for_user,
     get_workspace_for_user,
     get_or_create_workspace_for_user,
@@ -884,6 +885,18 @@ def contracts():
 
     if status not in ("", "open", "expired"):
         status = ""
+
+    # Natural-language query parsing: extract category/state intent from free text
+    # so "lawn care contracts in Virginia" routes correctly without exact wording.
+    # Only applied when the user hasn't already set those filters explicitly.
+    if q:
+        parsed = parse_nl_query(q)
+        if not category and parsed.get("category"):
+            category = parsed["category"]
+        if not state and parsed.get("state"):
+            state = parsed["state"]
+        if parsed.get("category") or parsed.get("state"):
+            q = parsed.get("q_remainder", q)
 
     days_int = int(days) if days else None
     if days_int is not None and days_int < 0:
