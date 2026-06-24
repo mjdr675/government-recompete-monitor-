@@ -1202,6 +1202,29 @@ def ingest_email_test():
 
 @app.route("/ingest/status")
 def ingest_status():
+    task_id = request.args.get("task_id")
+    if task_id:
+        try:
+            from tasks import tasks as celery_app
+            result = celery_app.AsyncResult(task_id)
+            status = result.status
+            if result.successful():
+                message = "Ingest completed successfully."
+                progress = 100
+            elif result.failed():
+                message = f"Ingest failed: {result.result}"
+                progress = 0
+            else:
+                message = "Ingest is running…"
+                progress = 50
+            return jsonify({"task_id": task_id, "status": status,
+                            "message": message, "progress": progress})
+        except Exception as exc:
+            sentry_sdk.capture_exception(exc)
+            logging.getLogger(__name__).warning("AsyncResult error: %s", exc)
+            return jsonify({"task_id": task_id, "status": "UNKNOWN",
+                            "message": "Unable to fetch task status.", "progress": 0})
+
     try:
         with open(INGEST_LOG_PATH, "r", encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
