@@ -493,6 +493,10 @@ def init_db():
                 conn.execute(text(f"ALTER TABLE users ADD COLUMN {col}"))
             except Exception:
                 pass
+        try:
+            conn.execute(text("ALTER TABLE contracts ADD COLUMN sam_url TEXT"))
+        except Exception:
+            pass
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS celery_task_log (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1286,13 +1290,13 @@ def upsert_contract(row):
             naics_code, place_of_performance_state, place_of_performance_city,
             place_of_performance_zip, category,
             value, start_date, end_date, days_remaining, competition_type,
-            solicitation_id, recompete_score, priority, raw_json, updated_at
+            solicitation_id, recompete_score, priority, raw_json, updated_at, sam_url
         )
         VALUES (:internal_id, :award_id, :vendor, :agency, :sub_agency, :description,
                 :naics_code, :place_of_performance_state, :place_of_performance_city,
                 :place_of_performance_zip, :category,
                 :value, :start_date, :end_date, :days_remaining, :competition_type,
-                :solicitation_id, :recompete_score, :priority, :raw_json, :updated_at)
+                :solicitation_id, :recompete_score, :priority, :raw_json, :updated_at, :sam_url)
         ON CONFLICT(internal_id) DO UPDATE SET
             award_id=excluded.award_id,
             vendor=excluded.vendor,
@@ -1313,7 +1317,8 @@ def upsert_contract(row):
             recompete_score=excluded.recompete_score,
             priority=excluded.priority,
             raw_json=excluded.raw_json,
-            updated_at=excluded.updated_at
+            updated_at=excluded.updated_at,
+            sam_url=excluded.sam_url
         """), {
             "internal_id": internal_id,
             "award_id": row.get("award_id"),
@@ -1336,6 +1341,7 @@ def upsert_contract(row):
             "priority": row.get("priority"),
             "raw_json": json.dumps(row, default=str),
             "updated_at": now,
+            "sam_url": row.get("sam_url") or "",
         })
 
 
@@ -1397,13 +1403,14 @@ def save_snapshot(run_date, rows):
                 naics_code, place_of_performance_state, place_of_performance_city,
                 place_of_performance_zip, category,
                 value, start_date, end_date, days_remaining, competition_type,
-                solicitation_id, recompete_score, priority, raw_json, updated_at
+                solicitation_id, recompete_score, priority, raw_json, updated_at, sam_url
             )
             VALUES (:internal_id, :award_id, :vendor, :agency, :sub_agency, :description,
                     :naics_code, :place_of_performance_state, :place_of_performance_city,
                     :place_of_performance_zip, :category,
                     :value, :start_date, :end_date, :days_remaining, :competition_type,
-                    :solicitation_id, :recompete_score, :priority, :raw_json, CURRENT_TIMESTAMP)
+                    :solicitation_id, :recompete_score, :priority, :raw_json, CURRENT_TIMESTAMP,
+                    :sam_url)
             ON CONFLICT(internal_id) DO UPDATE SET
                 award_id=excluded.award_id,
                 vendor=excluded.vendor,
@@ -1424,7 +1431,8 @@ def save_snapshot(run_date, rows):
                 recompete_score=excluded.recompete_score,
                 priority=excluded.priority,
                 raw_json=excluded.raw_json,
-                updated_at=CURRENT_TIMESTAMP
+                updated_at=CURRENT_TIMESTAMP,
+                sam_url=excluded.sam_url
             """), {
                 "internal_id": internal_id,
                 "award_id": row.get("award_id") or row.get("contract"),
@@ -1446,6 +1454,7 @@ def save_snapshot(run_date, rows):
                 "recompete_score": int(row.get("recompete_score") or row.get("score") or 0),
                 "priority": row.get("priority"),
                 "raw_json": json.dumps(row, default=str),
+                "sam_url": row.get("sam_url") or "",
             })
             conn.execute(text("""
             INSERT INTO contract_snapshots (

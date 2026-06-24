@@ -271,6 +271,21 @@
 </div>
 {% endif %}
 
+<div style="margin-top:20px">
+  {% if row.get("sam_url") %}
+  <a href="{{ row['sam_url'] }}" target="_blank" rel="noopener noreferrer"
+     style="display:inline-flex;align-items:center;gap:6px;padding:10px 18px;background:var(--accent);color:#fff;border-radius:var(--radius-sm);text-decoration:none;font-weight:600;font-size:14px">
+    Open live SAM.gov opportunity &rarr;
+  </a>
+  {% else %}
+  <a href="https://sam.gov/content/opportunities?keywords={{ (row.get('solicitation_id') or row.get('vendor') or '')|urlencode }}"
+     target="_blank" rel="noopener noreferrer"
+     style="display:inline-flex;align-items:center;gap:6px;padding:10px 18px;background:var(--surface);color:var(--accent);border:1px solid var(--accent);border-radius:var(--radius-sm);text-decoration:none;font-weight:600;font-size:14px">
+    Search SAM.gov for this opportunity &rarr;
+  </a>
+  {% endif %}
+</div>
+
 {% if g.user %}
 <div class="notes-section">
   <h2>Notes</h2>
