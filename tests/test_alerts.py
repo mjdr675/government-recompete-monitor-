@@ -147,7 +147,7 @@ class TestAlertsRoute:
     def test_alerts_page_loads(self, client):
         resp = client.get("/settings/alerts")
         assert resp.status_code == 200
-        assert b"Alert Settings" in resp.data
+        assert b"Watchlist Expiry Alerts" in resp.data
 
     def test_alerts_page_shows_config(self, client):
         resp = client.get("/settings/alerts")
@@ -166,7 +166,7 @@ class TestAlertsRoute:
             follow_redirects=True,
         )
         assert resp.status_code == 200
-        assert b"Alert Settings" in resp.data
+        assert b"Watchlist Expiry Alerts" in resp.data
 
     def test_post_send_shows_error_when_no_recipient(self, client, monkeypatch):
         monkeypatch.delenv("ALERT_TO", raising=False)
@@ -176,7 +176,7 @@ class TestAlertsRoute:
             follow_redirects=True,
         )
         assert resp.status_code == 200
-        assert b"Alert Settings" in resp.data
+        assert b"Watchlist Expiry Alerts" in resp.data
 
     def test_alerts_nav_link_present(self, client):
         resp = client.get("/settings/alerts")
