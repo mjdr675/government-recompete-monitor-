@@ -793,3 +793,103 @@ class TestLocationColumns:
         result = db.get_contracts(q="Springfield")
         ids = [r["internal_id"] for r in result["contracts"]]
         assert "L4" in ids
+
+
+# ---------------------------------------------------------------------------
+# TestPscDescriptionFilter
+# ---------------------------------------------------------------------------
+
+class TestPscDescriptionFilter:
+    """Tests that psc_description is used for category inference and filtering.
+
+    Many USASpending contracts have vague descriptions ("DORM MANAGEMENT
+    SERVICES") but a clear PSC product/service code description
+    ("HOUSEKEEPING- CUSTODIAL JANITORIAL"). Without psc_description in the
+    filter these contracts return 0 results for category=Cleaning.
+    """
+
+    def test_infer_category_from_psc_description(self):
+        result = db_module.infer_category(
+            description="DORM MANAGEMENT SERVICES",
+            psc_description="HOUSEKEEPING- CUSTODIAL JANITORIAL",
+        )
+        assert result == "Cleaning"
+
+    def test_infer_category_psc_overrides_other_when_description_vague(self):
+        assert db_module.infer_category(
+            description="SUPPORT SERVICES CONTRACT",
+            psc_description="CUSTODIAL SERVICES FEDERAL BUILDING",
+        ) == "Cleaning"
+
+    def test_infer_category_psc_grounds(self):
+        assert db_module.infer_category(
+            description="SITE SERVICES BASE SUPPORT",
+            psc_description="GROUNDS MAINTENANCE AND LANDSCAPING SERVICES",
+        ) == "Grounds"
+
+    def test_psc_description_stored_as_column(self, tmp_path):
+        db = _fresh_db(tmp_path)
+        _insert(db, internal_id="P1",
+                description="DORM MANAGEMENT SERVICES",
+                psc_description="HOUSEKEEPING- CUSTODIAL JANITORIAL",
+                value=100000)
+        with db.get_engine().connect() as conn:
+            row = conn.execute(
+                db.text("SELECT psc_description FROM contracts WHERE internal_id = 'P1'")
+            ).fetchone()
+        assert row[0] == "HOUSEKEEPING- CUSTODIAL JANITORIAL"
+
+    def test_psc_description_stored_via_save_snapshot(self, tmp_path):
+        db = _fresh_db(tmp_path)
+        db.save_snapshot("2024-01-01", [{
+            "internal_id": "P2",
+            "vendor": "Federal Cleaning Inc",
+            "agency": "GSA",
+            "description": "DORM MANAGEMENT SERVICES",
+            "psc_description": "HOUSEKEEPING- CUSTODIAL JANITORIAL",
+            "value": 200000,
+            "days_remaining": 90,
+            "recompete_score": 60,
+            "priority": "MEDIUM",
+        }])
+        with db.get_engine().connect() as conn:
+            row = conn.execute(
+                db.text("SELECT psc_description, category FROM contracts WHERE internal_id = 'P2'")
+            ).fetchone()
+        assert row[0] == "HOUSEKEEPING- CUSTODIAL JANITORIAL"
+        assert row[1] == "Cleaning"
+
+    def test_category_filter_finds_contract_by_psc_description_column(self, tmp_path):
+        """Contract with vague description but psc_description='JANITORIAL...' must match Cleaning."""
+        db = _fresh_db(tmp_path)
+        _insert(db, internal_id="P3",
+                description="DORM MANAGEMENT SERVICES",
+                psc_description="HOUSEKEEPING- CUSTODIAL JANITORIAL",
+                value=100000)
+        result = db.get_contracts(category="Cleaning")
+        ids = [r["internal_id"] for r in result["contracts"]]
+        assert "P3" in ids, "Contract with cleaning PSC description must match category=Cleaning"
+
+    def test_category_filter_excludes_non_cleaning_psc(self, tmp_path):
+        db = _fresh_db(tmp_path)
+        _insert(db, internal_id="P4",
+                description="IT SUPPORT SERVICES",
+                psc_description="INFORMATION TECHNOLOGY SUPPORT",
+                value=100000)
+        result = db.get_contracts(category="Cleaning")
+        ids = [r["internal_id"] for r in result["contracts"]]
+        assert "P4" not in ids
+
+    def test_category_inferred_from_psc_at_ingest(self, tmp_path):
+        """When description is vague but psc_description has cleaning keyword,
+        infer_category should classify the contract as Cleaning at upsert time."""
+        db = _fresh_db(tmp_path)
+        _insert(db, internal_id="P5",
+                description="BASE SUPPORT SERVICES",
+                psc_description="CUSTODIAL SERVICES - BARRACKS",
+                value=150000)
+        with db.get_engine().connect() as conn:
+            row = conn.execute(
+                db.text("SELECT category FROM contracts WHERE internal_id = 'P5'")
+            ).fetchone()
+        assert row[0] == "Cleaning", "infer_category must use psc_description to classify as Cleaning"

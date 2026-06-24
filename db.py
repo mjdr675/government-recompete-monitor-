@@ -304,8 +304,8 @@ ALL_CATEGORIES = [
 ]
 
 
-def infer_category(description="", naics_code="", vendor="", agency=""):
-    text_val = " ".join(filter(None, [description, vendor])).lower()
+def infer_category(description="", naics_code="", vendor="", agency="", psc_description=""):
+    text_val = " ".join(filter(None, [description, vendor, psc_description])).lower()
     for cat, keywords in _CATEGORY_RULES:
         for kw in keywords:
             if kw in text_val:
@@ -1283,6 +1283,7 @@ def upsert_contract(row):
         return
     now = datetime.now(timezone.utc).isoformat()
     naics_code = row.get("naics_code") or row.get("naics") or ""
+    psc_description = row.get("psc_description") or ""
     pop_state = _extract_pop_state(row)
     pop_city = (
         row.get("place_of_performance_city") or row.get("performance_city") or
@@ -1297,19 +1298,20 @@ def upsert_contract(row):
         naics_code=naics_code,
         vendor=row.get("vendor") or "",
         agency=row.get("agency") or "",
+        psc_description=psc_description,
     )
     with get_engine().begin() as conn:
         conn.execute(text("""
         INSERT INTO contracts (
             internal_id, award_id, vendor, agency, sub_agency, description,
             naics_code, place_of_performance_state, place_of_performance_city,
-            place_of_performance_zip, category,
+            place_of_performance_zip, category, psc_description,
             value, start_date, end_date, days_remaining, competition_type,
             solicitation_id, recompete_score, priority, raw_json, updated_at, sam_url
         )
         VALUES (:internal_id, :award_id, :vendor, :agency, :sub_agency, :description,
                 :naics_code, :place_of_performance_state, :place_of_performance_city,
-                :place_of_performance_zip, :category,
+                :place_of_performance_zip, :category, :psc_description,
                 :value, :start_date, :end_date, :days_remaining, :competition_type,
                 :solicitation_id, :recompete_score, :priority, :raw_json, :updated_at, :sam_url)
         ON CONFLICT(internal_id) DO UPDATE SET
@@ -1323,6 +1325,7 @@ def upsert_contract(row):
             place_of_performance_city=excluded.place_of_performance_city,
             place_of_performance_zip=excluded.place_of_performance_zip,
             category=excluded.category,
+            psc_description=excluded.psc_description,
             value=excluded.value,
             start_date=excluded.start_date,
             end_date=excluded.end_date,
@@ -1346,6 +1349,7 @@ def upsert_contract(row):
             "place_of_performance_city": pop_city or None,
             "place_of_performance_zip": pop_zip or None,
             "category": category,
+            "psc_description": psc_description or None,
             "value": float(row.get("value") or 0),
             "start_date": row.get("start_date"),
             "end_date": row.get("end_date"),
@@ -1397,6 +1401,7 @@ def save_snapshot(run_date, rows):
             if not internal_id:
                 continue
             naics_code = row.get("naics_code") or row.get("naics") or ""
+            psc_description = row.get("psc_description") or ""
             pop_state = _extract_pop_state(row)
             pop_city = (
                 row.get("place_of_performance_city") or row.get("performance_city") or
@@ -1411,18 +1416,19 @@ def save_snapshot(run_date, rows):
                 naics_code=naics_code,
                 vendor=row.get("vendor") or "",
                 agency=row.get("agency") or "",
+                psc_description=psc_description,
             )
             conn.execute(text("""
             INSERT INTO contracts (
                 internal_id, award_id, vendor, agency, sub_agency, description,
                 naics_code, place_of_performance_state, place_of_performance_city,
-                place_of_performance_zip, category,
+                place_of_performance_zip, category, psc_description,
                 value, start_date, end_date, days_remaining, competition_type,
                 solicitation_id, recompete_score, priority, raw_json, updated_at, sam_url
             )
             VALUES (:internal_id, :award_id, :vendor, :agency, :sub_agency, :description,
                     :naics_code, :place_of_performance_state, :place_of_performance_city,
-                    :place_of_performance_zip, :category,
+                    :place_of_performance_zip, :category, :psc_description,
                     :value, :start_date, :end_date, :days_remaining, :competition_type,
                     :solicitation_id, :recompete_score, :priority, :raw_json, CURRENT_TIMESTAMP,
                     :sam_url)
@@ -1437,6 +1443,7 @@ def save_snapshot(run_date, rows):
                 place_of_performance_city=excluded.place_of_performance_city,
                 place_of_performance_zip=excluded.place_of_performance_zip,
                 category=excluded.category,
+                psc_description=excluded.psc_description,
                 value=excluded.value,
                 start_date=excluded.start_date,
                 end_date=excluded.end_date,
@@ -1460,6 +1467,7 @@ def save_snapshot(run_date, rows):
                 "place_of_performance_city": pop_city or None,
                 "place_of_performance_zip": pop_zip or None,
                 "category": category,
+                "psc_description": psc_description or None,
                 "value": float(row.get("value") or 0),
                 "start_date": row.get("start_date"),
                 "end_date": row.get("end_date"),
@@ -2086,15 +2094,23 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
         # ALL-CAPS ("JANITORIAL SERVICES") so plain LIKE '%janitorial%' returns 0.
         # Use ILIKE on Postgres, LIKE on SQLite (already case-insensitive for ASCII).
         like_op = "ILIKE" if is_pg else "LIKE"
-        # Match: stored category column, OR case-insensitive description keywords,
-        # OR NAICS prefix — covers exact classification, legacy NULL-category rows,
-        # and NAICS-only contracts where descriptions lack expected keywords.
-        cat_clauses = ["c.category = :cat_exact"]
+        # Category column: use ILIKE (pg) / LIKE (sqlite) for case-insensitive match
+        # in case category was stored in a different case by a prior code path.
+        cat_clauses = [f"c.category {like_op} :cat_exact"]
         params["cat_exact"] = canonical
         for i, kw in enumerate(keywords):
             key = f"cat_kw_{i}"
             params[key] = f"%{kw}%"
+            # description column (populated for all rows)
             cat_clauses.append(f"c.description {like_op} :{key}")
+            # psc_description column (populated for newly ingested rows)
+            cat_clauses.append(f"c.psc_description {like_op} :{key}")
+            # Fallback: extract psc_description from raw_json for legacy rows where
+            # the column is NULL but the value was stored in the JSON blob.
+            if is_pg:
+                cat_clauses.append(f"(c.raw_json::jsonb->>'psc_description') ILIKE :{key}")
+            else:
+                cat_clauses.append(f"json_extract(c.raw_json, '$.psc_description') LIKE :{key}")
         naics_prefixes = [prefix for prefix, cat in _NAICS_CATEGORY_MAP if cat == canonical]
         for i, prefix in enumerate(naics_prefixes):
             key = f"cat_naics_{i}"
