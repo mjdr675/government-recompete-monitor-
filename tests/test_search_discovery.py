@@ -638,6 +638,100 @@ class TestCategoryFilterFixed:
 
 
 # ---------------------------------------------------------------------------
+# TestCategoryFilterCaseSensitivity
+# ---------------------------------------------------------------------------
+
+class TestCategoryFilterCaseSensitivity:
+    """Regression for PostgreSQL LIKE case-sensitivity.
+
+    USASpending returns descriptions in ALL-CAPS ("JANITORIAL SERVICES FOR
+    FEDERAL BUILDINGS"). In SQLite LIKE is case-insensitive for ASCII, but this
+    test verifies the filter logic handles uppercase descriptions correctly so
+    the same path works on both SQLite (dev) and PostgreSQL (prod).
+    """
+
+    def test_uppercase_description_cleaning(self, tmp_path):
+        db = _fresh_db(tmp_path)
+        # Force category to NULL so only description LIKE kicks in
+        _insert(db, internal_id="U1", description="JANITORIAL SERVICES FOR FEDERAL BUILDINGS",
+                value=100000)
+        result = db.get_contracts(category="Cleaning")
+        ids = [r["internal_id"] for r in result["contracts"]]
+        assert "U1" in ids, "Uppercase JANITORIAL description must match Cleaning filter"
+
+    def test_uppercase_description_grounds(self, tmp_path):
+        db = _fresh_db(tmp_path)
+        _insert(db, internal_id="U2", description="GROUNDS MAINTENANCE AND LANDSCAPING",
+                value=200000)
+        result = db.get_contracts(category="Grounds")
+        ids = [r["internal_id"] for r in result["contracts"]]
+        assert "U2" in ids, "Uppercase GROUNDS description must match Grounds filter"
+
+    def test_uppercase_description_it(self, tmp_path):
+        db = _fresh_db(tmp_path)
+        _insert(db, internal_id="U3", description="INFORMATION TECHNOLOGY HELP DESK SUPPORT",
+                value=300000)
+        result = db.get_contracts(category="IT")
+        ids = [r["internal_id"] for r in result["contracts"]]
+        assert "U3" in ids
+
+    def test_mixed_case_description_cleaning(self, tmp_path):
+        db = _fresh_db(tmp_path)
+        _insert(db, internal_id="U4", description="Custodial Services - Building 7",
+                value=150000)
+        result = db.get_contracts(category="Cleaning")
+        ids = [r["internal_id"] for r in result["contracts"]]
+        assert "U4" in ids
+
+    def test_cleaning_nonzero_rows_when_data_exists(self, tmp_path):
+        db = _fresh_db(tmp_path)
+        _insert(db, internal_id="NZ1", description="JANITORIAL AND CUSTODIAL SERVICES", value=100000)
+        _insert(db, internal_id="NZ2", description="LANDSCAPING SERVICES", value=200000)
+        result = db.get_contracts(category="Cleaning")
+        assert result["total"] >= 1, "Category=Cleaning must return nonzero rows when matching data exists"
+
+    def test_category_alias_cleaning_janitorial(self, tmp_path):
+        db = _fresh_db(tmp_path)
+        _insert(db, internal_id="A1", description="janitorial cleaning services", value=100000)
+        result = db.get_contracts(category="Cleaning / Janitorial")
+        ids = [r["internal_id"] for r in result["contracts"]]
+        assert "A1" in ids, "Alias 'Cleaning / Janitorial' must resolve to Cleaning"
+
+    def test_category_alias_janitorial_alone(self, tmp_path):
+        db = _fresh_db(tmp_path)
+        _insert(db, internal_id="A2", description="janitorial services for offices", value=100000)
+        result = db.get_contracts(category="Janitorial")
+        ids = [r["internal_id"] for r in result["contracts"]]
+        assert "A2" in ids, "Alias 'Janitorial' must resolve to Cleaning"
+
+    def test_category_combined_with_state(self, tmp_path):
+        db = _fresh_db(tmp_path)
+        _insert(db, internal_id="CS1", description="JANITORIAL SERVICES", place_of_performance_state="VA", value=100000)
+        _insert(db, internal_id="CS2", description="JANITORIAL SERVICES", place_of_performance_state="TX", value=100000)
+        result = db.get_contracts(category="Cleaning", state="VA")
+        ids = [r["internal_id"] for r in result["contracts"]]
+        assert "CS1" in ids
+        assert "CS2" not in ids
+
+    def test_naics_cleaning_found_by_category(self, tmp_path):
+        db = _fresh_db(tmp_path)
+        # NAICS 5617 = Cleaning; description does not contain any keyword
+        _insert(db, internal_id="NC1", description="Federal building services", naics_code="561720", value=100000)
+        result = db.get_contracts(category="Cleaning")
+        ids = [r["internal_id"] for r in result["contracts"]]
+        assert "NC1" in ids, "NAICS 5617x contract must match Cleaning filter"
+
+    def test_no_double_min_value_filter(self, tmp_path):
+        db = _fresh_db(tmp_path)
+        _insert(db, internal_id="MV1", description="janitorial cleaning", value=500000)
+        _insert(db, internal_id="MV2", description="janitorial cleaning", value=1500000)
+        result = db.get_contracts(category="Cleaning", min_value=1000000)
+        ids = [r["internal_id"] for r in result["contracts"]]
+        assert "MV1" not in ids
+        assert "MV2" in ids
+
+
+# ---------------------------------------------------------------------------
 # TestLocationColumns
 # ---------------------------------------------------------------------------
 

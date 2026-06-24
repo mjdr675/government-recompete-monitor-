@@ -277,6 +277,23 @@ _NAICS_CATEGORY_MAP = [
     ("4841", "Logistics"), ("4842", "Logistics"), ("4931", "Logistics"),
 ]
 
+# Aliases accepted from the UI or external URLs that map to canonical category names.
+# Keys are lowercased so the lookup is case-insensitive.
+_CATEGORY_ALIASES: dict[str, str] = {
+    "cleaning / janitorial": "Cleaning",
+    "cleaning/janitorial": "Cleaning",
+    "janitorial": "Cleaning",
+    "custodial": "Cleaning",
+    "grounds / landscaping": "Grounds",
+    "grounds/landscaping": "Grounds",
+    "landscaping": "Grounds",
+    "lawn": "Grounds",
+    "physical security": "Security",
+    "guard services": "Security",
+    "information technology": "IT",
+    "it services": "IT",
+}
+
 ALL_CATEGORIES = [
     "Administrative", "Cleaning", "Construction", "Cybersecurity",
     "Facilities", "Grounds", "IT", "Logistics", "Security",
@@ -2037,17 +2054,28 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
         params["state"] = state.upper()
 
     if category:
+        # Normalize aliases (e.g. "Cleaning / Janitorial" → "Cleaning")
+        canonical = _CATEGORY_ALIASES.get(category.lower(), category)
         _cat_map = {cat: kws for cat, kws in _CATEGORY_RULES}
-        keywords = _cat_map.get(category, [category])
-        # Match stored category column OR description keywords — handles both
-        # contracts classified by NAICS (category set, no keyword in description)
-        # and legacy rows where the category column was never backfilled (NULL).
+        keywords = _cat_map.get(canonical, [canonical])
+        # PostgreSQL LIKE is case-sensitive; USASpending descriptions are often
+        # ALL-CAPS ("JANITORIAL SERVICES") so plain LIKE '%janitorial%' returns 0.
+        # Use ILIKE on Postgres, LIKE on SQLite (already case-insensitive for ASCII).
+        like_op = "ILIKE" if is_pg else "LIKE"
+        # Match: stored category column, OR case-insensitive description keywords,
+        # OR NAICS prefix — covers exact classification, legacy NULL-category rows,
+        # and NAICS-only contracts where descriptions lack expected keywords.
         cat_clauses = ["c.category = :cat_exact"]
-        params["cat_exact"] = category
+        params["cat_exact"] = canonical
         for i, kw in enumerate(keywords):
             key = f"cat_kw_{i}"
             params[key] = f"%{kw}%"
-            cat_clauses.append(f"c.description LIKE :{key}")
+            cat_clauses.append(f"c.description {like_op} :{key}")
+        naics_prefixes = [prefix for prefix, cat in _NAICS_CATEGORY_MAP if cat == canonical]
+        for i, prefix in enumerate(naics_prefixes):
+            key = f"cat_naics_{i}"
+            params[key] = f"{prefix}%"
+            cat_clauses.append(f"c.naics_code LIKE :{key}")
         base += f" AND ({' OR '.join(cat_clauses)})"
 
     if exclude_ids is not None and len(exclude_ids) > 0:
@@ -2055,10 +2083,6 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
         base += f" AND c.internal_id NOT IN ({ex_placeholders})"
         for i, eid in enumerate(exclude_ids):
             params[f"ex_{i}"] = eid
-
-    if min_value is not None:
-        base += " AND c.value >= :min_value"
-        params["min_value"] = float(min_value)
 
     col = sort if sort in _SORTABLE else "recompete_score"
     order = "ASC" if direction == "asc" else "DESC"
