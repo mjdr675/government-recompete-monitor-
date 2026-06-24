@@ -193,6 +193,54 @@
 
       {# My Contracts panel #}
       <div id="panel-my-contracts">
+
+        {# Current Contracts: auto-matched by vendor name from company profile #}
+        {% if current_contracts %}
+        <div class="table-wrapper" style="margin-bottom:12px">
+          <div class="table-header">
+            <h2>Current Contracts</h2>
+            <span style="font-size:12px;color:var(--text-muted);font-weight:400">
+              Matched to <strong>{{ vendor_name or company_name }}</strong>
+              &middot; <a href="/company-profile" style="font-size:12px">Edit vendor name</a>
+            </span>
+          </div>
+          <table>
+            <thead><tr>
+              <th>Contract</th><th>Agency</th><th class="col-r">Value</th>
+              <th class="col-r">Days Left</th><th>Priority</th>
+            </tr></thead>
+            <tbody>
+              {% for r in current_contracts %}
+              <tr>
+                <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
+                <td>{{ r.agency or '&mdash;' }}</td>
+                <td class="col-r">${{ "{:,.0f}".format(r.value or 0) }}</td>
+                <td class="col-r {% if r.days_remaining is not none and r.days_remaining <= 30 %}days-critical{% elif r.days_remaining is not none and r.days_remaining <= 90 %}days-warning{% endif %}">
+                  {{ r.days_remaining if r.days_remaining is not none else '&mdash;' }}
+                </td>
+                <td>
+                  {% if r.priority %}
+                  <span class="priority-badge priority-{{ r.priority | lower }}">{{ r.priority }}</span>
+                  {% else %}&mdash;{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <div style="padding:10px 20px;border-top:1px solid var(--border);font-size:12px;color:var(--text-muted)">
+            <a href="/contracts?q={{ (vendor_name or '') | urlencode }}">View all &rarr;</a>
+          </div>
+        </div>
+        {% elif has_profile and not vendor_name %}
+        <div style="padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:12px">
+          <div style="font-weight:500;margin-bottom:4px">Add your vendor name to see current contracts</div>
+          <div class="muted" style="font-size:13px;margin-bottom:10px">
+            Tell us the name that appears on your government contracts and we'll auto-load them here.
+          </div>
+          <a href="/company-profile" class="btn btn-primary" style="font-size:13px">Add vendor name</a>
+        </div>
+        {% endif %}
+
         {# Watchlist — always visible #}
         <div class="table-wrapper" style="margin-bottom:12px">
           <div class="table-header"><h2>Watchlist</h2></div>

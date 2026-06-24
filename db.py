@@ -548,6 +548,7 @@ def init_db():
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id     INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
             company_name TEXT,
+            vendor_name TEXT,
             website     TEXT,
             geo_coverage TEXT NOT NULL DEFAULT 'nationwide',
             min_contract_value REAL,
@@ -556,6 +557,10 @@ def init_db():
             updated_at  TEXT NOT NULL
         )
         """))
+        try:
+            conn.execute(text("ALTER TABLE company_profiles ADD COLUMN vendor_name TEXT"))
+        except Exception:
+            pass
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS company_naics (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -761,7 +766,7 @@ def get_company_profile(user_id):
     with engine.connect() as conn:
         row = conn.execute(
             text(
-                "SELECT id, user_id, company_name, website, geo_coverage,"
+                "SELECT id, user_id, company_name, vendor_name, website, geo_coverage,"
                 " min_contract_value, max_contract_value, created_at, updated_at"
                 " FROM company_profiles WHERE user_id = :uid"
             ),
@@ -831,6 +836,7 @@ def save_company_profile(user_id, data):
     params = {
         "uid": user_id,
         "company_name": data.get("company_name") or None,
+        "vendor_name": data.get("vendor_name") or None,
         "website": data.get("website") or None,
         "geo_coverage": data.get("geo_coverage") or "nationwide",
         "min_val": min_val,
@@ -840,12 +846,13 @@ def save_company_profile(user_id, data):
     with engine.begin() as conn:
         row = conn.execute(text("""
             INSERT INTO company_profiles
-                (user_id, company_name, website, geo_coverage,
+                (user_id, company_name, vendor_name, website, geo_coverage,
                  min_contract_value, max_contract_value, created_at, updated_at)
-            VALUES (:uid, :company_name, :website, :geo_coverage,
+            VALUES (:uid, :company_name, :vendor_name, :website, :geo_coverage,
                     :min_val, :max_val, :now, :now)
             ON CONFLICT(user_id) DO UPDATE SET
                 company_name       = excluded.company_name,
+                vendor_name        = excluded.vendor_name,
                 website            = excluded.website,
                 geo_coverage       = excluded.geo_coverage,
                 min_contract_value = excluded.min_contract_value,

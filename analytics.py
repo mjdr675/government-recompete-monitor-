@@ -460,6 +460,35 @@ def my_contracts_summary(user_id):
     }
 
 
+def my_current_contracts(user_id, limit=20):
+    """Return active contracts where vendor name matches the user's registered vendor name.
+
+    Uses LIKE for case-insensitive prefix matching so minor suffix differences
+    (e.g. 'INC' vs 'LLC') still surface the right contracts. Returns [] if the
+    user has no profile or no vendor_name set.
+    """
+    if not user_id:
+        return []
+    from db import get_company_profile
+    profile = get_company_profile(user_id)
+    if not profile or not profile.get("vendor_name"):
+        return []
+    vendor_name = profile["vendor_name"].strip()
+    if not vendor_name:
+        return []
+    engine = get_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT internal_id, award_id, vendor, agency, value,
+                   end_date, days_remaining, priority, recompete_score, category
+            FROM contracts
+            WHERE LOWER(vendor) LIKE LOWER(:pattern)
+            ORDER BY days_remaining ASC NULLS LAST, end_date ASC NULLS LAST
+            LIMIT :limit
+        """), {"pattern": f"%{vendor_name}%", "limit": limit}).mappings().fetchall()
+    return [dict(r) for r in rows]
+
+
 def agency_summary(run_date, limit=10):
     engine = get_engine()
     with engine.connect() as conn:

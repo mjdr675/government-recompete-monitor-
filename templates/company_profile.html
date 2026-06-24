@@ -47,7 +47,7 @@
   {# ── Company ─────────────────────────────────────────────────────────── #}
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
     <h2 style="margin-top:0;margin-bottom:16px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)">Company</h2>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
       <div>
         <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px">Company Name</label>
         <input name="company_name" value="{{ profile.company_name or '' if profile else '' }}"
@@ -60,6 +60,17 @@
                style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:14px"
                placeholder="https://example.com">
       </div>
+    </div>
+    <div>
+      <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px">
+        Name on government contracts <span class="muted">(optional)</span>
+      </label>
+      <div class="muted" style="font-size:12px;margin-bottom:6px">
+        The exact vendor name on your USASpending or SAM.gov contracts. Used to auto-load your current contracts on the dashboard.
+      </div>
+      <input name="vendor_name" value="{{ profile.vendor_name or '' if profile else '' }}"
+             style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:14px"
+             placeholder="ACME GOVERNMENT SOLUTIONS INC">
     </div>
   </div>
 

@@ -75,7 +75,7 @@ from db import (
 from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
 from analytics import dashboard_analytics, opportunity_recommendations, dashboard_recommended_actions, business_opportunities
-from analytics import suggested_matches as get_suggested_matches, my_contracts_summary, personalized_for_business
+from analytics import suggested_matches as get_suggested_matches, my_contracts_summary, personalized_for_business, my_current_contracts
 from business_match import (
     business_match_score,
     business_match_reasons,
@@ -657,6 +657,7 @@ def dashboard():
         has_profile = bool(profile)
         biz_opps = business_opportunities(user_id)
         my_contracts = my_contracts_summary(user_id)
+        current_contracts = my_current_contracts(user_id)
         suggested = get_suggested_matches(user_id)
         for_business = personalized_for_business(user_id, profile) if profile else []
         p_completion = profile_completeness(profile) if profile else 0
@@ -703,10 +704,12 @@ def dashboard():
             dash_actions=dash_actions,
             biz_opps=biz_opps,
             my_contracts=my_contracts,
+            current_contracts=current_contracts,
             suggested_matches=suggested,
             for_business=for_business,
             recent_updates=recent_updates,
             company_name=profile.get("company_name") if profile else None,
+            vendor_name=profile.get("vendor_name") if profile else None,
             has_profile=has_profile,
             profile_completion=p_completion,
             profile_hints=p_hints,
@@ -758,6 +761,7 @@ def onboarding():
             session["ob"] = {
                 **session.get("ob", {}),
                 "company_name": request.form.get("company_name", "").strip(),
+                "vendor_name": request.form.get("vendor_name", "").strip(),
                 "naics_codes": naics_codes,
             }
             session.modified = True
@@ -804,6 +808,7 @@ def onboarding():
             ob = session.pop("ob", {})
             save_company_profile(user_id, {
                 "company_name": ob.get("company_name", ""),
+                "vendor_name": ob.get("vendor_name", ""),
                 "website": "",
                 "geo_coverage": ob.get("geo_coverage", "nationwide"),
                 "min_contract_value": min_v,
@@ -1954,6 +1959,7 @@ def company_profile_page():
 
     if request.method == "POST":
         company_name = request.form.get("company_name", "").strip()
+        vendor_name = request.form.get("vendor_name", "").strip()
         website = request.form.get("website", "").strip()
         geo_coverage = request.form.get("geo_coverage", "nationwide")
         if geo_coverage not in ("nationwide", "states"):
@@ -1998,6 +2004,7 @@ def company_profile_page():
         if not error:
             save_company_profile(user["id"], {
                 "company_name": company_name,
+                "vendor_name": vendor_name,
                 "website": website,
                 "geo_coverage": geo_coverage,
                 "min_contract_value": min_v,

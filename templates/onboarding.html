@@ -45,6 +45,19 @@
              placeholder="Acme Government Solutions">
     </div>
 
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
+      <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px">
+        Name on government contracts <span class="muted">(optional)</span>
+      </label>
+      <p class="muted" style="font-size:12px;margin:0 0 8px">
+        The exact vendor name that appears on your USASpending or SAM.gov contracts. We use this to auto-load your current contracts on the dashboard.
+      </p>
+      <input name="vendor_name"
+             value="{{ ob.vendor_name or '' }}"
+             style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:14px"
+             placeholder="ACME GOVERNMENT SOLUTIONS INC">
+    </div>
+
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:24px">
       <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px">
         What type of work do you do? <span class="muted">(NAICS codes)</span>
