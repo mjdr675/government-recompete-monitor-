@@ -2,83 +2,240 @@
 {% block title %}Subscribe — Recompete.{% endblock %}
 {% block content %}
 <style>
-  .subscribe-wrap{max-width:520px;margin:0 auto;padding:0 0 48px}
-  .plan-card{background:var(--surface);border-radius:10px;box-shadow:var(--shadow-md);padding:28px 32px;margin-bottom:20px;border:1px solid var(--border)}
-  .price-row{display:flex;align-items:baseline;gap:6px;margin:12px 0 4px}
-  .price-big{font-size:44px;font-weight:bold;color:var(--text-primary);line-height:1}
-  .price-per{font-size:16px;color:var(--text-muted)}
-  .price-annual{font-size:13px;color:#059669;font-weight:600;margin-bottom:20px}
-  .feature-list{list-style:none;padding:0;margin:0 0 24px}
-  .feature-list li{padding:8px 0;border-bottom:1px solid var(--border);font-size:15px;color:var(--text-primary)}
-  .feature-list li::before{content:"✓ ";color:#16a34a;font-weight:bold}
-  .btn-checkout{display:block;width:100%;padding:14px;background:#2563eb;color:white;border:none;
-    border-radius:6px;font-size:16px;font-weight:bold;cursor:pointer;text-align:center;
-    box-sizing:border-box;transition:background .15s}
-  .btn-checkout:hover{background:#1d4ed8}
-  .trust-row{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;font-size:13px;color:var(--text-muted)}
-  .other-plans{background:var(--bg);border:1px solid var(--border);border-radius:8px;
-    padding:16px 20px;font-size:14px;color:var(--text-muted);margin-bottom:16px;line-height:1.6}
-  .other-plans strong{color:var(--text-primary)}
-  .other-plans a{color:var(--accent);font-weight:500}
+  /* ── Page shell ── */
+  .sub-page { max-width: 960px; margin: 0 auto; padding: 0 0 48px; }
+  .sub-head  { max-width: 560px; margin: 0 auto 28px; }
+
+  /* ── Three-plan grid ── */
+  .plans-grid {
+    display: flex;
+    gap: 18px;
+    align-items: stretch;
+    margin-bottom: 24px;
+  }
+  .sub-plan {
+    flex: 1;
+    min-width: 0;
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+    padding: 24px 22px 20px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+  .sub-plan.featured {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-md), 0 0 0 1px var(--accent);
+  }
+
+  /* ── Plan header ── */
+  .sub-plan-badge {
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    padding: 2px 10px;
+    border-radius: 999px;
+    margin-bottom: 10px;
+  }
+  .sub-plan h2 {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 4px;
+  }
+  .sub-plan-desc {
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin: 0 0 14px;
+  }
+
+  /* ── Pricing ── */
+  .sub-price-row { display: flex; align-items: baseline; gap: 5px; margin-bottom: 3px; }
+  .sub-price-big { font-size: 38px; font-weight: 700; color: var(--text-primary); line-height: 1; }
+  .sub-price-per { font-size: 15px; color: var(--text-muted); }
+  .sub-price-custom { font-size: 28px; font-weight: 700; color: var(--text-primary); line-height: 1; margin-bottom: 3px; }
+  .sub-price-annual { font-size: 12.5px; color: #059669; font-weight: 600; margin-bottom: 16px; }
+  .sub-price-note   { font-size: 12.5px; color: var(--text-muted); margin-bottom: 16px; }
+
+  /* ── Feature list ── */
+  .sub-features { list-style: none; padding: 0; margin: 0 0 20px; flex: 1; }
+  .sub-features li {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13.5px;
+    color: var(--text-primary);
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    line-height: 1.4;
+  }
+  .sub-features li:last-child { border-bottom: none; }
+  .sub-features li::before { content: "✓"; color: #16a34a; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+
+  /* ── CTAs ── */
+  .btn-checkout {
+    display: block;
+    width: 100%;
+    padding: 13px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    text-align: center;
+    box-sizing: border-box;
+    transition: background .15s;
+    font-family: inherit;
+  }
+  .btn-checkout:hover { background: var(--accent-hover); }
+  .btn-contact {
+    display: block;
+    text-align: center;
+    padding: 13px;
+    border-radius: 6px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+    background: var(--surface);
+    border: 2px solid var(--border-strong);
+    text-decoration: none;
+    transition: border-color .12s, background .12s;
+  }
+  .btn-contact:hover { border-color: var(--accent); background: var(--accent-light); text-decoration: none; color: var(--text-primary); }
+
+  /* ── Trust / footer ── */
+  .trust-row { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 14px; font-size: 12.5px; color: var(--text-muted); }
+  .sub-footer-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-size: 14px;
+    color: var(--text-muted);
+    line-height: 1.6;
+  }
+  .sub-footer-box a { color: var(--accent); }
+
+  /* ── Responsive ── */
+  @media (max-width: 760px) {
+    .plans-grid { flex-direction: column; }
+    .sub-plan { padding: 20px 18px 16px; }
+  }
+  @media (max-width: 480px) {
+    .sub-price-big { font-size: 32px; }
+  }
 </style>
 
-<div class="subscribe-wrap">
-  <h1 style="margin-bottom:6px">Upgrade to Pro</h1>
+<div class="sub-page">
 
-  {% if expired %}
-  <div style="background:#fee2e2;border:1px solid #ef4444;border-radius:6px;padding:12px 16px;margin-bottom:20px;color:#991b1b">
-    <strong>Your free trial has ended.</strong> Subscribe now to continue tracking government recompetes.
-  </div>
-  {% else %}
-  <p style="color:var(--text-muted);margin-bottom:24px">
-    Continue after your trial with full access to the contract intelligence platform.
-  </p>
-  {% endif %}
+  <div class="sub-head">
+    <h1 style="margin-bottom:6px">Choose your plan</h1>
 
-  <div class="plan-card">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <h2 style="margin:0;color:var(--text-primary)">Pro Plan</h2>
-      <span style="background:#dbeafe;color:#1e40af;font-size:12px;font-weight:bold;padding:3px 10px;border-radius:999px">MOST POPULAR</span>
+    {% if expired %}
+    <div style="background:#fee2e2;border:1px solid #ef4444;border-radius:6px;padding:12px 16px;margin-bottom:16px;color:#991b1b">
+      <strong>Your free trial has ended.</strong> Subscribe now to continue tracking government recompetes.
     </div>
-    <div class="price-row">
-      <span class="price-big">$49</span>
-      <span class="price-per">/ month</span>
+    {% else %}
+    <p style="color:var(--text-muted);margin-bottom:0">
+      All plans include a 14-day free trial. No credit card required to start.
+    </p>
+    {% endif %}
+  </div>
+
+  <div class="plans-grid">
+
+    {# ── Basic ── #}
+    <div class="sub-plan">
+      <h2>Basic</h2>
+      <p class="sub-plan-desc">Essential contract discovery for small BD teams just getting started with GovCon.</p>
+      <div class="sub-price-row">
+        <span class="sub-price-big">$29</span>
+        <span class="sub-price-per">/ month</span>
+      </div>
+      <div class="sub-price-annual">or $290/year &mdash; save $58</div>
+      <ul class="sub-features">
+        <li>Up to 50 tracked contracts</li>
+        <li>Weekly watchlist digest email</li>
+        <li>Recompete opportunity scoring</li>
+        <li>Search &amp; filter by agency, NAICS, state</li>
+        <li>Export to CSV</li>
+      </ul>
+      <a href="mailto:hello@recompete.us?subject=Basic%20plan%20inquiry" class="btn-contact">
+        Contact us for Basic &rarr;
+      </a>
+      <p style="font-size:12px;color:var(--text-faint);margin-top:10px;text-align:center">
+        We'll respond within one business day
+      </p>
     </div>
-    <div class="price-annual">or $490/year &mdash; save $98 (~2 months free)</div>
 
-    <ul class="feature-list">
-      <li>Unlimited contract tracking across all agencies</li>
-      <li>Daily watchlist expiry alerts by email</li>
-      <li>Recompete opportunity scoring on every contract</li>
-      <li>Agency &amp; vendor intelligence profiles</li>
-      <li>Saved searches and custom views</li>
-      <li>Export contracts to CSV</li>
-      <li>Contract notes and annotations</li>
-    </ul>
-
-    <form method="post" action="/create-checkout-session">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="btn-checkout">Subscribe now — $49/month</button>
-    </form>
-
-    <div class="trust-row">
-      <span>&#128274; Secure payment via Stripe</span>
-      <span>&#128274; Cancel anytime</span>
+    {# ── Pro (Stripe checkout) ── #}
+    <div class="sub-plan featured">
+      <span class="sub-plan-badge">Most Popular</span>
+      <h2>Pro</h2>
+      <p class="sub-plan-desc">Everything you need to build a winning GovCon pipeline from day one.</p>
+      <div class="sub-price-row">
+        <span class="sub-price-big">$49</span>
+        <span class="sub-price-per">/ month</span>
+      </div>
+      <div class="sub-price-annual">or $490/year &mdash; save $98 (~2 months free)</div>
+      <ul class="sub-features">
+        <li>Unlimited contract tracking across all agencies</li>
+        <li>Daily watchlist expiry alerts by email</li>
+        <li>Recompete opportunity scoring on every contract</li>
+        <li>Agency &amp; vendor intelligence profiles</li>
+        <li>Saved searches and custom views</li>
+        <li>Export contracts to CSV</li>
+        <li>Contract notes and annotations</li>
+      </ul>
+      <form method="post" action="/create-checkout-session" style="margin:0">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-checkout">Subscribe now — $49/month</button>
+      </form>
+      <div class="trust-row">
+        <span>&#128274; Secure payment via Stripe</span>
+        <span>&#128274; Cancel anytime</span>
+      </div>
     </div>
+
+    {# ── Enterprise ── #}
+    <div class="sub-plan">
+      <h2>Enterprise</h2>
+      <p class="sub-plan-desc">Pro features plus multi-user collaboration for growing BD teams and agencies.</p>
+      <div class="sub-price-custom">$149</div>
+      <div class="sub-price-annual">or $1,490/year &mdash; save $298 (~2 months free)</div>
+      <ul class="sub-features">
+        <li>Everything in Pro</li>
+        <li>Up to 5 team seats</li>
+        <li>Shared team watchlists</li>
+        <li>Custom agency &amp; NAICS profiles</li>
+        <li>Priority email support</li>
+      </ul>
+      <a href="mailto:hello@recompete.us?subject=Enterprise%20plan%20inquiry" class="btn-contact">
+        Contact sales &rarr;
+      </a>
+      <p style="font-size:12px;color:var(--text-faint);margin-top:10px;text-align:center">
+        Custom onboarding &middot; volume discounts available
+      </p>
+    </div>
+
+  </div>{# /plans-grid #}
+
+  <div class="sub-footer-box">
+    <strong style="color:var(--text-primary)">Questions?</strong>
+    <a href="/demo">Request a demo</a> or email
+    <a href="mailto:hello@recompete.us">hello@recompete.us</a> — we respond within one business day.
+    {# Platform handoff: Basic and Enterprise Stripe checkout requires
+       lane/platform to add price IDs and a plan param to /create-checkout-session. #}
   </div>
 
-  <div class="other-plans">
-    <strong>Looking for Basic or Enterprise?</strong>
-    Email us at <a href="mailto:hello@recompete.us?subject=Plan%20inquiry">hello@recompete.us</a>
-    and we'll get you set up on the right plan.
-    {# Platform handoff: Basic ($29/mo) and Enterprise ($149/mo) plan checkout wiring
-       requires Stripe price IDs and /create-checkout-session plan param — lane/platform. #}
-  </div>
-
-  <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:16px 20px;font-size:14px;color:#166534">
-    <strong>Questions?</strong>
-    <a href="/demo" style="color:#15803d">Request a demo</a> or email
-    <a href="mailto:hello@recompete.us" style="color:#15803d">hello@recompete.us</a>.
-  </div>
-</div>
+</div>{# /sub-page #}
 {% endblock %}
