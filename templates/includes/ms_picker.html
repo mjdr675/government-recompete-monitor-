@@ -1,0 +1,264 @@
+{# ── Multi-select picker: CSS + JS ────────────────────────────────────── #}
+{# Include this once per page that uses .ms-picker components.              #}
+<style>
+/* ── picker container ── */
+.ms-picker {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+}
+
+/* ── trigger button ── */
+.ms-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text-primary);
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+.ms-trigger:hover,
+.ms-trigger[aria-expanded="true"] {
+  border-color: var(--accent);
+  outline: none;
+}
+.ms-trigger svg { flex-shrink: 0; color: var(--text-muted); transition: transform 0.15s; }
+.ms-trigger[aria-expanded="true"] svg { transform: rotate(180deg); }
+
+/* ── dropdown panel ── */
+.ms-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  max-height: 280px;
+}
+.ms-dropdown[hidden] { display: none; }
+
+/* ── search inside dropdown ── */
+.ms-search-wrap {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.ms-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+.ms-search:focus { outline: 2px solid var(--accent-ring, rgba(37,99,235,0.15)); border-color: var(--accent); }
+
+/* ── scrollable option list ── */
+.ms-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px 0;
+}
+.ms-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text-primary);
+  transition: background 0.1s;
+  user-select: none;
+}
+.ms-option:hover { background: var(--accent-light, rgba(37,99,235,0.07)); }
+.ms-option input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.ms-option.ms-hidden { display: none; }
+
+/* ── chips row ── */
+.ms-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.ms-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: var(--accent-light, rgba(37,99,235,0.1));
+  color: var(--accent);
+  border: 1px solid var(--accent-ring, rgba(37,99,235,0.3));
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.ms-chip-remove {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  opacity: 0.7;
+}
+.ms-chip-remove:hover { opacity: 1; }
+</style>
+
+<script>
+(function () {
+  'use strict';
+
+  function initPicker(pickerEl) {
+    var nativeId = pickerEl.getAttribute('data-native');
+    var nativeSelect = document.getElementById(nativeId);
+    if (!nativeSelect) return;
+
+    var trigger     = pickerEl.querySelector('.ms-trigger');
+    var trigLabel   = pickerEl.querySelector('.ms-trigger-label');
+    var dropdown    = pickerEl.querySelector('.ms-dropdown');
+    var searchInput = pickerEl.querySelector('.ms-search');
+    var listEl      = pickerEl.querySelector('.ms-list');
+    var chipsEl     = pickerEl.querySelector('.ms-chips');
+
+    // Build checkbox rows from native select options
+    Array.from(nativeSelect.options).forEach(function (opt) {
+      var row = document.createElement('label');
+      row.className = 'ms-option';
+      row.dataset.value = opt.value;
+      row.dataset.label = opt.text;
+
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = opt.value;
+      cb.checked = opt.selected;
+      cb.setAttribute('aria-label', opt.text);
+
+      cb.addEventListener('change', function () {
+        opt.selected = cb.checked;
+        renderChips();
+        updateTriggerLabel();
+      });
+
+      row.appendChild(cb);
+      row.appendChild(document.createTextNode(opt.text));
+      listEl.appendChild(row);
+    });
+
+    // Search filter
+    searchInput.addEventListener('input', function () {
+      var q = searchInput.value.toLowerCase();
+      listEl.querySelectorAll('.ms-option').forEach(function (row) {
+        row.classList.toggle('ms-hidden', !row.dataset.label.toLowerCase().includes(q));
+      });
+    });
+
+    // Open / close
+    trigger.addEventListener('click', function () {
+      var open = !dropdown.hidden;
+      dropdown.hidden = open;
+      trigger.setAttribute('aria-expanded', String(!open));
+      if (!open) {
+        searchInput.value = '';
+        listEl.querySelectorAll('.ms-option').forEach(function (r) { r.classList.remove('ms-hidden'); });
+        searchInput.focus();
+      }
+    });
+
+    // Close on outside click
+    document.addEventListener('click', function (e) {
+      if (!pickerEl.contains(e.target)) {
+        dropdown.hidden = true;
+        trigger.setAttribute('aria-expanded', 'false');
+      }
+    });
+
+    // Close on Escape
+    pickerEl.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        dropdown.hidden = true;
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.focus();
+      }
+    });
+
+    function renderChips() {
+      chipsEl.innerHTML = '';
+      Array.from(nativeSelect.options).forEach(function (opt) {
+        if (!opt.selected) return;
+        var chip = document.createElement('span');
+        chip.className = 'ms-chip';
+
+        chip.appendChild(document.createTextNode(opt.text));
+
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'ms-chip-remove';
+        btn.setAttribute('aria-label', 'Remove ' + opt.text);
+        btn.innerHTML = '&times;';
+        btn.addEventListener('click', function () {
+          opt.selected = false;
+          var cb = listEl.querySelector('input[value="' + CSS.escape(opt.value) + '"]');
+          if (cb) cb.checked = false;
+          renderChips();
+          updateTriggerLabel();
+        });
+
+        chip.appendChild(btn);
+        chipsEl.appendChild(chip);
+      });
+    }
+
+    function updateTriggerLabel() {
+      var count = Array.from(nativeSelect.options).filter(function (o) { return o.selected; }).length;
+      var defaultLabel = nativeSelect.id.indexOf('state') !== -1 ? 'Select states' : 'Select agencies';
+      trigLabel.textContent = count === 0 ? defaultLabel : count + ' selected';
+    }
+
+    renderChips();
+    updateTriggerLabel();
+  }
+
+  function init() {
+    document.querySelectorAll('.ms-picker').forEach(function (pickerEl) {
+      var nativeId = pickerEl.getAttribute('data-native');
+      var nativeSelect = document.getElementById(nativeId);
+      if (nativeSelect) nativeSelect.style.display = 'none';
+      pickerEl.style.display = 'block';
+      initPicker(pickerEl);
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+}());
+</script>

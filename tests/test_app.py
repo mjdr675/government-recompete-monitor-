@@ -522,7 +522,9 @@ def test_dashboard_shows_total_pipeline(client):
 def test_dashboard_shows_total_contracts(client):
     rv = client.get("/dashboard")
     body = rv.data.decode()
-    assert "Total Contracts" in body
+    # Without a company profile the KPI label is "Available Contracts";
+    # with a profile/vendor match it becomes "My Current Contracts".
+    assert "Available Contracts" in body or "My Current Contracts" in body
 
 
 def test_dashboard_shows_critical_section(client):

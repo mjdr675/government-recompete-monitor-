@@ -114,13 +114,25 @@
         </label>
       </div>
       <div id="states-section" style="display:{{ 'block' if geo == 'states' else 'none' }}">
-        <div class="muted" style="font-size:12px;margin-bottom:6px">Hold Ctrl / Cmd to select multiple states.</div>
-        <select name="states" multiple size="8"
+        <select name="states" multiple id="ob-states-native" class="picker-native-fallback" size="8"
                 style="width:100%;max-width:420px;padding:4px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:13px">
           {% for code, name in us_states %}
           <option value="{{ code }}" {{ 'selected' if ob.states and code in ob.states }}>{{ name }} ({{ code }})</option>
           {% endfor %}
         </select>
+        <div class="ms-picker" data-native="ob-states-native" style="display:none">
+          <button type="button" class="ms-trigger" aria-haspopup="listbox" aria-expanded="false">
+            <span class="ms-trigger-label">Select states</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="ms-dropdown" role="listbox" aria-multiselectable="true" hidden>
+            <div class="ms-search-wrap">
+              <input type="text" class="ms-search" placeholder="Search states…" autocomplete="off" aria-label="Search states">
+            </div>
+            <div class="ms-list"></div>
+          </div>
+          <div class="ms-chips" aria-label="Selected states"></div>
+        </div>
       </div>
     </div>
 
@@ -169,14 +181,26 @@
 
     {% if all_agencies %}
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
-      <h2 style="margin-top:0;margin-bottom:4px;font-size:14px;font-weight:600">Preferred Agencies <span class="muted" style="font-weight:400">(optional)</span></h2>
-      <div class="muted" style="font-size:12px;margin-bottom:8px">Hold Ctrl / Cmd to select multiple. Leave blank to see all agencies.</div>
-      <select name="agencies" multiple size="6"
+      <h2 style="margin-top:0;margin-bottom:8px;font-size:14px;font-weight:600">Preferred Agencies <span class="muted" style="font-weight:400">(optional)</span></h2>
+      <select name="agencies" multiple id="ob-agencies-native" class="picker-native-fallback" size="6"
               style="width:100%;padding:4px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:13px">
         {% for a in all_agencies %}
         <option value="{{ a }}">{{ a }}</option>
         {% endfor %}
       </select>
+      <div class="ms-picker" data-native="ob-agencies-native" style="display:none">
+        <button type="button" class="ms-trigger" aria-haspopup="listbox" aria-expanded="false">
+          <span class="ms-trigger-label">Select agencies</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="ms-dropdown" role="listbox" aria-multiselectable="true" hidden>
+          <div class="ms-search-wrap">
+            <input type="text" class="ms-search" placeholder="Search agencies…" autocomplete="off" aria-label="Search agencies">
+          </div>
+          <div class="ms-list"></div>
+        </div>
+        <div class="ms-chips" aria-label="Selected agencies"></div>
+      </div>
     </div>
     {% endif %}
 
@@ -200,4 +224,5 @@
   {% endif %}
 
 </div>
+{% include "includes/ms_picker.html" %}
 {% endblock %}
