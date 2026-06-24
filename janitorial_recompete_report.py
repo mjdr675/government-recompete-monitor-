@@ -40,7 +40,13 @@ def fetch_contracts():
         payload = {
             "filters": {
                 "award_type_codes": ["A", "B", "C", "D"],
-                "naics_codes": ["561720"]
+                "time_period": [
+                    {
+                        "start_date": TODAY.isoformat(),
+                        "end_date": CUTOFF.isoformat(),
+                        "date_type": "end_date",
+                    }
+                ],
             },
             "fields": [
                 "Award ID",
@@ -51,12 +57,13 @@ def fetch_contracts():
                 "Awarding Agency",
                 "Awarding Sub Agency",
                 "Description",
-                "generated_internal_id"
+                "generated_internal_id",
+                "NAICS Code",
             ],
             "page": page,
             "limit": 100,
-            "sort": "Start Date",
-            "order": "desc"
+            "sort": "Award Amount",
+            "order": "desc",
         }
 
         for attempt in range(1, 4):
@@ -112,13 +119,6 @@ def priority(score):
     return "CRITICAL" if score >= 90 else "HIGH" if score >= 75 else "MEDIUM" if score >= 60 else "LOW"
 
 def enrichment_award_id(row):
-    """Return the USAspending award identifier used for detail enrichment.
-
-    USAspending's search endpoint returns the award id as ``generated_internal_id``
-    (e.g. ``CONT_AWD_...``), which is also what the award-detail URL expects. The
-    ingest only ever populates that field, so prefer ``internal_id`` (kept for
-    compatibility / future sources) and fall back to ``generated_internal_id``.
-    """
     return row.get("internal_id") or row.get("generated_internal_id")
 
 def should_enrich(row):
@@ -194,6 +194,7 @@ def main():
                 "agency": c.get("Awarding Agency"),
                 "sub_agency": c.get("Awarding Sub Agency"),
                 "description": c.get("Description", ""),
+                "naics_code": c.get("NAICS Code", ""),
                 "generated_internal_id": c.get("generated_internal_id"),
                 "internal_id": c.get("internal_id"),
                 "solicitation_id": "",
@@ -238,7 +239,7 @@ def main():
     fields = [
         "recompete_score", "priority", "score", "days_remaining", "contract", "vendor", "value",
         "start_date", "end_date", "agency", "sub_agency",
-        "description", "generated_internal_id", "internal_id",
+        "description", "naics_code", "generated_internal_id", "internal_id",
         "solicitation_id", "awarding_office", "funding_office",
         "recipient_uei", "recipient_city", "recipient_state",
         "recipient_country", "recipient_address", "recipient_zip",
@@ -272,17 +273,11 @@ def main():
         ]:
             row.setdefault(field, "")
 
-    with open("janitorial_recompete_report.csv", "w", newline="") as f:
+    with open("recompete_report.csv", "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
         writer.writerows(rows)
 
-    # Persist to the database so the scheduled run_ingest task actually updates
-    # the contracts the app serves — previously this script only wrote a CSV, so
-    # the nightly ingest fetched data but never touched the DB. save_snapshot()
-    # is idempotent (upsert by internal_id + UNIQUE(run_date, internal_id)) and
-    # calls init_db() itself, so the job is safe to rerun. detect_changes() is
-    # likewise idempotent for the run_date (it clears that date's changes first).
     run_date = str(TODAY)
     save_snapshot(run_date, rows)
     detect_changes(run_date)
