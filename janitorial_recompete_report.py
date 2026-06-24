@@ -43,6 +43,13 @@ def fetch_contracts():
         payload = {
             "filters": {
                 "award_type_codes": ["A", "B", "C", "D"],
+                "time_period": [
+                    {
+                        "start_date": TODAY.isoformat(),
+                        "end_date": CUTOFF.isoformat(),
+                        "date_type": "end_date",
+                    }
+                ],
             },
             "fields": [
                 "Award ID",
@@ -58,8 +65,8 @@ def fetch_contracts():
             ],
             "page": page,
             "limit": 100,
-            "sort": "End Date",
-            "order": "asc",  # soonest expiring first
+            "sort": "Award Amount",
+            "order": "desc",
         }
 
         success = False
@@ -86,13 +93,11 @@ def fetch_contracts():
 
         for c in results:
             end = parse_date(c.get("End Date"))
-            if not end:
-                continue
-            if end < TODAY or end > CUTOFF:
+            if not end or not (TODAY <= end <= CUTOFF):
                 continue
             amount = money(c.get("Award Amount"))
             if amount > MAX_CONTRACT_VALUE:
-                continue  # skip contracts too large for target market
+                continue
             out.append(c)
 
         if not data.get("page_metadata", {}).get("hasNext"):
