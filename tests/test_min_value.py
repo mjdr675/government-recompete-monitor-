@@ -18,21 +18,21 @@ def test_db(tmp_path):
     with db_module.connect() as con:
         con.execute(
             "INSERT INTO contracts "
-            "(internal_id, award_id, vendor, agency, value, end_date, priority, recompete_score) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            ("ID001", "AWARD-001", "Acme Corp", "DOD", 500_000, "2025-12-31", "HIGH", 80),
+            "(internal_id, award_id, vendor, agency, value, end_date, days_remaining, priority, recompete_score) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("ID001", "AWARD-001", "Acme Corp", "DOD", 500_000, "2025-12-31", 0, "HIGH", 80),
         )
         con.execute(
             "INSERT INTO contracts "
-            "(internal_id, award_id, vendor, agency, value, end_date, priority, recompete_score) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            ("ID002", "AWARD-002", "Beta LLC", "DHS", 1_000_000, "2026-06-30", "CRITICAL", 90),
+            "(internal_id, award_id, vendor, agency, value, end_date, days_remaining, priority, recompete_score) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("ID002", "AWARD-002", "Beta LLC", "DHS", 1_000_000, "2026-06-30", 6, "CRITICAL", 90),
         )
         con.execute(
             "INSERT INTO contracts "
-            "(internal_id, award_id, vendor, agency, value, end_date, priority, recompete_score) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            ("ID003", "AWARD-003", "Gamma Inc", "DOE", 5_000_000, "2027-01-01", "CRITICAL", 95),
+            "(internal_id, award_id, vendor, agency, value, end_date, days_remaining, priority, recompete_score) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("ID003", "AWARD-003", "Gamma Inc", "DOE", 5_000_000, "2027-01-01", 191, "CRITICAL", 95),
         )
         con.commit()
     yield db_path
