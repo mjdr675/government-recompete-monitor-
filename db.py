@@ -120,6 +120,10 @@ _MIGRATION_PROBES: dict = {
         "SELECT COUNT(*) FROM information_schema.columns "
         "WHERE table_name = 'workspaces' AND column_name = 'subscription_status'"
     ),
+    "015_feedback_and_billing_interval.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'feedback_submissions'"
+    ),
 }
 
 
@@ -637,6 +641,25 @@ def init_db():
         )
         """))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_workspace_billing_events_ws ON workspace_billing_events(workspace_id)"))
+        for col in (
+            "billing_interval TEXT NOT NULL DEFAULT 'monthly'",
+        ):
+            try:
+                conn.execute(text(f"ALTER TABLE workspaces ADD COLUMN {col}"))
+            except Exception:
+                pass
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS feedback_submissions (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            email       TEXT,
+            subject     TEXT NOT NULL,
+            body        TEXT NOT NULL,
+            status      TEXT NOT NULL DEFAULT 'new',
+            created_at  TEXT NOT NULL
+        )
+        """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback_submissions(status)"))
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS opportunities (
             id                    INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -934,7 +957,11 @@ def list_workspace_members(workspace_id):
 
 
 TRIAL_DAYS = 7
-VALID_PLANS = ("starter", "growth", "pro")
+# Active plans offered to new subscribers (basic/pro/enterprise).
+# Legacy values starter/growth may still exist on older rows; treat them as
+# valid when reading but don't surface them in the UI plan picker.
+VALID_PLANS = ("basic", "pro", "enterprise")
+_LEGACY_PLAN_ALIASES = {"starter": "basic", "growth": "pro"}
 
 
 def create_workspace_billing_record(workspace_id, trial_days=TRIAL_DAYS):
@@ -1723,6 +1750,58 @@ def list_contract_states(engine=None):
             " ORDER BY place_of_performance_state"
         )).fetchall()
     return [r[0] for r in rows]
+
+
+def find_contract_by_award_id(award_id: str) -> dict | None:
+    """Look up a contract by its user-facing award_id / PIID.
+
+    Returns the minimal fields needed to add it to a watchlist, or None if not found.
+    Case-insensitive and strips whitespace so users don't have to be precise.
+    """
+    if not award_id:
+        return None
+    normalized = award_id.strip().upper()
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = conn.execute(
+            text(
+                "SELECT internal_id, award_id, vendor, agency, value, end_date, days_remaining"
+                " FROM contracts WHERE UPPER(award_id) = :aid LIMIT 1"
+            ),
+            {"aid": normalized},
+        ).mappings().fetchone()
+    return dict(row) if row else None
+
+
+def submit_feedback(subject: str, body: str, user_id: int | None = None, email: str | None = None) -> int:
+    """Store a feedback/contact submission. Returns the new row id."""
+    now = datetime.now(timezone.utc).isoformat()
+    engine = get_engine()
+    with engine.begin() as conn:
+        result = conn.execute(
+            text(
+                "INSERT INTO feedback_submissions (user_id, email, subject, body, status, created_at)"
+                " VALUES (:uid, :email, :subject, :body, 'new', :now)"
+            ),
+            {"uid": user_id, "email": email, "subject": subject, "body": body, "now": now},
+        )
+        return result.lastrowid
+
+
+def get_feedback_submissions(status: str | None = None, limit: int = 100) -> list[dict]:
+    """Return feedback submissions for admin review, newest first."""
+    engine = get_engine()
+    where = "WHERE status = :status" if status else ""
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                f"SELECT id, user_id, email, subject, body, status, created_at"
+                f" FROM feedback_submissions {where}"
+                f" ORDER BY created_at DESC LIMIT :lim"
+            ),
+            {"status": status, "lim": limit} if status else {"lim": limit},
+        ).mappings().fetchall()
+    return [dict(r) for r in rows]
 
 
 def list_saved_searches(user_id):

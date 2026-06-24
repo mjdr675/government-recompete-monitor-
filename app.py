@@ -68,6 +68,9 @@ from db import (
     record_workspace_billing_event,
     is_workspace_in_trial,
     get_workspace_by_stripe_customer,
+    find_contract_by_award_id,
+    submit_feedback,
+    get_feedback_submissions,
 )
 from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
@@ -138,9 +141,57 @@ UNIFIED_ACCESS_ENABLED = os.getenv("UNIFIED_ACCESS_ENABLED", "").lower() in ("1"
 STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
 STRIPE_PRICE_ID_YEARLY = os.getenv("STRIPE_PRICE_ID_YEARLY")
 STRIPE_PRICE_IDS = {
+    "basic":      os.getenv("STRIPE_PRICE_ID_BASIC", ""),
+    "pro":        os.getenv("STRIPE_PRICE_ID_PRO", ""),
+    "enterprise": os.getenv("STRIPE_PRICE_ID_ENTERPRISE", ""),
+    # Legacy aliases kept so existing webhook events referencing old plan names still resolve.
     "starter": os.getenv("STRIPE_PRICE_ID_STARTER", ""),
-    "growth": os.getenv("STRIPE_PRICE_ID_GROWTH", ""),
-    "pro": os.getenv("STRIPE_PRICE_ID_PRO", ""),
+    "growth":  os.getenv("STRIPE_PRICE_ID_GROWTH", ""),
+}
+STRIPE_PRICE_IDS_YEARLY = {
+    "basic":      os.getenv("STRIPE_PRICE_ID_BASIC_YEARLY", ""),
+    "pro":        os.getenv("STRIPE_PRICE_ID_PRO_YEARLY", ""),
+    "enterprise": os.getenv("STRIPE_PRICE_ID_ENTERPRISE_YEARLY", ""),
+}
+
+# Canonical plan definitions used by the billing UI and checkout logic.
+# UI lane reads this to render pricing cards; Platform owns the truth here.
+PLAN_CATALOG = {
+    "basic": {
+        "name": "Basic",
+        "max_seats": 1,
+        "price_monthly": 49,
+        "price_yearly": 470,   # ~20 % discount vs monthly
+        "features": [
+            "Contract monitoring",
+            "Watchlist up to 25 contracts",
+            "Email alerts",
+        ],
+    },
+    "pro": {
+        "name": "Pro",
+        "max_seats": 1,
+        "price_monthly": 99,
+        "price_yearly": 950,
+        "features": [
+            "Everything in Basic",
+            "Unlimited watchlist",
+            "Pipeline & opportunity tracking",
+            "AI contract summaries",
+        ],
+    },
+    "enterprise": {
+        "name": "Enterprise",
+        "max_seats": 5,
+        "price_monthly": 299,
+        "price_yearly": 2870,
+        "features": [
+            "Everything in Pro",
+            "Up to 5 team members",
+            "Priority support",
+            "Custom onboarding",
+        ],
+    },
 }
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("RAILWAY_ENVIRONMENT") == "production"
@@ -319,9 +370,11 @@ _PUBLIC_PATHS = frozenset({
     "/stripe/webhook",
     "/watchlist/add",
     "/watchlist/remove",
+    "/watchlist/add-by-award-id",
     "/searches/save",
     "/api/data-freshness",
     "/ingest/run",
+    "/feedback",
 })
 
 
@@ -474,6 +527,29 @@ def inject_trial_info():
         return {"trial_days_remaining": max(0, days)}
     except (ValueError, TypeError):
         return {"trial_days_remaining": None}
+
+
+@app.context_processor
+def inject_company_name():
+    """Expose company_name as a top-level template variable for branding."""
+    user = g.get("user")
+    return {"company_name": (user or {}).get("company_name") or ""}
+
+
+@app.context_processor
+def inject_plan_catalog():
+    """Expose plan catalog and current workspace plan to all templates."""
+    user = g.get("user")
+    workspace_plan = None
+    if user:
+        try:
+            ws = get_workspace_for_user(user["id"])
+            if ws:
+                billing = get_workspace_billing(ws["id"])
+                workspace_plan = (billing or {}).get("plan")
+        except Exception:
+            pass
+    return {"plan_catalog": PLAN_CATALOG, "workspace_plan": workspace_plan}
 
 
 @app.route("/health")
@@ -1488,6 +1564,90 @@ def watchlist():
     return render_template("watchlist.html", contracts=contracts, count=len(contracts))
 
 
+@app.route("/watchlist/add-by-award-id", methods=["POST"])
+@csrf.exempt
+def watchlist_add_by_award_id():
+    """Add a contract to the watchlist by user-facing award_id / PIID.
+
+    Accepts JSON {"award_id": "..."} or form field award_id.
+    Looks up the internal_id in the contracts table, then delegates to the
+    same user_watchlist insert used by watchlist_add.
+    """
+    if not g.user:
+        return jsonify({"error": "login required"}), 401
+    payload = request.get_json(silent=True) or {}
+    award_id = (payload.get("award_id") or request.form.get("award_id", "")).strip()
+    if not award_id:
+        return jsonify({"ok": False, "error": "award_id required"}), 400
+    contract = find_contract_by_award_id(award_id)
+    if not contract:
+        return jsonify({"ok": False, "error": "contract not found", "award_id": award_id}), 404
+    internal_id = contract["internal_id"]
+    now = datetime.now(timezone.utc).isoformat()
+    engine = get_engine()
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text("INSERT INTO user_watchlist (user_id, internal_id, added_at) VALUES (:uid, :iid, :ts)"),
+                {"uid": g.user["id"], "iid": internal_id, "ts": now},
+            )
+        return jsonify({"ok": True, "internal_id": internal_id, "vendor": contract.get("vendor")})
+    except IntegrityError:
+        return jsonify({"ok": True, "already": True, "internal_id": internal_id})
+
+
+@app.route("/feedback", methods=["GET", "POST"])
+def feedback():
+    """Contact / Help / Feedback form.
+
+    GET  → renders the feedback form (template owned by UI lane).
+    POST → stores submission to DB; returns JSON for AJAX or redirects for form POST.
+    Accessible without login; authenticated users get email pre-filled.
+    """
+    user = g.get("user")
+    if request.method == "GET":
+        return render_template(
+            "feedback.html",
+            prefill_email=(user or {}).get("email", ""),
+        )
+    subject = request.form.get("subject", "").strip() or (request.get_json(silent=True) or {}).get("subject", "").strip()
+    body = request.form.get("body", "").strip() or (request.get_json(silent=True) or {}).get("body", "").strip()
+    email = (request.form.get("email", "") or (request.get_json(silent=True) or {}).get("email", "")).strip()
+    if not user:
+        email = email
+    else:
+        email = email or user["email"]
+    if not subject or not body:
+        if request.is_json:
+            return jsonify({"ok": False, "error": "subject and body required"}), 400
+        flash("Please fill in both subject and message.", "error")
+        return redirect(url_for("feedback"))
+    submit_feedback(
+        subject=subject,
+        body=body,
+        user_id=user["id"] if user else None,
+        email=email or None,
+    )
+    if request.is_json:
+        return jsonify({"ok": True})
+    flash("Thanks — we'll be in touch soon.", "success")
+    return redirect(url_for("feedback"))
+
+
+@app.route("/admin/feedback")
+def admin_feedback():
+    """Admin-only view of feedback submissions."""
+    user = g.get("user")
+    if not user:
+        return redirect(url_for("auth.login"))
+    admin_emails = {e.strip() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()}
+    if admin_emails and user["email"] not in admin_emails:
+        return "Forbidden", 403
+    status_filter = request.args.get("status")
+    submissions = get_feedback_submissions(status=status_filter or None)
+    return render_template("admin_feedback.html", submissions=submissions, status_filter=status_filter)
+
+
 def _safe_redirect(fallback="/pipeline"):
     ref = request.referrer or ""
     if ref.startswith(request.host_url):
@@ -2023,17 +2183,20 @@ def create_workspace_stripe_customer(workspace):
     return customer["id"]
 
 
-def create_workspace_checkout_session(workspace, plan):
-    price_id = STRIPE_PRICE_IDS.get(plan)
+def create_workspace_checkout_session(workspace, plan, billing_interval="monthly"):
+    if billing_interval == "yearly":
+        price_id = STRIPE_PRICE_IDS_YEARLY.get(plan) or STRIPE_PRICE_IDS.get(plan)
+    else:
+        price_id = STRIPE_PRICE_IDS.get(plan)
     if not price_id:
-        raise ValueError(f"No Stripe price configured for plan '{plan}'")
+        raise ValueError(f"No Stripe price configured for plan '{plan}' ({billing_interval})")
     customer_id = create_workspace_stripe_customer(workspace)
     return stripe.checkout.Session.create(
         mode="subscription",
         customer=customer_id,
         client_reference_id=str(workspace["id"]),
         line_items=[{"price": price_id, "quantity": 1}],
-        metadata={"workspace_id": str(workspace["id"]), "plan": plan},
+        metadata={"workspace_id": str(workspace["id"]), "plan": plan, "billing_interval": billing_interval},
         success_url=url_for("settings_billing", _external=True) + "?upgraded=1",
         cancel_url=url_for("settings_billing", _external=True),
     )
@@ -2084,11 +2247,14 @@ def settings_billing():
             error = "No billing account yet. Choose a plan to get started."
         elif action == "upgrade":
             plan = request.form.get("plan", "")
+            billing_interval = request.form.get("billing_interval", "monthly")
+            if billing_interval not in ("monthly", "yearly"):
+                billing_interval = "monthly"
             if plan not in VALID_PLANS:
                 error = "Unknown plan."
             else:
                 try:
-                    checkout = create_workspace_checkout_session(workspace, plan)
+                    checkout = create_workspace_checkout_session(workspace, plan, billing_interval)
                     return redirect(checkout.url, code=303)
                 except Exception as exc:
                     sentry_sdk.capture_exception(exc)
@@ -2101,6 +2267,7 @@ def settings_billing():
         workspace=workspace,
         billing=billing,
         plans=VALID_PLANS,
+        plan_catalog=PLAN_CATALOG,
         in_trial=is_workspace_in_trial(workspace["id"]),
         trial_days_remaining=_workspace_trial_days_remaining(billing),
         active=is_workspace_active(workspace["id"]),
