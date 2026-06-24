@@ -76,6 +76,23 @@
   {% if row["priority"] %}<span class="priority-badge priority-{{ row['priority'].lower() }}">{{ row["priority"] }}</span> (score {{ row["recompete_score"] or "—" }}){% else %}<span class="muted">Not scored</span>{% endif %}
 </div>
 
+{# ── How to apply CTA — apply-window stage + link to the per-contract guide ── #}
+{% set stage_color = {
+  "too_late": "#dc2626",
+  "submit_now": "#d97706",
+  "prepare": "#059669",
+  "research": "var(--accent)",
+  "watch": "var(--text-muted)",
+  "unknown": "var(--text-muted)"
+} %}
+<div style="margin-top:12px;padding:16px 18px;background:var(--surface);border:1px solid var(--border);border-left:4px solid {{ stage_color.get(stage_key, 'var(--accent)') }};border-radius:var(--radius-sm);line-height:1.6;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+  <div style="flex:1;min-width:240px">
+    <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:{{ stage_color.get(stage_key, 'var(--accent)') }};margin-bottom:4px">{{ stage_label }}</div>
+    <div style="font-size:14px;color:var(--text-muted)">{{ stage_detail }}</div>
+  </div>
+  <a href="/contract/{{ row['internal_id'] }}/apply" class="btn btn-primary" style="font-size:14px;padding:9px 18px;white-space:nowrap">How to apply &rarr;</a>
+</div>
+
 {% if row.get("description") %}
 <div style="margin-top:12px;padding:14px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);line-height:1.6">
   <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Contract Description</div>
