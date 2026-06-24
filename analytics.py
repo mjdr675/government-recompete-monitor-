@@ -463,8 +463,12 @@ def my_contracts_summary(user_id):
 def _vendor_match_term(profile):
     """Return the best available match term for the user's company in the contracts table.
 
-    Prefers vendor_name (the exact field the user filled in), falls back to
-    company_name. Returns None if neither is set.
+    Prefers vendor_name, falls back to company_name. Returns None if neither is set.
+
+    UEI / CAGE Code fields are stored on the profile but not yet used here because
+    the contracts table has no recipient_uei / cage_code columns. When those columns
+    are added, activate matching by checking profile.get("uei") first, then
+    profile.get("cage_code"), before falling through to the vendor_name substring search.
     """
     if not profile:
         return None

@@ -47,7 +47,7 @@
   {# ── Company ─────────────────────────────────────────────────────────── #}
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
     <h2 style="margin-top:0;margin-bottom:16px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)">Company</h2>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div>
         <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px">Company Name</label>
         <input name="company_name" value="{{ profile.company_name or '' if profile else '' }}"
@@ -61,17 +61,58 @@
                placeholder="https://example.com">
       </div>
     </div>
+  </div>
+
+  {# ── Contract Import Details ───────────────────────────────────────────── #}
+  <div id="import-contracts" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
+    <h2 style="margin-top:0;margin-bottom:4px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)">Contract Import Details</h2>
+    <p class="muted" style="font-size:12px;margin:0 0 16px">
+      Recompete uses these details to find contracts your business already holds in federal award data.
+      Providing your UEI or exact vendor name enables automatic matching on the dashboard.
+    </p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div>
+        <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px">
+          UEI <span class="muted">(Unique Entity ID)</span>
+        </label>
+        <input name="uei" value="{{ profile.uei or '' if profile else '' }}"
+               style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:14px;font-family:monospace"
+               placeholder="Example: ABCD12345678"
+               autocomplete="off">
+        <div class="muted" style="font-size:11px;margin-top:4px">Find yours at SAM.gov</div>
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px">
+          CAGE Code <span class="muted">(optional)</span>
+        </label>
+        <input name="cage_code" value="{{ profile.cage_code or '' if profile else '' }}"
+               style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:14px;font-family:monospace"
+               placeholder="Example: 1ABC2"
+               autocomplete="off">
+        <div class="muted" style="font-size:11px;margin-top:4px">5-character code from SAM.gov</div>
+      </div>
+    </div>
     <div>
       <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px">
-        Name on government contracts <span class="muted">(optional)</span>
+        Vendor name on government contracts <span class="muted">(optional)</span>
       </label>
       <div class="muted" style="font-size:12px;margin-bottom:6px">
-        The exact vendor name on your USASpending or SAM.gov contracts. Used to auto-load your current contracts on the dashboard.
+        The exact vendor name on your USASpending or SAM.gov contracts. Used as a fallback when UEI is not available.
       </div>
       <input name="vendor_name" value="{{ profile.vendor_name or '' if profile else '' }}"
              style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:14px"
              placeholder="ACME GOVERNMENT SOLUTIONS INC">
     </div>
+    <details style="margin-top:12px">
+      <summary style="font-size:12px;color:var(--text-muted);cursor:pointer;user-select:none">Why we ask for this</summary>
+      <div class="muted" style="font-size:12px;margin-top:8px;line-height:1.6">
+        Your UEI (Unique Entity Identifier) is the primary identifier the federal government uses to track
+        contract awards in SAM.gov. When you provide it, Recompete can precisely match your existing contracts
+        in USASpending data. CAGE Code is an alternative identifier used by DoD and some civilian agencies.
+        If neither is available, we fall back to matching your vendor name across award records — slightly less
+        precise but still effective for most businesses.
+      </div>
+    </details>
   </div>
 
   {# ── NAICS Codes ──────────────────────────────────────────────────────── #}

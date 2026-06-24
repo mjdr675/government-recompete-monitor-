@@ -86,3 +86,44 @@ class TestDashboardAlwaysVisible:
     def test_ingest_link_shown_when_no_contracts(self, client):
         resp = client.get("/dashboard")
         assert b"Ingest data" in resp.data
+
+
+class TestContractImportCTA:
+    def test_shows_import_cta_when_no_profile(self, client):
+        resp = client.get("/dashboard")
+        body = resp.get_data(as_text=True)
+        assert "Import" in body
+        assert "import-contracts" in body
+
+    def test_import_cta_links_to_profile_anchor(self, client):
+        resp = client.get("/dashboard")
+        body = resp.get_data(as_text=True)
+        assert "/company-profile#import-contracts" in body
+
+    def test_import_cta_when_profile_has_no_identifiers(self, client, tmp_db):
+        from db import save_company_profile
+        import sqlite3
+        con = sqlite3.connect(tmp_db)
+        uid = con.execute("SELECT id FROM users WHERE email='testuser@example.com'").fetchone()[0]
+        con.close()
+        save_company_profile(uid, {"company_name": "NoIdentifierCo"})
+        resp = client.get("/dashboard")
+        body = resp.get_data(as_text=True)
+        assert "/company-profile#import-contracts" in body
+
+    def test_no_stale_add_vendor_name_text(self, client):
+        resp = client.get("/dashboard")
+        body = resp.get_data(as_text=True)
+        assert "Add vendor name" not in body
+
+    def test_vendor_name_match_still_shows_contracts_section(self, client, tmp_db):
+        from db import save_company_profile
+        import sqlite3
+        con = sqlite3.connect(tmp_db)
+        uid = con.execute("SELECT id FROM users WHERE email='testuser@example.com'").fetchone()[0]
+        con.close()
+        save_company_profile(uid, {"vendor_name": "Acme Test Corp"})
+        resp = client.get("/dashboard")
+        body = resp.get_data(as_text=True)
+        # My Contracts panel always rendered
+        assert "panel-my-contracts" in body

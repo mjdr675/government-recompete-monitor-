@@ -713,6 +713,8 @@ def dashboard():
             recent_updates=recent_updates,
             company_name=profile.get("company_name") if profile else None,
             vendor_name=profile.get("vendor_name") if profile else None,
+            uei=profile.get("uei") if profile else None,
+            cage_code=profile.get("cage_code") if profile else None,
             has_profile=has_profile,
             profile_completion=p_completion,
             profile_hints=p_hints,
@@ -1975,6 +1977,8 @@ def company_profile_page():
     if request.method == "POST":
         company_name = request.form.get("company_name", "").strip()
         vendor_name = request.form.get("vendor_name", "").strip()
+        uei = request.form.get("uei", "").strip()
+        cage_code = request.form.get("cage_code", "").strip()
         website = request.form.get("website", "").strip()
         geo_coverage = request.form.get("geo_coverage", "nationwide")
         if geo_coverage not in ("nationwide", "states"):
@@ -2020,6 +2024,8 @@ def company_profile_page():
             save_company_profile(user["id"], {
                 "company_name": company_name,
                 "vendor_name": vendor_name,
+                "uei": uei,
+                "cage_code": cage_code,
                 "website": website,
                 "geo_coverage": geo_coverage,
                 "min_contract_value": min_v,

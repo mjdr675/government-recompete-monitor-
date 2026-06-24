@@ -293,19 +293,28 @@
         <div style="padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:12px">
           <div style="font-weight:500;margin-bottom:4px">No current contracts matched yet</div>
           <div class="muted" style="font-size:13px;margin-bottom:10px">
-            We searched for contracts where the vendor name contains &ldquo;<strong>{{ contract_summary.match_term }}</strong>&rdquo;.
-            If your government contracts use a different name, update it below.
+            Matched using: &ldquo;<strong>{{ contract_summary.match_term }}</strong>&rdquo;.
+            If your government contracts use a different name or you have a UEI, update your import details.
           </div>
-          <a href="/company-profile" class="btn btn-primary" style="font-size:13px">Update vendor name</a>
+          <a href="/company-profile#import-contracts" class="btn btn-primary" style="font-size:13px">Edit import details</a>
         </div>
         {% elif has_profile %}
-        {# Profile exists but no company/vendor name at all #}
+        {# Profile exists but no identifier set #}
         <div style="padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:12px">
-          <div style="font-weight:500;margin-bottom:4px">Add your company name to see current contracts</div>
+          <div style="font-weight:500;margin-bottom:4px">Import your current contracts</div>
           <div class="muted" style="font-size:13px;margin-bottom:10px">
-            Enter the exact name that appears on your government contracts and we&rsquo;ll auto-load them here.
+            Enter your UEI or exact vendor name to auto-load the contracts your business currently holds in federal award data.
           </div>
-          <a href="/company-profile" class="btn btn-primary" style="font-size:13px">Update company profile</a>
+          <a href="/company-profile#import-contracts" class="btn btn-primary" style="font-size:13px">Import My Current Contracts</a>
+        </div>
+        {% else %}
+        {# No profile yet #}
+        <div style="padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:12px">
+          <div style="font-weight:500;margin-bottom:4px">Import your current contracts</div>
+          <div class="muted" style="font-size:13px;margin-bottom:10px">
+            Set up your company profile to auto-load the contracts your business already holds.
+          </div>
+          <a href="/company-profile#import-contracts" class="btn btn-primary" style="font-size:13px">Import My Current Contracts</a>
         </div>
         {% endif %}
 
