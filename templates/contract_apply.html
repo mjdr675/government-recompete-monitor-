@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}How to Apply — {{ row["award_id"] or row["internal_id"] }}{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:6px">
+  <a href="/contract/{{ row['internal_id'] }}" class="muted" style="font-size:13px;text-decoration:none">&larr; Back to contract</a>
+</div>
+
+<h1 style="margin-bottom:2px">How to apply for this contract</h1>
+<div class="page-meta" style="margin-bottom:14px">
+  {{ row["award_id"] or row["internal_id"] }}{% if row["agency"] %} &middot; {{ row["agency"] }}{% endif %}
+</div>
+
+{# ── Apply-stage banner — tells the user where this contract sits in the timeline ── #}
+{% set stage_color = {
+  "too_late": "#dc2626",
+  "submit_now": "#d97706",
+  "prepare": "#059669",
+  "research": "var(--accent)",
+  "watch": "var(--text-muted)",
+  "unknown": "var(--text-muted)"
+} %}
+<div style="padding:16px 18px;border:1px solid var(--border);border-left:4px solid {{ stage_color.get(stage_key, 'var(--accent)') }};border-radius:var(--radius-sm);background:var(--surface);margin-bottom:18px;line-height:1.6">
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px">
+    <span style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:{{ stage_color.get(stage_key, 'var(--accent)') }}">{{ stage_label }}</span>
+    {% if row["days_remaining"] is not none %}
+    <span class="muted" style="font-size:13px">{{ row["days_remaining"] }} days until the current contract ends</span>
+    {% endif %}
+  </div>
+  <div style="font-size:14px">{{ stage_detail }}</div>
+</div>
+
+{% if not applyable %}
+<div style="padding:14px 18px;border:1px solid #fca5a5;background:#fef2f2;border-radius:var(--radius-sm);margin-bottom:18px;font-size:14px;line-height:1.6;color:#991b1b">
+  <strong>Heads up:</strong> this contract is likely outside the window where a new bidder can realistically win.
+  The steps below still apply for future recompetes from this agency, and registering now means you'll be ready
+  when the next opportunity comes up.
+</div>
+{% endif %}
+
+{# ── The contract at a glance ── #}
+<div class="summary-box" style="margin-bottom:18px">
+  <strong>What you'd be bidding on:</strong>
+  {% if category and category != "Other" %}a <strong>{{ category|lower }}</strong> contract{% else %}this contract{% endif %}
+  {% if row["agency"] %} for <strong>{{ row["agency"] }}</strong>{% endif %}
+  {% if row["value"] %}, worth roughly <strong>${{ "{:,.0f}".format(row["value"]) }}</strong>{% endif %}
+  {% if performance_state %} performed in <strong>{{ performance_state }}</strong>{% endif %}.
+  {% if row["description"] %}<br><span style="color:var(--text-muted)">{{ row["description"][:220] }}{% if row["description"]|length > 220 %}…{% endif %}</span>{% endif %}
+</div>
+
+{# ── Step-by-step ── #}
+<h2 style="margin-bottom:12px">The steps</h2>
+
+<div style="display:flex;flex-direction:column;gap:14px;margin-bottom:24px">
+
+  {# Step 1 — Register #}
+  <div style="display:flex;gap:14px;align-items:flex-start">
+    <div style="flex-shrink:0;width:30px;height:30px;border-radius:50%;background:var(--accent);color:var(--bg);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">1</div>
+    <div style="flex:1;line-height:1.6">
+      <div style="font-weight:700;font-size:16px;margin-bottom:3px">Register on SAM.gov (required before you can bid)</div>
+      <div style="font-size:14px;color:var(--text-muted);margin-bottom:6px">
+        Every federal contractor must be registered in the System for Award Management. Registration is free and
+        takes 1&ndash;2 weeks. When you register you'll be issued a <strong>UEI (Unique Entity Identifier)</strong> and
+        a <strong>CAGE code</strong> — the two IDs the government uses to identify your business. You can't submit a bid without them.
+      </div>
+      <a href="https://sam.gov/content/entity-registration" target="_blank" rel="noopener" class="btn btn-primary" style="font-size:13px;padding:6px 14px">Start SAM.gov registration &rarr;</a>
+    </div>
+  </div>
+
+  {# Step 2 — Certifications #}
+  <div style="display:flex;gap:14px;align-items:flex-start">
+    <div style="flex-shrink:0;width:30px;height:30px;border-radius:50%;background:var(--accent);color:var(--bg);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">2</div>
+    <div style="flex:1;line-height:1.6">
+      <div style="font-weight:700;font-size:16px;margin-bottom:3px">Check if you qualify for a set-aside (optional, but a big edge)</div>
+      <div style="font-size:14px;color:var(--text-muted);margin-bottom:6px">
+        Many contracts are reserved for small businesses with specific certifications. If you qualify, your competition
+        shrinks dramatically. The common ones are 8(a), HUBZone, Women-Owned (WOSB), and Service-Disabled
+        Veteran-Owned (SDVOSB).
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a href="https://www.sba.gov/federal-contracting/contracting-assistance-programs/8a-business-development-program" target="_blank" rel="noopener" class="btn btn-ghost" style="font-size:12px;padding:5px 11px">8(a)</a>
+        <a href="https://www.sba.gov/federal-contracting/contracting-assistance-programs/hubzone-program" target="_blank" rel="noopener" class="btn btn-ghost" style="font-size:12px;padding:5px 11px">HUBZone</a>
+        <a href="https://www.sba.gov/federal-contracting/contracting-assistance-programs/women-owned-small-business-federal-contract-program" target="_blank" rel="noopener" class="btn btn-ghost" style="font-size:12px;padding:5px 11px">WOSB</a>
+        <a href="https://www.sba.gov/federal-contracting/contracting-assistance-programs/veteran-contracting-assistance-programs" target="_blank" rel="noopener" class="btn btn-ghost" style="font-size:12px;padding:5px 11px">SDVOSB</a>
+      </div>
+    </div>
+  </div>
+
+  {# Step 3 — Find the live solicitation #}
+  <div style="display:flex;gap:14px;align-items:flex-start">
+    <div style="flex-shrink:0;width:30px;height:30px;border-radius:50%;background:var(--accent);color:var(--bg);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">3</div>
+    <div style="flex:1;line-height:1.6">
+      <div style="font-weight:700;font-size:16px;margin-bottom:3px">Find the live solicitation for this recompete</div>
+      <div style="font-size:14px;color:var(--text-muted);margin-bottom:6px">
+        This contract appearing here means the <em>current</em> award is expiring — the agency hasn't necessarily posted
+        the new solicitation yet. When they do, it shows up on SAM.gov as a Sources Sought notice, an RFI, or a full
+        Solicitation. The button below runs a SAM.gov search
+        {% if solicitation_id %}for the incumbent solicitation number <strong>{{ solicitation_id }}</strong>{% else %}seeded with this agency and work type{% endif %}
+        so you can find it (or set up a follow notification for when it drops).
+      </div>
+      <a href="{{ sam_search_url }}" target="_blank" rel="noopener" class="btn btn-primary" style="font-size:13px;padding:6px 14px">Search SAM.gov for this opportunity &rarr;</a>
+      {% if sam_naics %}
+      <div class="muted" style="font-size:12px;margin-top:6px">Tip: filter SAM.gov by NAICS <strong>{{ sam_naics }}</strong> to find similar work from the same agency.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# Step 4 — Write and submit #}
+  <div style="display:flex;gap:14px;align-items:flex-start">
+    <div style="flex-shrink:0;width:30px;height:30px;border-radius:50%;background:var(--accent);color:var(--bg);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">4</div>
+    <div style="flex:1;line-height:1.6">
+      <div style="font-weight:700;font-size:16px;margin-bottom:3px">Write and submit your proposal before the deadline</div>
+      <div style="font-size:14px;color:var(--text-muted)">
+        Once the solicitation is posted, download the Statement of Work and evaluation criteria. Proposal deadlines are
+        usually 30&ndash;60 days after posting. Your proposal needs to cover technical approach, past performance,
+        pricing, and management. Submit through SAM.gov or whatever method the contracting office specifies. Awards are
+        typically made within 1&ndash;6 months — often just weeks before the current contract ends, which is why getting
+        registered and prepared early matters so much.
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{# ── What you'll need checklist ── #}
+<div style="padding:16px 18px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);margin-bottom:20px;line-height:1.7">
+  <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">What you'll need</div>
+  <ul style="margin:0;padding-left:18px;list-style:disc;font-size:14px">
+    <li><strong>UEI &amp; CAGE code</strong> — issued through your <a href="https://sam.gov/content/entity-registration" target="_blank" rel="noopener">SAM.gov registration</a></li>
+    <li><strong>Active SAM.gov registration</strong> (renewed annually)</li>
+    <li><strong>Past performance references</strong> — similar work you've done, government or commercial</li>
+    <li><strong>Capability statement</strong> — a one-page summary of what your company does</li>
+    <li><strong>Pricing</strong> built for the scope in the Statement of Work</li>
+    {% if sam_naics %}<li><strong>NAICS {{ sam_naics }}</strong> listed in your business profile</li>{% endif %}
+    <li>Any <strong>set-aside certifications</strong> you qualify for (Step 2)</li>
+  </ul>
+</div>
+
+<div style="display:flex;gap:10px;flex-wrap:wrap">
+  <a href="/contract/{{ row['internal_id'] }}" class="btn btn-ghost">&larr; Back to contract details</a>
+  {% if g.user %}
+  <form method="post" action="/pipeline/add/{{ row['internal_id'] }}" style="margin:0">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-primary">+ Add to my pipeline</button>
+  </form>
+  {% endif %}
+</div>
+
+<p class="muted" style="font-size:12px;margin-top:18px;line-height:1.5">
+  Timelines and requirements are general guidance for federal contracting. Always follow the specific instructions in
+  the official solicitation on SAM.gov, which govern the actual process for this opportunity.
+</p>
+{% endblock %}
