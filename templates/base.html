@@ -102,7 +102,7 @@
     </a>
     {% set ws_name = (workspace.name if workspace else None) or g.user.get('company_name') %}
     {% if ws_name or (workspace and workspace.logo_path) %}
-    <a class="sidebar-workspace" href="/settings/workspace" style="text-decoration:none;color:inherit">
+    <a class="sidebar-workspace" href="/company-profile" style="text-decoration:none;color:inherit">
       {% if workspace and workspace.logo_path %}
       <img class="sidebar-workspace-logo" src="{{ url_for('static', filename=workspace.logo_path) }}"
            alt="{{ ws_name or 'Workspace' }} logo"
@@ -145,7 +145,7 @@
     <div class="sidebar-footer">
       <div class="sidebar-user">
         <span class="sidebar-avatar-sm" aria-hidden="true">{{ user_initial }}</span>
-        <span class="sidebar-user-name" title="{{ g.user.get('email', '') }}">{{ g.user.get('company_name') or g.user.get('email') or 'Workspace' }}</span>
+        <span class="sidebar-user-name" title="{{ g.user.get('email', '') }}">{{ g.user.get('email') or 'Account' }}</span>
       </div>
       <div class="sidebar-footer-links">
         {% if g.user.get('stripe_customer_id') %}

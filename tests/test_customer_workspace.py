@@ -177,7 +177,6 @@ class TestWorkspaceSettingsPage:
 
 class TestBrandingDisplay:
     def test_workspace_name_in_sidebar(self, authed_client, pdb):
-        # Provision + name the workspace, then load any authed page.
         uid = _uid(pdb)
         ws = get_or_create_workspace_for_user(uid)
         update_workspace(ws["id"], name="Brandable LLC")
@@ -185,6 +184,98 @@ class TestBrandingDisplay:
         assert "Brandable LLC" in body
 
     def test_logo_rendered_when_present(self, authed_client, pdb):
+        uid = _uid(pdb)
+        ws = get_or_create_workspace_for_user(uid)
+        update_workspace(ws["id"], logo_path="uploads/logos/workspace_1.png")
+        body = authed_client.get("/dashboard").get_data(as_text=True)
+        assert "uploads/logos/workspace_1.png" in body
+
+    def test_sidebar_workspace_links_to_company_profile(self, authed_client, pdb):
+        uid = _uid(pdb)
+        ws = get_or_create_workspace_for_user(uid)
+        update_workspace(ws["id"], name="Link Test Co")
+        body = authed_client.get("/dashboard").get_data(as_text=True)
+        assert 'href="/company-profile"' in body
+        assert "Link Test Co" in body
+
+    def test_no_duplicate_company_row_in_sidebar(self, authed_client, pdb):
+        uid = _uid(pdb)
+        ws = get_or_create_workspace_for_user(uid)
+        update_workspace(ws["id"], name="Unique Name Corp")
+        body = authed_client.get("/dashboard").get_data(as_text=True)
+        # Company name appears in sidebar-workspace block; sidebar-user-name shows email instead.
+        assert "sidebar-workspace" in body
+        assert "sidebar-workspace-name" in body
+        # The user footer block should NOT contain the company name in sidebar-user-name
+        import re as _re
+        user_block = _re.search(r'class="sidebar-user"(.*?)class="sidebar-footer-links"', body, _re.S)
+        if user_block:
+            assert "Unique Name Corp" not in user_block.group(1)
+
+    def test_sidebar_user_shows_email_not_company_name(self, authed_client, pdb):
+        uid = _uid(pdb)
+        ws = get_or_create_workspace_for_user(uid)
+        update_workspace(ws["id"], name="Invisible Corp Name")
+        body = authed_client.get("/dashboard").get_data(as_text=True)
+        # email appears in the sidebar-user block
+        assert "ws@example.com" in body
+
+
+class TestWorkspaceSettingsConsolidated:
+    def test_workspace_settings_has_no_company_name_form(self, authed_client):
+        body = authed_client.get("/settings/workspace").get_data(as_text=True)
+        assert 'name="workspace_name"' not in body
+        assert 'name="logo"' not in body
+        assert "Save workspace" not in body
+
+    def test_workspace_settings_links_to_company_profile(self, authed_client):
+        body = authed_client.get("/settings/workspace").get_data(as_text=True)
+        assert "/company-profile" in body
+        assert "Company Profile" in body or "company name" in body.lower()
+
+    def test_workspace_settings_still_shows_team_members(self, authed_client):
+        body = authed_client.get("/settings/workspace").get_data(as_text=True)
+        assert "Team Members" in body
+        assert "ws@example.com" in body
+
+
+class TestCompanyProfileLogo:
+    def test_company_profile_renders_logo_upload(self, authed_client):
+        body = authed_client.get("/company-profile").get_data(as_text=True)
+        assert 'type="file"' in body
+        assert 'name="logo"' in body
+
+    def test_company_profile_logo_upload_saves_to_workspace(self, authed_client, pdb):
+        data = {
+            "company_name": "Acme Federal",
+            "geo_coverage": "nationwide",
+            "logo": (io.BytesIO(b"\x89PNG\r\n\x1a\n fake png bytes"), "logo.png"),
+        }
+        rv = authed_client.post("/company-profile", data=data,
+                                content_type="multipart/form-data")
+        assert rv.status_code in (200, 302)
+        uid = _uid(pdb)
+        ws = get_workspace_for_user(uid)
+        assert ws is not None and ws["logo_path"] is not None
+        assert ws["logo_path"].endswith(".png")
+
+    def test_company_profile_shows_logo_preview(self, authed_client, pdb):
+        uid = _uid(pdb)
+        ws = get_or_create_workspace_for_user(uid)
+        update_workspace(ws["id"], logo_path="uploads/logos/workspace_1.png")
+        body = authed_client.get("/company-profile").get_data(as_text=True)
+        assert "uploads/logos/workspace_1.png" in body
+
+    def test_company_profile_remove_logo_clears_workspace(self, authed_client, pdb):
+        uid = _uid(pdb)
+        ws = get_or_create_workspace_for_user(uid)
+        update_workspace(ws["id"], logo_path="uploads/logos/workspace_1.png")
+        rv = authed_client.post("/company-profile", data={"action": "remove_logo"})
+        assert rv.status_code in (302, 200)
+        ws = get_workspace_for_user(uid)
+        assert not ws["logo_path"]
+
+    def test_company_profile_sidebar_shows_uploaded_logo(self, authed_client, pdb):
         uid = _uid(pdb)
         ws = get_or_create_workspace_for_user(uid)
         update_workspace(ws["id"], logo_path="uploads/logos/workspace_1.png")

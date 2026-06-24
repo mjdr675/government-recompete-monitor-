@@ -41,12 +41,42 @@
 </div>
 {% endif %}
 
-<form method="post" action="/company-profile">
+<form method="post" action="/company-profile" enctype="multipart/form-data">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-  {# ── Company ─────────────────────────────────────────────────────────── #}
-  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
-    <h2 style="margin-top:0;margin-bottom:16px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)">Company</h2>
+  {# ── Company Identity ─────────────────────────────────────────────────── #}
+  <div id="company-identity" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
+    <h2 style="margin-top:0;margin-bottom:4px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)">Company Identity</h2>
+    <p class="muted" style="font-size:12px;margin:0 0 16px">
+      Your company name and logo appear throughout your Recompete workspace.
+    </p>
+
+    {# Logo preview + upload #}
+    <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:14px;flex-wrap:wrap">
+      <div style="flex-shrink:0">
+        {% if workspace and workspace.logo_path %}
+          <img src="{{ url_for('static', filename=workspace.logo_path) }}"
+               alt="Company logo" style="width:56px;height:56px;border-radius:8px;object-fit:cover;border:1px solid var(--border)">
+        {% else %}
+          <span style="width:56px;height:56px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;background:var(--bg);border:1px solid var(--border);font-weight:700;font-size:22px;color:var(--text-primary)">
+            {{ ((profile.company_name if profile else None) or g.user.get('email') or 'W')[0].upper() }}
+          </span>
+        {% endif %}
+      </div>
+      <div style="flex:1;min-width:180px">
+        <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px">Company Logo</label>
+        <input type="file" name="logo" accept=".png,.jpg,.jpeg,.gif,.webp,.svg,image/*"
+               style="font-size:13px;color:var(--text-primary)">
+        <div class="muted" style="font-size:11px;margin-top:4px">PNG, JPG, GIF, WEBP, or SVG. Up to 2&nbsp;MB.</div>
+        {% if workspace and workspace.logo_path %}
+        <button type="submit" name="action" value="remove_logo"
+                class="btn btn-ghost" style="font-size:12px;margin-top:8px;padding:4px 10px">
+          Remove logo
+        </button>
+        {% endif %}
+      </div>
+    </div>
+
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div>
         <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px">Company Name</label>

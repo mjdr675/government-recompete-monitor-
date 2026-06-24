@@ -2008,6 +2008,8 @@ def company_profile_page():
     if not user:
         return redirect(url_for("auth.login", next="/company-profile"))
 
+    workspace = get_or_create_workspace_for_user(user["id"])
+
     engine = get_engine()
     with engine.connect() as conn:
         agency_rows = conn.execute(text(
@@ -2020,6 +2022,23 @@ def company_profile_page():
     success = None
 
     if request.method == "POST":
+        action = request.form.get("action", "save")
+
+        if action == "remove_logo":
+            update_workspace(workspace["id"], logo_path="")
+            flash("Logo removed.")
+            return redirect(url_for("company_profile_page") + "#company-identity")
+
+        # Logo upload (processed before profile save so errors surface together)
+        upload = request.files.get("logo")
+        if upload and (upload.filename or "").strip():
+            logo_path, logo_err = _save_workspace_logo(workspace["id"], upload)
+            if logo_err:
+                error = logo_err
+            else:
+                update_workspace(workspace["id"], logo_path=logo_path)
+                workspace = get_workspace_for_user(user["id"])
+
         company_name = request.form.get("company_name", "").strip()
         vendor_name = request.form.get("vendor_name", "").strip()
         uei = request.form.get("uei", "").strip()
@@ -2054,7 +2073,8 @@ def company_profile_page():
             min_v = float(min_val) if min_val else None
         except ValueError:
             min_v = None
-            error = "Minimum contract value must be a number."
+            if not error:
+                error = "Minimum contract value must be a number."
         try:
             max_v = float(max_val) if max_val else None
         except ValueError:
@@ -2084,11 +2104,13 @@ def company_profile_page():
             success = "Profile saved."
 
     profile = get_company_profile(user["id"])
+    workspace = get_workspace_for_user(user["id"]) or workspace
     p_completion = profile_completeness(profile) if profile else 0
 
     return render_template(
         "company_profile.html",
         profile=profile,
+        workspace=workspace,
         all_agencies=all_agencies,
         set_aside_options=_SET_ASIDE_OPTIONS,
         us_states=_US_STATES,
