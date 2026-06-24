@@ -1,98 +1,161 @@
-# Recompete Integration Rules
+# Integration Gate Rules
 
-These rules govern how lane branches are merged into `main`. The integration gate enforces them mechanically; this document explains the intent.
+Integration is the merge authority for Recompete.us. These rules are non-negotiable.
+
+---
+
+## What Integration Does
+
+- Accepts explicit handoff commits from lane agents
+- Cherry-picks them one at a time onto `lane/integration`
+- Validates the result with `scripts/integration_gate.sh`
+- Pushes to `origin/main` only on Michael's explicit approval
+
+## What Integration Does NOT Do
+
+- Build features
+- Repair lane code
+- Patch test failures unrelated to the cherry-pick
+- Force push
+- Merge without a passing gate run
+- Push without approval
+
+---
+
+## Step-by-Step Process
+
+### 1. Preflight
+
+```bash
+cd /home/michael/recompete-worktrees/integration
+git fetch origin
+git status --short          # must be clean except known governance untracked files
+git branch --show-current   # must be lane/integration
+bash scripts/check_lanes.sh # must pass
+```
+
+If `ai_agent/REVIEW.md` is dirty, restore it:
+```bash
+git checkout -- ai_agent/REVIEW.md
+```
+
+If any other tracked file is dirty: **STOP and report**.
+
+### 2. Inspect each commit before applying
+
+```bash
+git show --stat --oneline <hash>
+```
+
+Verify:
+- The commit hash exists locally
+- Files changed are within the lane's ownership
+- `LANE.md` is NOT in the diff (governance file must not travel in product commits)
+- No migration number collision with files already in `migrations/`
+
+### 3. Cherry-pick one commit at a time
+
+```bash
+git cherry-pick <hash>
+```
+
+If conflict: `git cherry-pick --abort`, then stop and report which files conflict and which lane owns them.
+
+After each cherry-pick:
+```bash
+git status --short
+git show --stat --oneline HEAD
+```
+
+### 4. Run lane checks
+
+```bash
+bash scripts/check_lanes.sh
+```
+
+### 5. Run full Integration Gate
+
+```bash
+bash scripts/integration_gate.sh [lane-branch]
+```
+
+Gate must print `INTEGRATION GATE PASSED` before any push is considered.
+
+If the gate fails with a `disk I/O error` or `Killed` (resource exhaustion), run cleanup once and retry once:
+
+```bash
+bash scripts/clean_test_tmp.sh
+bash scripts/integration_gate.sh [lane-branch]
+```
+
+If the gate fails with a test failure:
+1. Run the failing test on `lane/bugfix` (at `origin/main`) to determine if pre-existing
+2. If pre-existing: classify and route to owning lane. Do not patch in Integration.
+3. If new: abort the cherry-pick and return to source lane.
+
+### 6. Push — only on explicit approval
+
+Push only when Michael types an explicit approval in chat. Use:
+
+```bash
+git push origin lane/integration:main
+```
+
+Never use `--force` or `--force-with-lease`.
+
+After push, verify:
+```bash
+git fetch origin
+git status -sb   # should show no ahead/behind
+git log -1 --oneline --decorate origin/main
+```
 
 ---
 
 ## Source of Truth
 
-- `origin/main` is the production source of truth unless explicitly overridden by the user.
-- Lane branches are experimental until integrated — they are not production.
-- The integration lane (`lane/integration`) is a staging compiler. It is not a feature branch.
-- If `origin/main` diverges from local `main`, always pull and reconcile before merging any lane.
+- `origin/main` is the production source of truth.
+- Lane branches are experimental until integrated.
+- `lane/integration` is a staging compiler, not a feature branch.
 
 ---
 
-## Merge Protocol
+## Commit Classification Guide
 
-Execute in this exact order. Do not skip steps.
-
-1. **Ensure lane branch is clean** — `git status --short` shows no dirty tracked files
-2. **Ensure lane has a handoff summary** — a commit message or `HANDOFF.md` describing what was built and what was tested
-3. **Merge only one lane at a time** — do not batch multiple lanes into a single integration session
-4. **Run the integration gate**: `bash scripts/integration_gate.sh lane/<name>`
-5. **If gate passes**: commit the integration merge with `--no-ff`
-6. **If gate fails broadly**: abort or reset, do not patch blindly (see Large Failure Rule below)
-
----
-
-## Force Push Rule
-
-**Never force push without:**
-- Explicit user approval (written, in this session)
-- A written list of exactly which commits would be overwritten
-- Confirmation that no other agents or users are working on the affected branch
-
-Force pushing to `main` is never allowed under any circumstances without user approval.
+| Symptom | Classification | Action |
+|---|---|---|
+| `LANE.md` in cherry-pick diff | Lane hygiene error | Reject; ask lane to split `LANE.md` out |
+| Migration number collision | Lane hygiene error | Reject; ask lane to renumber |
+| `git cherry-pick` conflict | Base mismatch | Abort; ask lane to rebase onto `origin/main` |
+| Test failure — pre-existing | Infrastructure debt | Route to `lane/bugfix`; don't block merge |
+| Test failure — new in this commit | Regression | Abort cherry-pick; return to source lane |
+| `Killed` / `disk I/O error` | Transient infra | Run `clean_test_tmp.sh`, retry once |
 
 ---
 
-## Large Failure Rule
+## App Ownership
 
-If a merge causes any of the following:
-- Missing imports or `ImportError` on startup
-- Broken `app.py` (Flask won't initialize)
-- Route collapse (major routes returning 500)
-- 50+ test failures (not pre-existing)
+`app.py` structure belongs to `lane/platform`. Other lanes may add route behavior but must
+not add a new `Flask()` initialization or restructure the app factory.
 
-Then:
-
-1. **STOP** — do not attempt to patch inline
-2. Run `git merge --abort` or `git reset --hard HEAD` to restore pre-merge state
-3. Run `git worktree list` and confirm integration is back to baseline
-4. Report: which lane introduced the failure, what the first error was, what the pre-merge commit was
-5. **Ask for direction** before retrying
-
-Do not treat integration failures as debugging sessions. The owning lane must fix its own lane.
-
----
-
-## App Ownership Rule
-
-`app.py` structure belongs to `lane/platform`. Other lanes may only modify route *behavior* when their lane requires it, and must document that change in their commit message. No lane other than platform may add a new `Flask()` initialization or restructure the app factory.
-
----
-
-## Data Ownership Rule
+## Data Ownership
 
 | Lane | Role |
 |---|---|
 | `lane/data-pipeline` | Writes and prepares contract data |
-| `lane/search` | Reads and ranks contract data at query time |
-| `lane/contract-intel` | Interprets and scores contract data |
-
-No lane reads from another lane's write path without coordinating on the schema.
+| `lane/search` | Reads and ranks at query time |
+| `lane/contract-intel` | Scores and interprets |
 
 ---
 
-## Stale Remote Rule
+## Handoff Format
 
-If a remote branch is detected to be ahead of the local branch being merged, or if a push would overwrite work:
-- Do not accept the rewrite silently
-- Report the divergence and ask which version is authoritative
-- Never `git push --force` to resolve without explicit user approval
+Every lane must end its session with:
 
----
+```
+Integration handoff:
+<Lane Name>:
+- <commit_hash> <commit_message>
+```
 
-## Pre-existing Test Failures
-
-If the integration gate reports a test failure that exists in `origin/main` (pre-existing, not introduced by the lane being merged):
-- Document it in this file or in a comment on the merge commit
-- Assign it to the owning lane for repair
-- Do not block other lane merges indefinitely on pre-existing failures unless they are structural (app won't start)
-
-### Known Pre-existing Failures (as of 2026-06-24)
-
-| Test | File | Owning Lane | Status |
-|---|---|---|---|
-| `test_contracts_days_critical_class_for_imminent_expiry` | `tests/test_app.py:151` | `lane/ui-polish` | Failing in `origin/main` baseline — CSS class `days-critical` not rendered |
+Integration will not accept vague descriptions — only explicit commit hashes.

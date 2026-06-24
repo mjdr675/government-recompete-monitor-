@@ -10,18 +10,18 @@ before it reaches `origin/main`.
 
 ---
 
-## Lane Map
+## Canonical Worktrees
 
 | Lane                  | Branch                    | Worktree                                               | Owns                                                   |
 | --------------------- | ------------------------- | ------------------------------------------------------ | ------------------------------------------------------ |
-| Integration Gate      | `lane/integration`        | `/home/michael/recompete-worktrees/integration`        | merges, validation, gate                               |
-| Data Pipeline         | `lane/data-pipeline`      | `/home/michael/recompete-worktrees/data-pipeline`      | ingestion, enrichment, cron, Celery                    |
-| Search                | `lane/search`             | `/home/michael/recompete-worktrees/search`             | fuzzy search, filters, discovery ranking               |
+| Integration Gate      | `lane/integration`        | `/home/michael/recompete-worktrees/integration`        | merges, validation, gate, push authority               |
+| Data Pipeline         | `lane/data-pipeline`      | `/home/michael/recompete-worktrees/data-pipeline`      | ingestion, enrichment, cron, Celery, `tasks.py`        |
+| Search                | `lane/search`             | `/home/michael/recompete-worktrees/search`             | fuzzy search, filters, NL query parsing, discovery     |
 | Customer Workspace    | `lane/customer-workspace` | `/home/michael/recompete-worktrees/customer-workspace` | company profile, onboarding, dashboard personalization |
 | Platform              | `lane/platform`           | `/home/michael/recompete-worktrees/platform`           | Flask skeleton, DB, migrations, auth, deployment       |
-| Contract Intelligence | `lane/contract-intel`     | `/home/michael/recompete-worktrees/contract-intel`     | scoring, comparison, summaries                         |
+| Contract Intelligence | `lane/contract-intel`     | `/home/michael/recompete-worktrees/contract-intel`     | scoring, comparison, summaries, `contract_summary.py`  |
 | UI/Product            | `lane/ui-polish`          | `/home/michael/recompete-worktrees/ui-polish`          | branding, templates, pricing, visual polish            |
-| Bugfix                | `lane/bugfix`             | `/home/michael/recompete-worktrees/bugfix`             | isolated regressions                                   |
+| Bugfix                | `lane/bugfix`             | `/home/michael/recompete-worktrees/bugfix`             | isolated regressions, pre-existing test failures       |
 
 ---
 
@@ -29,36 +29,35 @@ before it reaches `origin/main`.
 
 ### 1. One chat/agent per worktree
 Never work in two worktrees from the same chat. Each chat owns exactly one worktree.
-If you are not sure which worktree you own, read your `LANE.md`.
+Read your `LANE.md` first. If you are not in the right directory, stop.
 
-### 2. Integration Gate is the only merge authority
-No lane branch may be merged to `origin/main` directly. All merges go through
-`lane/integration` via cherry-pick, followed by:
+### 2. Integration Gate is the only merge and push authority
+No lane branch may be pushed to `origin/main` directly. All work must:
+1. Be committed locally on the lane branch
+2. Be handed off to Integration with the exact commit hash
+3. Be cherry-picked by the Integration Gate agent
+4. Pass `bash scripts/integration_gate.sh`
+5. Be pushed only with Michael's explicit approval
 
-```bash
-bash /home/michael/recompete-worktrees/integration/scripts/integration_gate.sh <lane-branch>
+### 3. No force push — ever
+`git push --force`, `git push --force-with-lease`, and `git reset --hard` against remote
+refs are forbidden without Michael typing the exact command in chat.
+
+### 4. Integration is the only push authority
+Lane agents must not push their branch to `origin/main`. They push only their lane
+branch (`git push origin lane/<name>`) if needed for backup — never to `main`.
+
+### 5. Do not work in legacy worktrees
+These are legacy or experimental and must not be used unless explicitly assigned:
+
 ```
-
-The gate must print `INTEGRATION GATE PASSED` before any push to `origin/main`.
-
-### 3. No force push without explicit user approval
-Never run `git push --force`, `git push --force-with-lease`, or `git reset --hard`
-against a remote ref without the user typing the exact command in the chat.
-
-### 4. Do not work in legacy worktrees
-The following are legacy or experimental worktrees and must not be used unless
-explicitly assigned in the current chat:
-
-```
-/home/michael/recompete-*          (all except the canonical 8 below)
+/home/michael/recompete-*   (any path not under /home/michael/recompete-worktrees/)
 /home/michael/government-recompete-monitor-
 /home/michael/integration-clean-wt
 /home/michael/prune-wt
 ```
 
-Canonical worktrees are under `/home/michael/recompete-worktrees/` only.
-
-### 5. Read governance docs before starting any work
+### 6. Read governance docs before starting any work
 Every agent in every reset chat must run this before touching any file:
 
 ```bash
@@ -68,19 +67,35 @@ cat LANE.md
 git status -sb
 ```
 
-### 6. Do not commit `ai_agent/REVIEW.md`
-The file `ai_agent/REVIEW.md` is written by test infrastructure and contains only a
-timestamp. It appears as `M ai_agent/REVIEW.md` after any `pytest` run.
-**Never stage or commit it.** Restore it with:
+### 7. Do not commit `ai_agent/REVIEW.md`
+`ai_agent/REVIEW.md` is written by test infrastructure and contains only a timestamp.
+It appears as ` M ai_agent/REVIEW.md` after any `pytest` run. Never stage or commit it.
+Restore it with:
 
 ```bash
 git checkout -- ai_agent/REVIEW.md
 ```
 
-### 7. If /tmp fills, run the cleanup script
-The pytest suite creates thousands of temp files under `/tmp/pytest-of-michael`.
-After a long gate run, `/tmp` can fill and cause `sqlite3.OperationalError: disk I/O error`
-at setup time. This is a transient infrastructure failure, not a code bug. Clear it with:
+### 8. `LANE.md` is governance-only
+`LANE.md` describes the lane's identity and must not travel inside product commits.
+When producing a handoff commit, always check that `LANE.md` is not staged:
+
+```bash
+git reset HEAD LANE.md 2>/dev/null || true
+```
+
+### 9. Migration numbering
+Migrations must not reuse a number already in `origin/main`. Check before committing:
+
+```bash
+ls migrations/
+```
+
+If `015_foo.sql` already exists on `origin/main`, your new migration must be `016_`.
+
+### 10. If `/tmp` fills, run the cleanup script
+The pytest suite creates thousands of temp files. After a long gate run, SQLite can fail
+with `disk I/O error`. Clear it with:
 
 ```bash
 bash /home/michael/recompete-worktrees/integration/scripts/clean_test_tmp.sh
@@ -88,47 +103,42 @@ bash /home/michael/recompete-worktrees/integration/scripts/clean_test_tmp.sh
 
 Then re-run the gate. Do not route a disk I/O error to a lane for fixing.
 
-### 8. If the gate fails, classify and route — do not patch in Integration
+### 11. Classify gate failures by owning lane — never patch in Integration
 When the gate's test suite fails:
 
-1. Run the failing test in isolation on `lane/bugfix` (which tracks `origin/main`) to
-   determine if it is pre-existing.
-2. If pre-existing: identify the owning lane from the test file name and route a fix
-   request there. Do not touch Integration.
-3. If introduced by the cherry-pick: revert the cherry-pick (`git cherry-pick --abort`
-   or `git revert`) and return the commit to its source lane for repair.
+1. Run the failing test in isolation on `lane/bugfix` (at `origin/main`) to confirm it is pre-existing.
+2. If pre-existing: route to the owning lane. Do not touch Integration.
+3. If introduced by the cherry-pick: abort (`git cherry-pick --abort`) and return the commit to its source lane for repair.
 
-Never patch unrelated test failures inside `lane/integration`.
+### 12. Batch Integration model
+Integration consumes handoff commits one lane at a time. The workflow is:
 
----
+```
+Lane agent → git commit (local) → handoff hash → Integration cherry-pick → gate → push
+```
 
-## Integration Gate Checks (summary)
-
-The gate at `scripts/integration_gate.sh` runs 9 checks in order:
-
-1. No dirty tracked files
-2. Current branch is `lane/integration` or `main`
-3. `app.py` present and non-trivial (≥ 10 lines)
-4. Exactly one `Flask()` init in `app.py`; no `app.config` before it
-5. No global `app = Flask()` outside `app.py`
-6. `app`, `db`, `analytics` import cleanly; `db.get_contracts` present
-7. `requirements.txt` present
-8. Full pytest suite passes (`pytest tests/ -x --tb=short -q`)
-9. Lane branch divergence check against `origin/main`
+Use `ai_agent/prompts/INTEGRATION_BATCH_AUTOPILOT.md` for batch runs.
 
 ---
 
 ## Verifying the System
 
-To verify all 8 worktrees are healthy:
-
 ```bash
 bash /home/michael/recompete-worktrees/integration/scripts/check_lanes.sh
 ```
 
-To run the full integration gate:
+## Running the Full Integration Gate
 
 ```bash
 cd /home/michael/recompete-worktrees/integration
-bash scripts/integration_gate.sh
+bash scripts/integration_gate.sh [lane-branch]
+```
+
+## First Command Every Reset Chat Must Run
+
+```bash
+cd /home/michael/recompete-worktrees/<assigned-lane>
+cat /home/michael/recompete-worktrees/integration/WORKTREE_LANE_SYSTEM.md
+cat LANE.md
+git status -sb
 ```
