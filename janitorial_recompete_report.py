@@ -35,18 +35,12 @@ def get_nested(d, path, default=""):
 
 def fetch_contracts():
     out = []
+    session = requests.Session()
 
     for page in range(1, 101):
         payload = {
             "filters": {
                 "award_type_codes": ["A", "B", "C", "D"],
-                "time_period": [
-                    {
-                        "start_date": TODAY.isoformat(),
-                        "end_date": CUTOFF.isoformat(),
-                        "date_type": "end_date",
-                    }
-                ],
             },
             "fields": [
                 "Award ID",
@@ -66,23 +60,42 @@ def fetch_contracts():
             "order": "desc",
         }
 
-        for attempt in range(1, 4):
-            r = requests.post(API_URL, json=payload, timeout=30)
-            print("search page", page, "attempt", attempt, "status", r.status_code)
+        success = False
+        for attempt in range(1, 6):
+            try:
+                r = session.post(API_URL, json=payload, timeout=60)
+                print("search page", page, "attempt", attempt, "status", r.status_code)
+                if r.status_code < 500:
+                    r.raise_for_status()
+                    success = True
+                    break
+                time.sleep(3 * attempt)
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+                print(f"search page {page} attempt {attempt} connection error: {e}")
+                time.sleep(5 * attempt)
+                session = requests.Session()  # reset session on connection error
 
-            if r.status_code < 500:
-                r.raise_for_status()
-                break
-
-            time.sleep(2 * attempt)
-        else:
-            r.raise_for_status()
+        if not success:
+            print(f"Skipping page {page} after 5 failed attempts")
+            continue
 
         data = r.json()
-        out.extend(data.get("results", []))
+        results = data.get("results", [])
+
+        # Filter to contracts expiring within our window
+        for c in results:
+            end = parse_date(c.get("End Date"))
+            if end and TODAY <= end <= CUTOFF:
+                out.append(c)
 
         if not data.get("page_metadata", {}).get("hasNext"):
             break
+
+        # Stop early if we have enough
+        if len(out) >= 5000:
+            break
+
+        time.sleep(0.2)  # be polite to the API
 
     return out
 
@@ -176,48 +189,47 @@ def main():
         end = parse_date(c.get("End Date"))
         start = parse_date(c.get("Start Date"))
 
-        if not end:
+        if not end or not (TODAY <= end <= CUTOFF):
             continue
 
-        if TODAY <= end <= CUTOFF:
-            amount = money(c.get("Award Amount"))
-            days_left = (end - TODAY).days
+        amount = money(c.get("Award Amount"))
+        days_left = (end - TODAY).days
 
-            rows.append({
-                "score": score(amount, days_left),
-                "days_remaining": days_left,
-                "contract": c.get("Award ID"),
-                "vendor": c.get("Recipient Name"),
-                "value": amount,
-                "start_date": start.isoformat() if start else "",
-                "end_date": end.isoformat(),
-                "agency": c.get("Awarding Agency"),
-                "sub_agency": c.get("Awarding Sub Agency"),
-                "description": c.get("Description", ""),
-                "naics_code": c.get("NAICS Code", ""),
-                "generated_internal_id": c.get("generated_internal_id"),
-                "internal_id": c.get("internal_id"),
-                "solicitation_id": "",
-                "awarding_office": "",
-                "funding_office": "",
-                "recipient_uei": "",
-                "recipient_city": "",
-                "recipient_state": "",
-                "recipient_country": "",
-                "recipient_address": "",
-                "recipient_zip": "",
-                "performance_city": "",
-                "performance_state": "",
-                "performance_country": "",
-                "performance_zip": "",
-                "competition_type": "",
-                "solicitation_procedure": "",
-                "pricing_type": "",
-                "psc_code": "",
-                "psc_description": "",
-                "parent_contract": "",
-                "parent_contract_type": "",
-            })
+        rows.append({
+            "score": score(amount, days_left),
+            "days_remaining": days_left,
+            "contract": c.get("Award ID"),
+            "vendor": c.get("Recipient Name"),
+            "value": amount,
+            "start_date": start.isoformat() if start else "",
+            "end_date": end.isoformat(),
+            "agency": c.get("Awarding Agency"),
+            "sub_agency": c.get("Awarding Sub Agency"),
+            "description": c.get("Description", ""),
+            "naics_code": c.get("NAICS Code", ""),
+            "generated_internal_id": c.get("generated_internal_id"),
+            "internal_id": c.get("internal_id"),
+            "solicitation_id": "",
+            "awarding_office": "",
+            "funding_office": "",
+            "recipient_uei": "",
+            "recipient_city": "",
+            "recipient_state": "",
+            "recipient_country": "",
+            "recipient_address": "",
+            "recipient_zip": "",
+            "performance_city": "",
+            "performance_state": "",
+            "performance_country": "",
+            "performance_zip": "",
+            "competition_type": "",
+            "solicitation_procedure": "",
+            "pricing_type": "",
+            "psc_code": "",
+            "psc_description": "",
+            "parent_contract": "",
+            "parent_contract_type": "",
+        })
 
     rows.sort(key=lambda x: (-x["score"], x["days_remaining"]))
 
@@ -227,7 +239,7 @@ def main():
             detail = fetch_award_detail(enrichment_award_id(row))
             row.update(enrichment_from_detail(detail))
             enrich_count += 1
-            time.sleep(0.1)
+            time.sleep(0.2)
 
     for row in rows:
         rs = recompete_score(row)
@@ -257,20 +269,14 @@ def main():
     for row in rows:
         sid = row.get("solicitation_id", "")
         sam = None
-
         if sid:
             if sid not in sam_cache:
                 sam_cache[sid] = lookup_solicitation(sid)
             sam = sam_cache[sid]
-
         if sam:
             row.update(sam)
             sam_count += 1
-
-        for field in [
-            "sam_title", "sam_type", "sam_due_date",
-            "sam_set_aside", "sam_naics", "sam_url"
-        ]:
+        for field in ["sam_title", "sam_type", "sam_due_date", "sam_set_aside", "sam_naics", "sam_url"]:
             row.setdefault(field, "")
 
     with open("recompete_report.csv", "w", newline="") as f:
