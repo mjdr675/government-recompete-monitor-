@@ -9,9 +9,11 @@
   <p class="mobile-greeting-text" id="mobile-greeting-text">Welcome back</p>
   <p class="mobile-greeting-sub">
     {%- if g.user -%}
-      {%- if analytics.platform.critical_contracts -%}
-        {{ analytics.platform.critical_contracts }} critical contract{{ 's' if analytics.platform.critical_contracts != 1 }} need attention
-        {%- if analytics.upcoming %}, {{ analytics.upcoming | length }} expiring soon{%- endif -%}.
+      {%- if contract_summary and contract_summary.count -%}
+        {{ contract_summary.count }} current contract{{ 's' if contract_summary.count != 1 }} matched to {{ contract_summary.match_term }}
+        {%- if contract_summary.expiring_90 %}, {{ contract_summary.expiring_90 }} expiring soon{%- endif -%}.
+      {%- elif analytics.platform.critical_contracts -%}
+        {{ analytics.platform.critical_contracts }} critical contract{{ 's' if analytics.platform.critical_contracts != 1 }} need attention.
       {%- elif analytics.upcoming -%}
         {{ analytics.upcoming | length }} contract{{ 's' if analytics.upcoming | length != 1 }} expiring in 90 days.
       {%- elif pipeline_summary.active -%}
@@ -25,17 +27,21 @@
   </p>
   {% if g.user %}
   <div class="dash-quick-stats">
+    {% if contract_summary and contract_summary.count %}
+    <a href="/contracts?q={{ (contract_summary.match_term or '') | urlencode }}" class="dash-stat-chip stat-accent">{{ contract_summary.count }} My Contracts</a>
+    {% elif analytics.platform.total_contracts %}
+    <a href="/contracts" class="dash-stat-chip">{{ analytics.platform.total_contracts }} Contracts</a>
+    {% endif %}
+    {% if contract_summary and contract_summary.expiring_90 %}
+    <a href="/contracts?q={{ (contract_summary.match_term or '') | urlencode }}&days=90" class="dash-stat-chip stat-warning">{{ contract_summary.expiring_90 }} Expiring</a>
+    {% elif analytics.upcoming %}
+    <a href="/contracts?days=90" class="dash-stat-chip stat-warning">{{ analytics.upcoming | length }} Expiring</a>
+    {% endif %}
     {% if analytics.platform.critical_contracts %}
     <a href="/contracts?priority=CRITICAL" class="dash-stat-chip stat-critical">{{ analytics.platform.critical_contracts }} Critical</a>
     {% endif %}
-    {% if analytics.upcoming %}
-    <a href="/contracts?days=90" class="dash-stat-chip stat-warning">{{ analytics.upcoming | length }} Expiring</a>
-    {% endif %}
     {% if pipeline_summary.active %}
     <a href="/pipeline" class="dash-stat-chip stat-accent">{{ pipeline_summary.active }} Pipeline</a>
-    {% endif %}
-    {% if analytics.platform.total_contracts %}
-    <a href="/contracts" class="dash-stat-chip">{{ analytics.platform.total_contracts }} Contracts</a>
     {% endif %}
   </div>
   {% endif %}
@@ -107,10 +113,60 @@
 </div>
 
 {# ── KPI row with icons ───────────────────────────────────── #}
+{# When we have a company/vendor match: show company-specific stats first.      #}
+{# Platform totals become secondary labels ("Available Contracts").             #}
 <div class="kpi-row" style="margin-bottom:16px">
+  {% if contract_summary %}
+  {# ── Company-specific KPIs ── #}
+  <a href="/contracts?q={{ (contract_summary.match_term or '') | urlencode }}" class="kpi-card">
+    <div class="kpi-header">
+      <span class="kpi-label">My Current Contracts</span>
+      <svg class="kpi-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+      </svg>
+    </div>
+    <div class="kpi-value">{{ contract_summary.count or 0 }}</div>
+    <div class="kpi-sub">{{ contract_summary.active_count or 0 }} active &middot; matched to {{ contract_summary.match_term }}</div>
+  </a>
+  <a href="/contracts?priority=CRITICAL" class="kpi-card critical">
+    <div class="kpi-header">
+      <span class="kpi-label">Critical Priority</span>
+      <svg class="kpi-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+    </div>
+    <div class="kpi-value">{{ analytics.platform.critical_contracts or 0 }}</div>
+    <div class="kpi-sub">require immediate attention</div>
+  </a>
+  <a href="/contracts?q={{ (contract_summary.match_term or '') | urlencode }}&days=90" class="kpi-card high">
+    <div class="kpi-header">
+      <span class="kpi-label">My Contracts Expiring</span>
+      <svg class="kpi-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+        <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+      </svg>
+    </div>
+    <div class="kpi-value">{{ contract_summary.expiring_90 or 0 }}</div>
+    <div class="kpi-sub">within 90 days</div>
+  </a>
+  <a href="/contracts?q={{ (contract_summary.match_term or '') | urlencode }}" class="kpi-card">
+    <div class="kpi-header">
+      <span class="kpi-label">My Contract Value</span>
+      <svg class="kpi-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+      </svg>
+    </div>
+    <div class="kpi-value">${{ "{:,.0f}".format(contract_summary.total_value or 0) }}</div>
+    <div class="kpi-sub"><a href="/contracts" style="color:inherit;font-size:11px">{{ analytics.platform.total_contracts or 0 }} available platform-wide</a></div>
+  </a>
+  {% else %}
+  {# ── Platform-wide KPIs (no company identity yet) ── #}
   <a href="/contracts" class="kpi-card">
     <div class="kpi-header">
-      <span class="kpi-label">Total Contracts</span>
+      <span class="kpi-label">Available Contracts</span>
       <svg class="kpi-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
         <polyline points="14 2 14 8 20 8"/>
@@ -152,6 +208,7 @@
     <div class="kpi-value">${{ "{:,.0f}".format(analytics.platform.total_pipeline or 0) }}</div>
     <div class="kpi-sub">avg score {{ "{:.1f}".format(analytics.platform.avg_score or 0) }}</div>
   </a>
+  {% endif %}
 </div>
 
 {# ── Onboarding notice (compact, below KPIs) ─────────────── #}
@@ -194,14 +251,14 @@
       {# My Contracts panel #}
       <div id="panel-my-contracts">
 
-        {# Current Contracts: auto-matched by vendor name from company profile #}
-        {% if current_contracts %}
+        {# Current Contracts: auto-matched by vendor_name or company_name #}
+        {% if contract_summary and contract_summary.contracts %}
         <div class="table-wrapper" style="margin-bottom:12px">
           <div class="table-header">
-            <h2>Current Contracts</h2>
+            <h2>My Current Contracts</h2>
             <span style="font-size:12px;color:var(--text-muted);font-weight:400">
-              Matched to <strong>{{ vendor_name or company_name }}</strong>
-              &middot; <a href="/company-profile" style="font-size:12px">Edit vendor name</a>
+              {{ contract_summary.count }} matched to <strong>{{ contract_summary.match_term }}</strong>
+              &middot; <a href="/company-profile" style="font-size:12px">Edit</a>
             </span>
           </div>
           <table>
@@ -210,7 +267,7 @@
               <th class="col-r">Days Left</th><th>Priority</th>
             </tr></thead>
             <tbody>
-              {% for r in current_contracts %}
+              {% for r in contract_summary.contracts %}
               <tr>
                 <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
                 <td>{{ r.agency or '&mdash;' }}</td>
@@ -228,16 +285,27 @@
             </tbody>
           </table>
           <div style="padding:10px 20px;border-top:1px solid var(--border);font-size:12px;color:var(--text-muted)">
-            <a href="/contracts?q={{ (vendor_name or '') | urlencode }}">View all &rarr;</a>
+            <a href="/contracts?q={{ (contract_summary.match_term or '') | urlencode }}">View all &rarr;</a>
           </div>
         </div>
-        {% elif has_profile and not vendor_name %}
+        {% elif contract_summary %}
+        {# We have a match term but found 0 contracts #}
         <div style="padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:12px">
-          <div style="font-weight:500;margin-bottom:4px">Add your vendor name to see current contracts</div>
+          <div style="font-weight:500;margin-bottom:4px">No current contracts matched yet</div>
           <div class="muted" style="font-size:13px;margin-bottom:10px">
-            Tell us the name that appears on your government contracts and we'll auto-load them here.
+            We searched for contracts where the vendor name contains &ldquo;<strong>{{ contract_summary.match_term }}</strong>&rdquo;.
+            If your government contracts use a different name, update it below.
           </div>
-          <a href="/company-profile" class="btn btn-primary" style="font-size:13px">Add vendor name</a>
+          <a href="/company-profile" class="btn btn-primary" style="font-size:13px">Update vendor name</a>
+        </div>
+        {% elif has_profile %}
+        {# Profile exists but no company/vendor name at all #}
+        <div style="padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:12px">
+          <div style="font-weight:500;margin-bottom:4px">Add your company name to see current contracts</div>
+          <div class="muted" style="font-size:13px;margin-bottom:10px">
+            Enter the exact name that appears on your government contracts and we&rsquo;ll auto-load them here.
+          </div>
+          <a href="/company-profile" class="btn btn-primary" style="font-size:13px">Update company profile</a>
         </div>
         {% endif %}
 

@@ -76,7 +76,7 @@ from db import (
 from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
 from analytics import dashboard_analytics, opportunity_recommendations, dashboard_recommended_actions, business_opportunities
-from analytics import suggested_matches as get_suggested_matches, my_contracts_summary, personalized_for_business, my_current_contracts
+from analytics import suggested_matches as get_suggested_matches, my_contracts_summary, personalized_for_business, my_current_contracts, my_current_contract_summary
 from business_match import (
     business_match_score,
     business_match_reasons,
@@ -659,6 +659,7 @@ def dashboard():
         biz_opps = business_opportunities(user_id)
         my_contracts = my_contracts_summary(user_id)
         current_contracts = my_current_contracts(user_id)
+        contract_summary = my_current_contract_summary(user_id)
         suggested = get_suggested_matches(user_id)
         for_business = personalized_for_business(user_id, profile) if profile else []
         p_completion = profile_completeness(profile) if profile else 0
@@ -706,6 +707,7 @@ def dashboard():
             biz_opps=biz_opps,
             my_contracts=my_contracts,
             current_contracts=current_contracts,
+            contract_summary=contract_summary,
             suggested_matches=suggested,
             for_business=for_business,
             recent_updates=recent_updates,

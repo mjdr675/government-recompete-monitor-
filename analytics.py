@@ -460,21 +460,29 @@ def my_contracts_summary(user_id):
     }
 
 
-def my_current_contracts(user_id, limit=20):
-    """Return active contracts where vendor name matches the user's registered vendor name.
+def _vendor_match_term(profile):
+    """Return the best available match term for the user's company in the contracts table.
 
-    Uses LIKE for case-insensitive prefix matching so minor suffix differences
-    (e.g. 'INC' vs 'LLC') still surface the right contracts. Returns [] if the
-    user has no profile or no vendor_name set.
+    Prefers vendor_name (the exact field the user filled in), falls back to
+    company_name. Returns None if neither is set.
+    """
+    if not profile:
+        return None
+    return (profile.get("vendor_name") or "").strip() or (profile.get("company_name") or "").strip() or None
+
+
+def my_current_contracts(user_id, limit=20):
+    """Return contracts where vendor matches the user's vendor_name (or company_name fallback).
+
+    Uses LIKE for case-insensitive substring matching. Returns [] if the user
+    has no profile or no usable name.
     """
     if not user_id:
         return []
     from db import get_company_profile
     profile = get_company_profile(user_id)
-    if not profile or not profile.get("vendor_name"):
-        return []
-    vendor_name = profile["vendor_name"].strip()
-    if not vendor_name:
+    match_term = _vendor_match_term(profile)
+    if not match_term:
         return []
     engine = get_engine()
     with engine.connect() as conn:
@@ -485,8 +493,57 @@ def my_current_contracts(user_id, limit=20):
             WHERE LOWER(vendor) LIKE LOWER(:pattern)
             ORDER BY days_remaining ASC NULLS LAST, end_date ASC NULLS LAST
             LIMIT :limit
-        """), {"pattern": f"%{vendor_name}%", "limit": limit}).mappings().fetchall()
+        """), {"pattern": f"%{match_term}%", "limit": limit}).mappings().fetchall()
     return [dict(r) for r in rows]
+
+
+def my_current_contract_summary(user_id):
+    """Aggregate summary of contracts matched to the user's company identity.
+
+    Returns a dict with:
+      match_term   — the name we searched for (vendor_name or company_name fallback)
+      count        — total matched contracts
+      active_count — matched contracts with days_remaining > 0
+      expiring_90  — matched contracts expiring within 90 days
+      total_value  — sum of matched contract values
+      contracts    — list of matched contracts (up to 20), ordered by days_remaining
+
+    Returns None if the user has no profile or no usable company name.
+    """
+    if not user_id:
+        return None
+    from db import get_company_profile
+    profile = get_company_profile(user_id)
+    match_term = _vendor_match_term(profile)
+    if not match_term:
+        return None
+    engine = get_engine()
+    with engine.connect() as conn:
+        agg = conn.execute(text("""
+            SELECT
+                COUNT(*) AS count,
+                COALESCE(SUM(value), 0) AS total_value,
+                SUM(CASE WHEN COALESCE(days_remaining, 0) > 0 THEN 1 ELSE 0 END) AS active_count,
+                SUM(CASE WHEN days_remaining BETWEEN 0 AND 90 THEN 1 ELSE 0 END) AS expiring_90
+            FROM contracts
+            WHERE LOWER(vendor) LIKE LOWER(:pattern)
+        """), {"pattern": f"%{match_term}%"}).mappings().fetchone()
+        rows = conn.execute(text("""
+            SELECT internal_id, award_id, vendor, agency, value,
+                   end_date, days_remaining, priority, recompete_score, category
+            FROM contracts
+            WHERE LOWER(vendor) LIKE LOWER(:pattern)
+            ORDER BY days_remaining ASC NULLS LAST, end_date ASC NULLS LAST
+            LIMIT 20
+        """), {"pattern": f"%{match_term}%"}).mappings().fetchall()
+    return {
+        "match_term": match_term,
+        "count": agg["count"] if agg else 0,
+        "active_count": agg["active_count"] if agg else 0,
+        "expiring_90": agg["expiring_90"] if agg else 0,
+        "total_value": agg["total_value"] if agg else 0,
+        "contracts": [dict(r) for r in rows],
+    }
 
 
 def agency_summary(run_date, limit=10):
