@@ -291,6 +291,141 @@ def suggested_matches(user_id, limit=5):
     return results
 
 
+def personalized_for_business(user_id, profile, limit=10):
+    """Find contracts matching company profile: NAICS, states, agencies, value range.
+
+    Returns list of contracts with match reasons. Excludes already-tracked contracts.
+    Returns empty list if profile is missing required fields.
+    """
+    if not user_id or not profile:
+        return []
+
+    engine = get_engine()
+
+    # Get tracked contract IDs to exclude them
+    tracked_ids = set()
+    with engine.connect() as conn:
+        tracked_rows = conn.execute(text("""
+            SELECT DISTINCT c.internal_id FROM contracts c
+            JOIN user_watchlist w ON w.internal_id = c.internal_id WHERE w.user_id = :uid
+            UNION
+            SELECT DISTINCT c.internal_id FROM contracts c
+            JOIN opportunities o ON o.internal_id = c.internal_id WHERE o.user_id = :uid
+        """), {"uid": user_id}).fetchall()
+        tracked_ids = {r[0] for r in tracked_rows}
+
+    # Build match criteria from profile
+    naics_codes = profile.get("naics_codes", [])
+    states = profile.get("states", [])
+    agencies = profile.get("agencies", [])
+    keywords = profile.get("keywords", [])
+    min_val = profile.get("min_contract_value")
+    max_val = profile.get("max_contract_value")
+
+    # Need at least one search criterion
+    if not any([naics_codes, states, agencies]):
+        return []
+
+    with engine.connect() as conn:
+        # Query contracts matching profile criteria
+        # Score by number of matching dimensions
+        query = """
+            WITH scored_contracts AS (
+                SELECT
+                    c.internal_id, c.award_id, c.vendor, c.agency, c.value,
+                    c.end_date, c.days_remaining, c.priority, c.recompete_score,
+                    c.category, c.naics_code, c.place_of_performance_state,
+                    c.description,
+                    COALESCE(
+                        (CASE WHEN c.place_of_performance_state IN ({state_in}) THEN 1 ELSE 0 END) +
+                        (CASE WHEN c.category IN ({category_in}) THEN 2 ELSE 0 END) +
+                        (CASE WHEN c.agency IN ({agency_in}) THEN 1 ELSE 0 END),
+                        0
+                    ) as match_score
+                FROM contracts c
+                WHERE c.days_remaining > 0
+        """
+
+        params = {}
+
+        # Add value range filter if specified
+        if min_val is not None:
+            query += " AND (c.value IS NULL OR c.value >= :min_val)"
+            params["min_val"] = min_val
+        if max_val is not None:
+            query += " AND (c.value IS NULL OR c.value <= :max_val)"
+            params["max_val"] = max_val
+
+        query += " ) SELECT * FROM scored_contracts WHERE match_score > 0 ORDER BY match_score DESC, recompete_score DESC LIMIT :lim"
+        params["lim"] = limit
+
+        # Determine NAICS-based categories (map NAICS prefixes to categories)
+        # This reuses the logic from infer_category
+        category_matches = _categories_from_naics(naics_codes)
+
+        # Bind every IN-clause value as a SQL parameter instead of interpolating
+        # it as a string literal.  states/agencies come from the user-controlled
+        # company profile, so the previous f-string interpolation was a SQL
+        # injection vector; category_matches is an internal allowlist but is
+        # bound too for consistency.  An empty list renders as `IN (NULL)`, which
+        # matches no rows — preserving the prior "__NOMATCH__" sentinel behavior.
+        def _bind_in(values, prefix):
+            if not values:
+                return "NULL"
+            placeholders = []
+            for i, v in enumerate(values):
+                key = f"{prefix}{i}"
+                params[key] = v
+                placeholders.append(f":{key}")
+            return ", ".join(placeholders)
+
+        state_in = _bind_in(states or [], "st")
+        agency_in = _bind_in(agencies or [], "ag")
+        category_in = _bind_in(category_matches, "cat")
+
+        query = query.format(
+            state_in=state_in,
+            category_in=category_in,
+            agency_in=agency_in,
+        )
+
+        rows = conn.execute(text(query), params).mappings().fetchall()
+
+    results = []
+    for row in rows:
+        r = dict(row)
+        if r["internal_id"] in tracked_ids:
+            continue
+
+        # Build reason
+        reasons = []
+        if row["place_of_performance_state"] and row["place_of_performance_state"] in (states or []):
+            reasons.append(f"Work in {row['place_of_performance_state']}")
+        if row["category"] and row["category"] in category_matches:
+            reasons.append(f"{row['category']} category")
+        if row["agency"] and row["agency"] in (agencies or []):
+            reasons.append(f"{row['agency']} contract")
+
+        r["match_reason"] = ", ".join(reasons) if reasons else "Profile match"
+        results.append(r)
+        if len(results) >= limit:
+            break
+
+    return results
+
+
+def _categories_from_naics(naics_codes):
+    """Map NAICS codes to categories using the infer_category logic."""
+    from db import _NAICS_CATEGORY_MAP
+    categories = set()
+    for nc in (naics_codes or []):
+        for prefix, cat in _NAICS_CATEGORY_MAP:
+            if str(nc).startswith(prefix):
+                categories.add(cat)
+                break
+    return list(categories)
+
+
 def my_contracts_summary(user_id):
     """Return the user's explicitly tracked contracts for the dashboard."""
     if not user_id:
@@ -409,7 +544,10 @@ def vendor_profile_analytics(vendor):
                 MAX(recompete_score) AS max_score,
                 SUM(CASE WHEN priority='CRITICAL' THEN 1 ELSE 0 END) AS critical_contracts,
                 SUM(CASE WHEN COALESCE(days_remaining,0) > 0 THEN 1 ELSE 0 END) AS active_contracts,
-                SUM(CASE WHEN COALESCE(days_remaining,0) <= 0 THEN 1 ELSE 0 END) AS expired_contracts
+                SUM(CASE WHEN COALESCE(days_remaining,0) <= 0 THEN 1 ELSE 0 END) AS expired_contracts,
+                COALESCE(AVG(CASE WHEN days_remaining IS NOT NULL THEN days_remaining END), 0) AS avg_days_remaining,
+                MIN(CASE WHEN end_date IS NOT NULL THEN end_date END) AS earliest_expiration,
+                MAX(CASE WHEN end_date IS NOT NULL THEN end_date END) AS latest_expiration
             FROM contracts
             WHERE vendor = :vendor
         """), {"vendor": vendor}).mappings().fetchone() or {})
@@ -418,13 +556,15 @@ def vendor_profile_analytics(vendor):
             SELECT
                 agency,
                 COUNT(*) AS contracts,
+                COALESCE(SUM(value), 0) AS pipeline_value,
                 COALESCE(SUM(value), 0) AS total_value,
                 SUM(CASE WHEN COALESCE(days_remaining,0) > 0 THEN 1 ELSE 0 END) AS active_contracts,
-                MAX(recompete_score) AS top_score
+                MAX(recompete_score) AS top_score,
+                COALESCE(AVG(recompete_score), 0) AS avg_score
             FROM contracts
             WHERE vendor = :vendor
             GROUP BY agency
-            ORDER BY total_value DESC, contracts DESC, agency
+            ORDER BY pipeline_value DESC, contracts DESC, agency
         """), {"vendor": vendor}).mappings().fetchall()]
 
         upcoming = [dict(r) for r in conn.execute(text("""
@@ -543,6 +683,67 @@ def vendor_profile_analytics(vendor):
         except Exception:
             vendor_website = None
 
+        expiring_soon = [dict(r) for r in conn.execute(text("""
+            SELECT internal_id, agency, value, priority, recompete_score, days_remaining, end_date
+            FROM contracts
+            WHERE vendor = :vendor AND days_remaining > 0 AND days_remaining <= 90
+            ORDER BY days_remaining ASC
+        """), {"vendor": vendor}).mappings().fetchall()]
+
+        critical_contracts = [dict(r) for r in conn.execute(text("""
+            SELECT internal_id, agency, value, priority, recompete_score, days_remaining, end_date
+            FROM contracts
+            WHERE vendor = :vendor AND priority = 'CRITICAL'
+            ORDER BY recompete_score DESC
+        """), {"vendor": vendor}).mappings().fetchall()]
+
+        largest_row = conn.execute(text("""
+            SELECT internal_id, agency, value, priority, recompete_score, days_remaining, end_date
+            FROM contracts
+            WHERE vendor = :vendor
+            ORDER BY value DESC LIMIT 1
+        """), {"vendor": vendor}).mappings().fetchone()
+        largest_contract = dict(largest_row) if largest_row else None
+
+        agencies_multi = [r[0] for r in conn.execute(text("""
+            SELECT agency FROM contracts
+            WHERE vendor = :vendor AND days_remaining > 0 AND days_remaining <= 180
+            GROUP BY agency HAVING COUNT(*) >= 2
+        """), {"vendor": vendor}).fetchall()]
+
+        related_vendors = [dict(r) for r in conn.execute(text("""
+            SELECT other.vendor, COUNT(DISTINCT other.agency) AS shared_agencies,
+                   COUNT(*) AS shared_contracts
+            FROM contracts AS other
+            WHERE other.vendor != :vendor
+              AND other.agency IN (
+                  SELECT DISTINCT agency FROM contracts WHERE vendor = :vendor
+              )
+            GROUP BY other.vendor
+            ORDER BY shared_agencies DESC, shared_contracts DESC
+            LIMIT 10
+        """), {"vendor": vendor}).mappings().fetchall()]
+
+        priority_counts = {r["priority"]: r["contracts"] for r in pipeline_by_priority}
+        agency_pairs = [(a["agency"], a["pipeline_value"]) for a in agencies]
+        month_pairs = [
+            (f"{r['year']}-{r['quarter']}", r["contracts"])
+            for r in timeline
+        ]
+
+    import charts as _charts
+    risk = {
+        "expiring_soon": expiring_soon,
+        "critical": critical_contracts,
+        "largest_contract": largest_contract,
+        "agencies_multi_recompete": agencies_multi,
+    }
+    vendor_charts = {
+        "priority": _charts.priority_pie(priority_counts),
+        "pipeline_by_agency": _charts.agency_bar(agency_pairs),
+        "expiring_by_month": _charts.monthly_bar(month_pairs),
+    }
+
     return {
         "summary": summary,
         "agencies": agencies,
@@ -554,6 +755,9 @@ def vendor_profile_analytics(vendor):
         "change_events": change_events,
         "timeline": timeline,
         "vendor_website": vendor_website,
+        "risk": risk,
+        "related_vendors": related_vendors,
+        "charts": vendor_charts,
     }
 
 def agency_profile(agency):

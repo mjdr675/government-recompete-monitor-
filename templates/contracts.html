@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_score_explainer.html" as score_help %}
 {% block title %}Contracts{% endblock %}
 
 {% block content %}
@@ -95,6 +96,21 @@
   {% endif %}
 </form>
 
+{% if quick_views %}
+<div class="quick-views" style="margin:-4px 0 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+  <span class="muted" style="font-size:12px">Quick views:</span>
+  {% for v in quick_views %}
+    {% if v.id == active_view %}
+    <a href="/views/{{ v.id }}" class="saved-search-chip" aria-current="true"
+       style="background:var(--accent);color:#fff;border-color:var(--accent)">&#10003; {{ v.label }}</a>
+    {% else %}
+    <a href="/views/{{ v.id }}" class="saved-search-chip">{{ v.label }}</a>
+    {% endif %}
+  {% endfor %}
+  <a href="/views" class="muted" style="font-size:12px;text-decoration:underline">All views &rarr;</a>
+</div>
+{% endif %}
+
 {% if g.user %}
 <div style="margin:-8px 0 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
   {% if for_my_business %}
@@ -141,6 +157,21 @@
 </div>
 {% endif %}
 
+{% if filter_chips %}
+<div class="active-filters" style="margin:0 0 14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+  <span class="muted" style="font-size:12px">Active filters:</span>
+  {% for chip in filter_chips %}
+    <a href="{{ chip.remove_url }}" class="active-filter-chip"
+       title="Remove {{ chip.label }} filter"
+       style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:3px 10px;background:var(--surface);border:1px solid var(--border);border-radius:999px;text-decoration:none;color:var(--text)">
+      <span>{{ chip.label }}: <strong>{{ chip.value }}</strong></span>
+      <span aria-hidden="true" style="color:var(--text-muted);font-weight:600">&times;</span>
+    </a>
+  {% endfor %}
+  <a href="/contracts" class="muted" style="font-size:12px;text-decoration:underline">Clear all</a>
+</div>
+{% endif %}
+
 {% macro sort_link(col, label) %}
   {% set next_dir = "asc" if (sort == col and direction == "desc") else "desc" %}
   {% set arrow = " ↓" if (sort == col and direction == "desc") else (" ↑" if sort == col else "") %}
@@ -168,7 +199,7 @@
         <th class="col-r">{{ sort_link("value", "Value") }}</th>
         <th>{{ sort_link("end_date", "End Date") }}</th>
         <th class="col-r">{{ sort_link("days_remaining", "Days") }}</th>
-        <th class="col-r">{{ sort_link("recompete_score", "Score") }} <span title="Recompete Score (0–100): competition type (≤40) + contract value (≤35) + time remaining (≤25) + agency/sourcing bonuses. Higher = more attractive to pursue. Open any contract for the full breakdown." style="cursor:help;color:var(--text-faint);font-weight:normal">&#9432;</span></th>
+        <th class="col-r">{{ sort_link("recompete_score", "Score") }} <button type="button" class="score-info-btn" onclick="openScoreModal()" aria-haspopup="dialog" aria-label="How the Recompete Score is calculated" title="How the Recompete Score is calculated">&#9432;</button></th>
         {% if for_my_business %}<th class="col-r" title="How well this contract matches your Company Profile">Match</th>{% endif %}
       </tr>
     </thead>
@@ -282,6 +313,9 @@
     <span class="muted" style="padding:5px 10px" aria-disabled="true">Last</span>
   {% endif %}
 </div>
+
+{# Recompete Score explanation modal, opened from the Score column info icon. #}
+{{ score_help.score_modal() }}
 
 <script>
 function updateCompare() {

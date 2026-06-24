@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Workspace Settings — Recompete{% endblock %}
+{% block content %}
+<h1>Workspace Settings</h1>
+<div class="page-meta" style="margin-bottom:20px">Manage your company workspace, logo, and team.</div>
+
+<div class="settings-page">
+
+  <div class="settings-card">
+    <h2>Company Workspace</h2>
+
+    {% if error %}
+      <div class="auth-error" style="margin-bottom:16px">{{ error }}</div>
+    {% endif %}
+    {% if success %}
+      <div class="auth-success" style="margin-bottom:16px">{{ success }}</div>
+    {% endif %}
+
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+      {% if workspace and workspace.logo_path %}
+        <img src="{{ url_for('static', filename=workspace.logo_path) }}"
+             alt="Company logo" style="width:56px;height:56px;border-radius:8px;object-fit:cover;border:1px solid var(--border)">
+      {% else %}
+        <span style="width:56px;height:56px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;background:var(--surface);border:1px solid var(--border);font-weight:700;font-size:22px">
+          {{ (workspace.name or user.email or 'W')[0].upper() }}
+        </span>
+      {% endif %}
+      <div style="font-size:13px;color:var(--text-muted)">PNG, JPG, GIF, WEBP, or SVG. Up to 2&nbsp;MB.</div>
+    </div>
+
+    <form method="post" action="/settings/workspace" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="workspace_name">Workspace name <span class="hint">(shown throughout the app)</span></label>
+        <input type="text" id="workspace_name" name="workspace_name" maxlength="120"
+               value="{{ workspace.name or '' }}" placeholder="Your company or agency"
+               autocomplete="organization">
+      </div>
+      <div class="field">
+        <label for="logo">Company logo</label>
+        <input type="file" id="logo" name="logo" accept=".png,.jpg,.jpeg,.gif,.webp,.svg,image/*">
+      </div>
+      <button type="submit" class="btn btn-primary" style="margin-top:4px">Save workspace</button>
+    </form>
+
+    {% if workspace and workspace.logo_path %}
+    <form method="post" action="/settings/workspace" style="margin-top:10px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="remove_logo">
+      <button type="submit" class="btn btn-secondary" style="font-size:13px">Remove logo</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="settings-card">
+    <h2>Team Members</h2>
+    <p style="margin:0 0 12px;font-size:13px;color:var(--text-muted)">
+      People with access to this workspace. Inviting teammates is coming soon.
+    </p>
+    <table>
+      <thead><tr><th>Email</th><th>Role</th><th>Since</th></tr></thead>
+      <tbody>
+        {% for m in members %}
+        <tr>
+          <td>{{ m.email }}</td>
+          <td>{{ m.role | capitalize }}</td>
+          <td style="font-size:12px;color:var(--text-muted)">{{ m.created_at[:10] if m.created_at else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <p style="font-size:13px;color:var(--text-muted)"><a href="/settings/account">Account settings →</a></p>
+
+</div>
+{% endblock %}

@@ -4,6 +4,13 @@ on:
   push:
     branches: [ "main" ]
 
+# Serialize deploys so two pushes to main cannot run overlapping
+# `git reset --hard` + `systemctl restart` sequences against the same VPS.
+# cancel-in-progress: false → never kill an in-flight deploy; queue the next.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -21,6 +28,12 @@ jobs:
         run: |
           pip install -r requirements.txt
           pip install pytest
+
+      - name: Stub ae CLI
+        run: |
+          sudo mkdir -p /usr/local/bin
+          echo -e '#!/bin/bash\necho "ae stub running"' | sudo tee /usr/local/bin/ae
+          sudo chmod +x /usr/local/bin/ae
 
       - name: Run tests
         run: pytest -q

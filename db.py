@@ -3,7 +3,7 @@ import json
 import os
 import re
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
 
@@ -129,6 +129,18 @@ _MIGRATION_PROBES: dict = {
     "011_company_keywords.sql": (
         "SELECT COUNT(*) FROM information_schema.tables "
         "WHERE table_schema = 'public' AND table_name = 'company_keywords'"
+    ),
+    "012_contract_field_changes.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'contract_field_changes'"
+    ),
+    "013_workspaces.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'workspaces'"
+    ),
+    "014_workspace_billing.sql": (
+        "SELECT COUNT(*) FROM information_schema.columns "
+        "WHERE table_name = 'workspaces' AND column_name = 'subscription_status'"
     ),
 }
 
@@ -494,6 +506,7 @@ def init_db():
             solicitation_id TEXT,
             recompete_score INTEGER,
             priority TEXT,
+            psc_description TEXT,
             raw_json TEXT,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
             vendor_website TEXT
@@ -714,6 +727,59 @@ def init_db():
             UNIQUE(profile_id, keyword)
         )
         """))
+        # Customer Workspace foundation. A workspace is the company-level entity;
+        # workspace_members links users to it (role present for future use, not
+        # enforced — no permissions in this phase).
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS workspaces (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            name        TEXT,
+            logo_path   TEXT,
+            created_at  TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        )
+        """))
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS workspace_members (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+            user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            role         TEXT NOT NULL DEFAULT 'owner',
+            created_at   TEXT NOT NULL,
+            UNIQUE(workspace_id, user_id)
+        )
+        """))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_workspace_members_user"
+            " ON workspace_members(user_id)"
+        ))
+        # Workspace billing layer (additive — does not alter Phase 1 columns).
+        for col in (
+            "plan TEXT NOT NULL DEFAULT 'starter'",
+            "subscription_status TEXT NOT NULL DEFAULT 'trialing'",
+            "trial_start_at TEXT",
+            "trial_end_at TEXT",
+            "stripe_customer_id TEXT",
+            "stripe_subscription_id TEXT",
+        ):
+            try:
+                conn.execute(text(f"ALTER TABLE workspaces ADD COLUMN {col}"))
+            except Exception:
+                pass
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS workspace_billing_events (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            workspace_id    INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
+            event_type      TEXT,
+            stripe_event_id TEXT,
+            payload_json    TEXT,
+            created_at      TEXT NOT NULL
+        )
+        """))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_workspace_billing_events_ws"
+            " ON workspace_billing_events(workspace_id)"
+        ))
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS opportunities (
             id                    INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -995,6 +1061,241 @@ def save_company_profile(user_id, data):
 
 
 # ---------------------------------------------------------------------------
+# Customer Workspace
+# ---------------------------------------------------------------------------
+
+def get_workspace_for_user(user_id):
+    """Return the workspace dict for a user via membership, or None.
+
+    Read-only: does not create a workspace. Returned keys: id, name, logo_path,
+    created_at, updated_at, role (the caller's membership role).
+    """
+    if not user_id:
+        return None
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT w.id, w.name, w.logo_path, w.created_at, w.updated_at, m.role
+            FROM workspaces w
+            JOIN workspace_members m ON m.workspace_id = w.id
+            WHERE m.user_id = :uid
+            ORDER BY m.id ASC
+            LIMIT 1
+        """), {"uid": user_id}).mappings().fetchone()
+    return dict(row) if row else None
+
+
+def get_or_create_workspace_for_user(user_id):
+    """Return the user's workspace, lazily creating one on first access.
+
+    A new workspace is seeded from the user's company_name and the user is added
+    as the owner member. This provisions a workspace for every existing
+    single-user account without re-keying any existing per-user data.
+    """
+    if not user_id:
+        return None
+    existing = get_workspace_for_user(user_id)
+    if existing:
+        return existing
+
+    engine = get_engine()
+    now = datetime.now(timezone.utc).isoformat()
+    with engine.begin() as conn:
+        name = conn.execute(
+            text("SELECT company_name FROM users WHERE id = :uid"),
+            {"uid": user_id},
+        ).scalar()
+        result = conn.execute(text(
+            "INSERT INTO workspaces (name, logo_path, created_at, updated_at)"
+            " VALUES (:name, NULL, :now, :now)"
+        ), {"name": name or None, "now": now})
+        # SQLite exposes lastrowid; PostgreSQL needs RETURNING.
+        workspace_id = result.lastrowid if result.lastrowid else conn.execute(
+            text("SELECT id FROM workspaces ORDER BY id DESC LIMIT 1")
+        ).scalar()
+        conn.execute(text(
+            "INSERT INTO workspace_members (workspace_id, user_id, role, created_at)"
+            " VALUES (:wid, :uid, 'owner', :now)"
+            " ON CONFLICT(workspace_id, user_id) DO NOTHING"
+        ), {"wid": workspace_id, "uid": user_id, "now": now})
+    # Start the 7-day trial at workspace creation time.
+    create_workspace_billing_record(workspace_id)
+    return get_workspace_for_user(user_id)
+
+
+def update_workspace(workspace_id, name=None, logo_path=None):
+    """Update workspace name and/or logo_path. None args are left unchanged."""
+    if not workspace_id:
+        return
+    sets = ["updated_at = :now"]
+    params = {"wid": workspace_id, "now": datetime.now(timezone.utc).isoformat()}
+    if name is not None:
+        sets.append("name = :name")
+        params["name"] = name.strip() or None
+    if logo_path is not None:
+        sets.append("logo_path = :logo_path")
+        params["logo_path"] = logo_path or None
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(
+            text(f"UPDATE workspaces SET {', '.join(sets)} WHERE id = :wid"),
+            params,
+        )
+
+
+def list_workspace_members(workspace_id):
+    """Return members of a workspace (foundation for team management)."""
+    if not workspace_id:
+        return []
+    engine = get_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT m.user_id, m.role, m.created_at, u.email
+            FROM workspace_members m
+            JOIN users u ON u.id = m.user_id
+            WHERE m.workspace_id = :wid
+            ORDER BY m.id ASC
+        """), {"wid": workspace_id}).mappings().fetchall()
+    return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Workspace Billing (subscription tiers + 7-day trial)
+# ---------------------------------------------------------------------------
+
+TRIAL_DAYS = 7
+VALID_PLANS = ("starter", "growth", "pro")
+
+
+def create_workspace_billing_record(workspace_id, trial_days=TRIAL_DAYS):
+    """Initialise a workspace's trial window. Idempotent: only seeds the trial
+    when trial_start_at is not already set, so re-runs never reset the clock."""
+    if not workspace_id:
+        return
+    engine = get_engine()
+    now = datetime.now(timezone.utc)
+    trial_end = now + timedelta(days=trial_days)
+    with engine.begin() as conn:
+        conn.execute(text("""
+            UPDATE workspaces
+            SET trial_start_at = COALESCE(trial_start_at, :start),
+                trial_end_at   = COALESCE(trial_end_at, :end),
+                subscription_status = COALESCE(subscription_status, 'trialing'),
+                plan = COALESCE(plan, 'starter'),
+                updated_at = :now
+            WHERE id = :wid
+        """), {
+            "start": now.isoformat(),
+            "end": trial_end.isoformat(),
+            "now": now.isoformat(),
+            "wid": workspace_id,
+        })
+
+
+def get_workspace_billing(workspace_id):
+    """Return the workspace's billing fields, or None if the workspace is absent."""
+    if not workspace_id:
+        return None
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT id, plan, subscription_status, trial_start_at, trial_end_at,
+                   stripe_customer_id, stripe_subscription_id
+            FROM workspaces WHERE id = :wid
+        """), {"wid": workspace_id}).mappings().fetchone()
+    return dict(row) if row else None
+
+
+def update_workspace_subscription_status(workspace_id, status, plan=None,
+                                         stripe_customer_id=None,
+                                         stripe_subscription_id=None):
+    """Update a workspace's subscription status and optional Stripe linkage.
+
+    Only non-None arguments are written; the rest are left unchanged.
+    """
+    if not workspace_id:
+        return
+    sets = ["subscription_status = :status", "updated_at = :now"]
+    params = {
+        "status": status,
+        "now": datetime.now(timezone.utc).isoformat(),
+        "wid": workspace_id,
+    }
+    if plan is not None:
+        sets.append("plan = :plan")
+        params["plan"] = plan
+    if stripe_customer_id is not None:
+        sets.append("stripe_customer_id = :cust")
+        params["cust"] = stripe_customer_id
+    if stripe_subscription_id is not None:
+        sets.append("stripe_subscription_id = :sub")
+        params["sub"] = stripe_subscription_id
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(
+            text(f"UPDATE workspaces SET {', '.join(sets)} WHERE id = :wid"),
+            params,
+        )
+
+
+def is_workspace_in_trial(workspace_id):
+    """True when the workspace's trial window has not yet elapsed."""
+    billing = get_workspace_billing(workspace_id)
+    if not billing or not billing.get("trial_end_at"):
+        return False
+    try:
+        trial_end = datetime.fromisoformat(billing["trial_end_at"])
+    except (ValueError, TypeError):
+        return False
+    if trial_end.tzinfo is None:
+        trial_end = trial_end.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) <= trial_end
+
+
+def is_workspace_active(workspace_id):
+    """True when the workspace may be accessed: active subscription OR live trial."""
+    billing = get_workspace_billing(workspace_id)
+    if not billing:
+        return False
+    if billing.get("subscription_status") == "active":
+        return True
+    return is_workspace_in_trial(workspace_id)
+
+
+def get_workspace_by_stripe_customer(stripe_customer_id):
+    """Return the workspace linked to a Stripe customer id, or None."""
+    if not stripe_customer_id:
+        return None
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT id, plan, subscription_status, trial_start_at, trial_end_at,
+                   stripe_customer_id, stripe_subscription_id
+            FROM workspaces WHERE stripe_customer_id = :cust
+            ORDER BY id ASC LIMIT 1
+        """), {"cust": stripe_customer_id}).mappings().fetchone()
+    return dict(row) if row else None
+
+
+def record_workspace_billing_event(workspace_id, event_type, stripe_event_id=None,
+                                   payload_json=None):
+    """Append an audit row to workspace_billing_events."""
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(text("""
+            INSERT INTO workspace_billing_events
+                (workspace_id, event_type, stripe_event_id, payload_json, created_at)
+            VALUES (:wid, :etype, :eid, :payload, :now)
+        """), {
+            "wid": workspace_id,
+            "etype": event_type,
+            "eid": stripe_event_id,
+            "payload": payload_json,
+            "now": datetime.now(timezone.utc).isoformat(),
+        })
+
+
+# ---------------------------------------------------------------------------
 # Opportunity Pipeline
 # ---------------------------------------------------------------------------
 
@@ -1247,6 +1548,8 @@ def upsert_contract(row):
             solicitation_id=excluded.solicitation_id,
             recompete_score=excluded.recompete_score,
             priority=excluded.priority,
+            psc_description=excluded.psc_description,
+            description=excluded.description,
             raw_json=excluded.raw_json,
             updated_at=excluded.updated_at
         """), {
@@ -1347,6 +1650,8 @@ def save_snapshot(run_date, rows):
                 solicitation_id=excluded.solicitation_id,
                 recompete_score=excluded.recompete_score,
                 priority=excluded.priority,
+                psc_description=excluded.psc_description,
+                description=excluded.description,
                 raw_json=excluded.raw_json,
                 updated_at=CURRENT_TIMESTAMP
             """), {
@@ -1509,6 +1814,159 @@ def get_changes(run_date, change_type):
         }).mappings().fetchall()
 
 
+# ---------------------------------------------------------------------------
+# Generic field-level contract change history (Auto Contract Updates lane)
+#
+# Separate from the priority-coupled `changes` table so existing change_detector
+# / report_builder / vendor change_events behavior is preserved. Stores one row
+# per (run_date, internal_id, field_name) — idempotent via clear-by-run_date plus
+# the UNIQUE constraint.
+# ---------------------------------------------------------------------------
+
+def init_field_changes_table():
+    with get_engine().begin() as conn:
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS contract_field_changes (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_date    TEXT NOT NULL,
+            internal_id TEXT NOT NULL,
+            field_name  TEXT NOT NULL,
+            old_value   TEXT,
+            new_value   TEXT,
+            change_kind TEXT NOT NULL,
+            created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(run_date, internal_id, field_name)
+        )
+        """))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_field_changes_run_date"
+            " ON contract_field_changes(run_date)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_field_changes_internal_id"
+            " ON contract_field_changes(internal_id)"
+        ))
+
+
+def clear_field_changes_for_date(run_date):
+    """Delete any field-change rows for run_date so detection is idempotent."""
+    init_field_changes_table()
+    with get_engine().begin() as conn:
+        conn.execute(
+            text("DELETE FROM contract_field_changes WHERE run_date = :run_date"),
+            {"run_date": run_date},
+        )
+
+
+def insert_field_changes(run_date, records):
+    """Bulk-insert field-change records for run_date.
+
+    *records* is an iterable of dicts with keys: internal_id, field_name,
+    old_value, new_value, change_kind. Ignores duplicates (UNIQUE constraint)
+    so a re-run after a partial failure is safe.
+    """
+    records = list(records)
+    if not records:
+        return 0
+    init_field_changes_table()
+    engine = get_engine()
+    is_pg = engine.dialect.name == "postgresql"
+    conflict = "ON CONFLICT(run_date, internal_id, field_name) DO NOTHING"
+    with engine.begin() as conn:
+        for rec in records:
+            conn.execute(text(f"""
+                INSERT INTO contract_field_changes
+                    (run_date, internal_id, field_name, old_value, new_value, change_kind)
+                VALUES (:run_date, :internal_id, :field_name, :old_value, :new_value, :change_kind)
+                {conflict}
+            """), {
+                "run_date": run_date,
+                "internal_id": rec["internal_id"],
+                "field_name": rec["field_name"],
+                "old_value": rec.get("old_value"),
+                "new_value": rec.get("new_value"),
+                "change_kind": rec["change_kind"],
+            })
+    return len(records)
+
+
+def get_field_changes_for_contracts(internal_ids, limit=50):
+    """Return recent field changes for the given contract internal_ids.
+
+    Joined to contracts for display (award_id, vendor). Ordered newest-first.
+    Returns [] when internal_ids is empty. Used by the dashboard Recent Updates
+    feed (scoped to a user's watchlist + pipeline contracts).
+    """
+    internal_ids = list(internal_ids or [])
+    if not internal_ids:
+        return []
+    init_field_changes_table()
+    engine = get_engine()
+    with engine.connect() as conn:
+        placeholders = ", ".join(f":iid_{i}" for i in range(len(internal_ids)))
+        params = {f"iid_{i}": iid for i, iid in enumerate(internal_ids)}
+        params["limit"] = limit
+        rows = conn.execute(text(f"""
+            SELECT
+                fc.run_date,
+                fc.internal_id,
+                fc.field_name,
+                fc.old_value,
+                fc.new_value,
+                fc.change_kind,
+                fc.created_at,
+                c.award_id,
+                c.vendor
+            FROM contract_field_changes fc
+            LEFT JOIN contracts c ON c.internal_id = fc.internal_id
+            WHERE fc.internal_id IN ({placeholders})
+            ORDER BY fc.run_date DESC, fc.created_at DESC, fc.internal_id
+            LIMIT :limit
+        """), params).mappings().fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_field_changes(run_date):
+    """Return all field-change rows for run_date (internal_id schema)."""
+    init_field_changes_table()
+    with get_engine().connect() as conn:
+        rows = conn.execute(text("""
+            SELECT run_date, internal_id, field_name, old_value, new_value,
+                   change_kind, created_at
+            FROM contract_field_changes
+            WHERE run_date = :run_date
+            ORDER BY internal_id, field_name
+        """), {"run_date": run_date}).mappings().fetchall()
+    return [dict(r) for r in rows]
+
+
+init_contract_field_changes_table = init_field_changes_table
+
+
+def get_recent_updates_for_user(user_id, limit=10):
+    """Return recent field-level changes for the contracts a user tracks.
+
+    Tracked = watchlist contracts ∪ pipeline (opportunities) contracts. Returns
+    raw change rows (see get_field_changes_for_contracts); presentation/formatting
+    is handled by contract_summary.format_contract_update. Returns [] for an
+    anonymous user or one tracking nothing.
+    """
+    if not user_id:
+        return []
+    engine = get_engine()
+    with engine.connect() as conn:
+        wl = conn.execute(
+            text("SELECT internal_id FROM user_watchlist WHERE user_id = :uid"),
+            {"uid": user_id},
+        ).fetchall()
+        pl = conn.execute(
+            text("SELECT internal_id FROM opportunities WHERE user_id = :uid"),
+            {"uid": user_id},
+        ).fetchall()
+    tracked = {r[0] for r in wl} | {r[0] for r in pl}
+    return get_field_changes_for_contracts(tracked, limit=limit)
+
+
 def init_demo_table():
     with get_engine().begin() as conn:
         conn.execute(text("""
@@ -1574,6 +2032,119 @@ def save_early_access(email: str, hubspot_contact_id: str | None = None) -> None
             "email": email,
             "hubspot_contact_id": hubspot_contact_id,
         })
+
+
+def init_watchlist_table():
+    with connect() as con:
+        con.execute("""
+        CREATE TABLE IF NOT EXISTS watchlist (
+            internal_id TEXT PRIMARY KEY,
+            added_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+        con.commit()
+
+def watch_contract(internal_id: str) -> None:
+    init_watchlist_table()
+    with connect() as con:
+        con.execute(
+            "INSERT OR IGNORE INTO watchlist (internal_id) VALUES (?)",
+            (internal_id,),
+        )
+        con.commit()
+
+def unwatch_contract(internal_id: str) -> None:
+    init_watchlist_table()
+    with connect() as con:
+        con.execute("DELETE FROM watchlist WHERE internal_id = ?", (internal_id,))
+        con.commit()
+
+def is_watched(internal_id: str) -> bool:
+    init_watchlist_table()
+    with connect() as con:
+        row = con.execute(
+            "SELECT 1 FROM watchlist WHERE internal_id = ?", (internal_id,)
+        ).fetchone()
+    return row is not None
+
+def get_watchlist() -> list:
+    init_watchlist_table()
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("""
+        SELECT c.*
+        FROM watchlist w
+        JOIN contracts c ON c.internal_id = w.internal_id
+        ORDER BY c.recompete_score DESC, c.value DESC
+    """).fetchall()
+    conn.close()
+    return rows
+
+
+def init_saved_searches_table():
+    with connect() as con:
+        con.execute("""
+        CREATE TABLE IF NOT EXISTS saved_searches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            filters TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+        con.commit()
+
+def create_saved_search(name: str, filters: dict) -> int:
+    import json as _json
+    init_saved_searches_table()
+    with connect() as con:
+        cur = con.execute(
+            "INSERT INTO saved_searches (name, filters) VALUES (?, ?)",
+            (name, _json.dumps(filters)),
+        )
+        con.commit()
+        return cur.lastrowid
+
+def get_saved_searches() -> list:
+    import json as _json
+    init_saved_searches_table()
+    with connect() as con:
+        rows = con.execute(
+            "SELECT id, name, filters, created_at FROM saved_searches ORDER BY id DESC"
+        ).fetchall()
+    return [
+        {"id": r[0], "name": r[1], "filters": _json.loads(r[2]), "created_at": r[3]}
+        for r in rows
+    ]
+
+def get_saved_search(search_id: int) -> dict | None:
+    import json as _json
+    init_saved_searches_table()
+    with connect() as con:
+        row = con.execute(
+            "SELECT id, name, filters, created_at FROM saved_searches WHERE id = ?",
+            (search_id,),
+        ).fetchone()
+    if not row:
+        return None
+    return {"id": row[0], "name": row[1], "filters": _json.loads(row[2]), "created_at": row[3]}
+
+def rename_saved_search(search_id: int, name: str) -> bool:
+    init_saved_searches_table()
+    with connect() as con:
+        cur = con.execute(
+            "UPDATE saved_searches SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (name, search_id),
+        )
+        con.commit()
+        return cur.rowcount > 0
+
+def delete_saved_search(search_id: int) -> bool:
+    init_saved_searches_table()
+    with connect() as con:
+        cur = con.execute("DELETE FROM saved_searches WHERE id = ?", (search_id,))
+        con.commit()
+        return cur.rowcount > 0
 
 
 _SORTABLE = {"recompete_score", "value", "days_remaining", "end_date", "priority", "vendor", "agency"}
@@ -1668,7 +2239,7 @@ def search_tokens(q, limit=8):
     return re.findall(r"[a-z0-9]+", (q or "").lower())[:limit]
 
 
-def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort="recompete_score", direction="desc", page=1, limit=25, status="", profile_filter=None, internal_ids=None, state="", category="", exclude_ids=None):
+def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort="recompete_score", direction="desc", page=1, limit=25, status="", profile_filter=None, internal_ids=None, state="", category="", exclude_ids=None, all_rows=False):
     engine = get_engine()
     is_pg = engine.dialect.name == "postgresql"
 
@@ -1698,6 +2269,17 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
     if agency:
         base += " AND c.agency LIKE :agency"
         params["agency"] = f"%{agency}%"
+
+    if category:
+        _cat_map = {cat: kws for cat, kws in _CATEGORY_RULES}
+        keywords = _cat_map.get(category, [category])
+        cat_clauses = []
+        for i, kw in enumerate(keywords):
+            key = f"cat_kw_{i}"
+            params[key] = f"%{kw}%"
+            cat_clauses.append(f"c.description LIKE :{key}")
+        if cat_clauses:
+            base += f" AND ({' OR '.join(cat_clauses)})"
 
     if priority:
         base += " AND c.priority = :priority"
@@ -1771,15 +2353,25 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
         for i, eid in enumerate(exclude_ids):
             params[f"ex_{i}"] = eid
 
+    if min_value is not None:
+        base += " AND c.value >= :min_value"
+        params["min_value"] = float(min_value)
+
     col = sort if sort in _SORTABLE else "recompete_score"
     order = "ASC" if direction == "asc" else "DESC"
 
     with engine.connect() as conn:
         total = conn.execute(text(f"SELECT COUNT(*) {base}"), params).scalar()
-        rows = conn.execute(
-            text(f"SELECT c.* {base} ORDER BY c.{col} {order} LIMIT :limit OFFSET :offset"),
-            {**params, "limit": limit, "offset": (page - 1) * limit},
-        ).mappings().fetchall()
+        if all_rows:
+            rows = conn.execute(
+                text(f"SELECT c.* {base} ORDER BY c.{col} {order}"),
+                params,
+            ).mappings().fetchall()
+        else:
+            rows = conn.execute(
+                text(f"SELECT c.* {base} ORDER BY c.{col} {order} LIMIT :limit OFFSET :offset"),
+                {**params, "limit": limit, "offset": (page - 1) * limit},
+            ).mappings().fetchall()
 
     return {
         "contracts": rows,

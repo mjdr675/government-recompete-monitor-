@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_score_explainer.html" as score_help %}
 {% block title %}Contract {{ row["award_id"] or row["internal_id"] }}{% endblock %}
 
 {% block content %}
@@ -115,7 +116,7 @@
     <div class="kpi-value" style="font-size:20px">${{ "{:,.0f}".format(row["value"] or 0) }}</div>
   </div>
   <div class="kpi-card" data-testid="score-kpi">
-    <div class="kpi-label">Recompete Score <a href="#score-explainer" style="font-size:11px;color:var(--text-faint);font-weight:normal;text-decoration:none" title="How is this calculated?">&#9432;</a></div>
+    <div class="kpi-label">Recompete Score <button type="button" class="score-info-btn" style="font-size:11px" onclick="openScoreModal()" aria-haspopup="dialog" aria-label="How the Recompete Score is calculated" title="How is this calculated?">&#9432;</button></div>
     <div class="kpi-value">{{ row["recompete_score"] or "—" }}</div>
     {% if row["recompete_score"] is not none %}
     <div class="score-bar" style="margin-top:6px;height:4px;background:var(--border);border-radius:2px;overflow:hidden">
@@ -168,16 +169,9 @@
 <details id="score-explainer" class="score-explainer" data-testid="score-explainer">
   <summary>Why is this contract scored {{ row["recompete_score"] or "—" }}?</summary>
   <div class="explainer-body">
-    <p>The <strong>Recompete Score</strong> (0–100) ranks how attractive a contract is to pursue as a recompete opportunity. A higher score means you should act sooner. It adds up four components:</p>
-    <ul>
-      <li><strong>Competition type</strong> — up to 40 pts. Full &amp; open competition scores highest because the field is widest and no incumbent advantage exists.</li>
-      <li><strong>Contract value</strong> — up to 35 pts. Larger awards take more effort but offer greater revenue; the score rewards contracts over $1M.</li>
-      <li><strong>Time remaining</strong> — up to 25 pts. Contracts expiring sooner score higher because the opportunity window is closing.</li>
-      <li><strong>Agency &amp; sourcing signals</strong> — up to 15 bonus pts for priority agencies, a known solicitation number, and key contracting offices.</li>
-    </ul>
-    <p><strong>Priority tiers:</strong> <span class="priority-badge priority-critical">CRITICAL</span> 90+ &nbsp; <span class="priority-badge priority-high">HIGH</span> 75–89 &nbsp; <span class="priority-badge priority-medium">MEDIUM</span> 60–74 &nbsp; <span class="priority-badge priority-low">LOW</span> below 60</p>
+    {# Per-contract interpretation (from main) — answers the summary question first. #}
     {% if row["recompete_score"] is not none %}
-    <div style="margin-top:10px;font-size:12px;color:var(--text-muted)">
+    <div style="margin-bottom:12px;font-size:13px">
       This contract scores <strong>{{ row["recompete_score"] }}</strong>
       {% set s = row["recompete_score"]|int %}
       {% if s >= 90 %} — <strong>CRITICAL</strong>: strong candidate, act now.
@@ -187,9 +181,13 @@
       {% endif %}
     </div>
     {% endif %}
-    <p style="font-size:12px;color:var(--text-muted);margin-top:8px">Tip: Use the <a href="/views">Views</a> page to browse contracts filtered to CRITICAL or expiring soon.</p>
+    {# Canonical scoring breakdown (shared partial) — same content, single source of truth. #}
+    {{ score_help.score_breakdown() }}
   </div>
 </details>
+
+{# Accessible modal version of the same explanation, opened from the score info icon. #}
+{{ score_help.score_modal() }}
 
 <div class="table-wrapper">
   <table class="detail-table">

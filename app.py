@@ -1,3 +1,6 @@
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
 import csv
 import io
 import json
@@ -11,6 +14,7 @@ import threading
 from datetime import date, datetime, timezone
 from logging.handlers import RotatingFileHandler
 
+import payments
 import sentry_sdk
 import stripe
 from dotenv import load_dotenv
@@ -18,10 +22,14 @@ from flask import Flask, flash, g, jsonify, redirect, render_template, request, 
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
+from werkzeug.utils import secure_filename
 
 from auth import bp as auth_bp
+from access import get_access_state, is_access_granted
+from access_observability import log_access_decision
 from email_service import send_email
 from change_detector import detect_changes
+from update_detector import detect_field_changes
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from db import (
@@ -50,11 +58,23 @@ from db import (
     update_notification_preferences,
     infer_category,
     extract_raw_field,
+    get_recent_updates_for_user,
+    get_workspace_for_user,
+    get_or_create_workspace_for_user,
+    update_workspace,
+    get_workspace_billing,
+    update_workspace_subscription_status,
+    is_workspace_active,
+    list_workspace_members,
+    VALID_PLANS,
+    record_workspace_billing_event,
+    is_workspace_in_trial,
+    get_workspace_by_stripe_customer,
 )
 from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
 from analytics import dashboard_analytics, opportunity_recommendations, dashboard_recommended_actions, business_opportunities
-from analytics import suggested_matches as get_suggested_matches, my_contracts_summary
+from analytics import suggested_matches as get_suggested_matches, my_contracts_summary, personalized_for_business
 from business_match import (
     business_match_score,
     business_match_reasons,
@@ -64,7 +84,7 @@ from business_match import (
     profile_filter_for_sql,
 )
 from report_builder import build_report
-from views import SAVED_VIEWS, build_view_query, format_filter_summary
+from views import SAVED_VIEWS, build_view_query, format_filter_summary, active_filter_chips, quick_views, active_view_id
 import hubspot_service
 from users import (
     get_user_by_email,
@@ -115,12 +135,27 @@ if _sentry_dsn:
     )
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+# Unified access control (domain state + web routing split). Default OFF: the
+# legacy require_login/require_active_workspace gates remain authoritative until
+# parity is proven and the flag is flipped. See access.py for the domain layer.
+UNIFIED_ACCESS_ENABLED = os.getenv("UNIFIED_ACCESS_ENABLED", "").lower() in ("1", "true", "yes")
 STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
 STRIPE_PRICE_ID_YEARLY = os.getenv("STRIPE_PRICE_ID_YEARLY")
+# Workspace plan tiers → Stripe price ids (set per environment).
+STRIPE_PRICE_IDS = {
+    "starter": os.getenv("STRIPE_PRICE_ID_STARTER", ""),
+    "growth": os.getenv("STRIPE_PRICE_ID_GROWTH", ""),
+    "pro": os.getenv("STRIPE_PRICE_ID_PRO", ""),
+}
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("RAILWAY_ENVIRONMENT") == "production"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+# Company logo uploads: cap request size and define the storage location under
+# the served static/ tree. Kept small — logos are tiny.
+app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2 MB
+WORKSPACE_LOGO_DIR = os.path.join(app.static_folder, "uploads", "logos")
+ALLOWED_LOGO_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp", "svg"}
 csrf = CSRFProtect(app)
 limiter = Limiter(app=app, key_func=get_remote_address, default_limits=[])
 app.register_blueprint(auth_bp)
@@ -249,6 +284,7 @@ _PUBLIC_PATHS = frozenset({
 _SUBSCRIPTION_EXEMPT = frozenset({
     "/subscribe",
     "/billing/portal",
+    "/settings/billing",
     "/logout",
     "/create-checkout-session",
     "/success",
@@ -273,8 +309,10 @@ def require_login():
         return None
     if "user_id" not in session:
         return redirect(url_for("auth.login", next=request.path))
-    # Trial / subscription gate
-    if request.path not in _SUBSCRIPTION_EXEMPT:
+    # Trial / subscription gate (legacy). Authentication above always runs; the
+    # billing branch is suppressed when the unified gate is enabled so the two
+    # never both decide billing.
+    if not UNIFIED_ACCESS_ENABLED and request.path not in _SUBSCRIPTION_EXEMPT:
         user = g.get("user")
         if user and user.get("subscription_status") != "active":
             trial_ends_at = user.get("trial_ends_at")
@@ -283,7 +321,125 @@ def require_login():
                 if trial_end.tzinfo is None:
                     trial_end = trial_end.replace(tzinfo=timezone.utc)
                 if datetime.now(timezone.utc) > trial_end:
+                    log_access_decision(
+                        user.get("id"), None, "expired",
+                        "/subscribe?expired=1", "legacy", request.path,
+                    )
                     return redirect(url_for("subscribe", expired="1"))
+
+
+# Paths gated by workspace billing state. Kept to the core product surfaces the
+# task specifies — narrow by design to avoid disturbing other routes.
+_WORKSPACE_GATED_PREFIXES = ("/dashboard", "/contracts", "/compare", "/pipeline")
+
+
+@app.before_request
+def require_active_workspace():
+    """Redirect to /settings/billing when the user's workspace is inactive.
+
+    Legacy workspace gate. Dormant when the unified gate is enabled, so billing
+    is never decided by two authorities at once.
+    """
+    if UNIFIED_ACCESS_ENABLED:
+        return None
+    if "user_id" not in session:
+        return None
+    path = request.path
+    if not any(path == p or path.startswith(p + "/") for p in _WORKSPACE_GATED_PREFIXES):
+        return None
+    user = g.get("user")
+    if not user:
+        return None
+    workspace = get_workspace_for_user(user["id"])
+    if workspace and not is_workspace_active(workspace["id"]):
+        # Decision uses the unchanged legacy check above; get_access_state is used
+        # only to label the log line in the shared 4-state vocabulary.
+        label = get_access_state(user, get_workspace_billing(workspace["id"]))
+        log_access_decision(
+            user["id"], workspace["id"], label,
+            "/settings/billing?expired=1", "legacy", request.path,
+        )
+        return redirect(url_for("settings_billing", expired="1"))
+
+
+# --- Web layer: pure state -> destination mapping (no business logic) --------
+# Maps a domain access state (from access.get_access_state) to a canonical
+# billing destination, or None when access is permitted. URLs live ONLY here.
+_ACCESS_REDIRECTS = {
+    "billing_required": "/settings/billing",
+    "expired": "/settings/billing?expired=1",
+}
+
+
+def get_access_redirect(state):
+    """Return the canonical redirect path for a denied state, else None."""
+    return _ACCESS_REDIRECTS.get(state)
+
+
+@app.before_request
+def require_access():
+    """Unified billing gate: domain state -> web redirect. Default OFF.
+
+    Orchestration only — it holds no entitlement rules (those live in
+    access.get_access_state) and no URL knowledge (that lives in
+    get_access_redirect). Authentication remains require_login's job.
+    """
+    if not UNIFIED_ACCESS_ENABLED:
+        return None
+    if request.path in _PUBLIC_PATHS or request.path in _SUBSCRIPTION_EXEMPT:
+        return None
+    if "user_id" not in session:
+        return None  # auth handled by require_login
+    user = g.get("user")
+    if not user:
+        return None
+    workspace = get_workspace_for_user(user["id"])
+    billing = get_workspace_billing(workspace["id"]) if workspace else None
+    state = get_access_state(user, billing)
+    target = get_access_redirect(state)
+    log_access_decision(
+        user["id"], workspace["id"] if workspace else None,
+        state, target, "unified", request.path,
+    )
+    if target:
+        return redirect(target)
+
+
+@app.before_request
+def observe_access_decision():
+    """Shadow observer: when the unified gate is OFF, record the decision the
+    unified engine *would* make, so it can be compared against the legacy logs
+    for parity — without enforcing anything. Pure instrumentation."""
+    if UNIFIED_ACCESS_ENABLED:
+        return None  # enforcement path already logs mode="unified"
+    if request.path in _PUBLIC_PATHS or request.path in _SUBSCRIPTION_EXEMPT:
+        return None
+    if "user_id" not in session:
+        return None
+    user = g.get("user")
+    if not user:
+        return None
+    workspace = get_workspace_for_user(user["id"])
+    billing = get_workspace_billing(workspace["id"]) if workspace else None
+    state = get_access_state(user, billing)
+    log_access_decision(
+        user["id"], workspace["id"] if workspace else None,
+        state, get_access_redirect(state), "shadow", request.path,
+    )
+    return None  # never enforces
+
+
+@app.context_processor
+def inject_workspace():
+    """Expose the current user's workspace (name + logo) to every template so
+    company branding renders app-wide. Read-only; never raises for anon users."""
+    user = g.get("user")
+    if not user:
+        return {"workspace": None}
+    try:
+        return {"workspace": get_workspace_for_user(user["id"])}
+    except Exception:
+        return {"workspace": None}
 
 
 @app.context_processor
@@ -310,6 +466,23 @@ def health():
     return {"status": "ok"}, 200
 
 
+@app.route("/ingest/run", methods=["POST"])
+def ingest_run():
+    """Cron trigger endpoint. Protected by CRON_SECRET bearer token."""
+    if _CRON_SECRET:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header != f"Bearer {_CRON_SECRET}":
+            return {"error": "unauthorized"}, 401
+
+    subprocess.Popen(
+        [sys.executable, "recompete_report.py"],
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return {"status": "started", "date": date.today().isoformat()}, 202
+
+
 @app.route("/")
 def index():
     """Public landing page; authenticated users are redirected to /dashboard."""
@@ -317,90 +490,110 @@ def index():
         return redirect(url_for("dashboard"))
     return render_template("landing.html")
 
-
 @app.route("/dashboard")
 def dashboard():
-    user_id = g.user["id"] if g.user else None
-    profile = get_company_profile(user_id) if user_id else None
+    try:
+        user_id = g.user["id"] if g.user else None
+        profile = get_company_profile(user_id) if user_id else None
 
-    # First-login redirect: authenticated user with no profile → onboarding wizard.
-    if user_id and not profile and not session.get("onboarding_skipped"):
-        return redirect(url_for("onboarding"))
+        if user_id and not profile and not session.get("onboarding_skipped"):
+            return redirect(url_for("onboarding"))
 
-    analytics = dashboard_analytics()
-    recommendations = opportunity_recommendations()
-    engine = get_engine()
-    last_ingest = None
-    hours_ago = None
-    with engine.connect() as conn:
-        row = conn.execute(
-            text(
-                "SELECT created_at FROM ingest_log"
-                " WHERE status = 'success' ORDER BY created_at DESC LIMIT 1"
-            )
-        ).fetchone()
-    if row:
-        last_ingest = row[0]
-        try:
-            ts = datetime.fromisoformat(last_ingest)
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
-            hours_ago = round((datetime.now(timezone.utc) - ts).total_seconds() / 3600, 1)
-        except (ValueError, TypeError):
-            pass
-    show_onboarding = (
-        g.get("watchlist_count", 0) == 0
-        and not session.get("onboarding_dismissed")
-    )
-    dash_actions = dashboard_recommended_actions(user_id)
-    has_profile = bool(profile)
-    biz_opps = business_opportunities(user_id)
-    my_contracts = my_contracts_summary(user_id)
-    suggested = get_suggested_matches(user_id)
-    p_completion = profile_completeness(profile) if profile else 0
-    p_hints = profile_completion_hints(profile) if profile and p_completion < 100 else []
+        analytics = dashboard_analytics()
+        recommendations = opportunity_recommendations()
+        engine = get_engine()
+        last_ingest = None
+        hours_ago = None
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT created_at FROM ingest_log"
+                    " WHERE status = 'success' ORDER BY created_at DESC LIMIT 1"
+                )
+            ).fetchone()
+        if row:
+            last_ingest = row[0]
+            try:
+                ts = datetime.fromisoformat(last_ingest)
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                hours_ago = round((datetime.now(timezone.utc) - ts).total_seconds() / 3600, 1)
+            except (ValueError, TypeError):
+                pass
+        show_onboarding = (
+            g.get("watchlist_count", 0) == 0
+            and not session.get("onboarding_dismissed")
+        )
+        dash_actions = dashboard_recommended_actions(user_id)
+        has_profile = bool(profile)
+        biz_opps = business_opportunities(user_id)
+        my_contracts = my_contracts_summary(user_id)
+        suggested = get_suggested_matches(user_id)
+        for_business = personalized_for_business(user_id, profile) if profile else []
+        p_completion = profile_completeness(profile) if profile else 0
+        p_hints = profile_completion_hints(profile) if profile and p_completion < 100 else []
 
-    pipeline_summary = {"total": 0, "active": 0, "by_stage": {}, "top": []}
-    if user_id:
-        all_opps = list_opportunities(user_id)
-        active_opps = [o for o in all_opps if o["stage"] not in PIPELINE_TERMINAL_STAGES]
-        by_stage: dict = {}
-        for o in all_opps:
-            by_stage[o["stage"]] = by_stage.get(o["stage"], 0) + 1
-        top_opps = sorted(
-            active_opps,
-            key=lambda o: (
-                o["next_action_due"] or "9999-99-99",
-                -(o["recompete_score"] or 0),
-                o["updated_at"] or "",
-            ),
-        )[:5]
-        pipeline_summary = {
-            "total": len(all_opps),
-            "active": len(active_opps),
-            "by_stage": by_stage,
-            "top": top_opps,
-        }
+        pipeline_summary = {"total": 0, "active": 0, "by_stage": {}, "top": []}
+        if user_id:
+            all_opps = list_opportunities(user_id)
+            active_opps = [o for o in all_opps if o["stage"] not in PIPELINE_TERMINAL_STAGES]
+            by_stage: dict = {}
+            for o in all_opps:
+                by_stage[o["stage"]] = by_stage.get(o["stage"], 0) + 1
+            top_opps = sorted(
+                active_opps,
+                key=lambda o: (
+                    o["next_action_due"] or "9999-99-99",
+                    -(o["recompete_score"] or 0),
+                    o["updated_at"] or "",
+                ),
+            )[:5]
+            pipeline_summary = {
+                "total": len(all_opps),
+                "active": len(active_opps),
+                "by_stage": by_stage,
+                "top": top_opps,
+            }
 
-    return render_template(
-        "dashboard.html",
-        report=build_report(date.today().isoformat()),
-        analytics=analytics,
-        recommendations=recommendations,
-        dash_actions=dash_actions,
-        biz_opps=biz_opps,
-        my_contracts=my_contracts,
-        suggested_matches=suggested,
-        company_name=profile.get("company_name") if profile else None,
-        has_profile=has_profile,
-        profile_completion=p_completion,
-        profile_hints=p_hints,
-        last_ingest=last_ingest,
-        hours_ago=hours_ago,
-        show_onboarding=show_onboarding,
-        pipeline_summary=pipeline_summary,
-        pipeline_stages=PIPELINE_STAGES,
-    )
+        recent_updates = []
+        if user_id:
+            from contract_summary import format_contract_update
+            recent_updates = [
+                format_contract_update(r)
+                for r in get_recent_updates_for_user(user_id, limit=8)
+            ]
+
+        dash_saved_searches = _saved_searches_with_urls(user_id) if user_id else []
+        alert_configured = bool(os.environ.get("ALERT_TO"))
+
+        return render_template(
+            "dashboard.html",
+            report=build_report(date.today().isoformat()),
+            analytics=analytics,
+            recommendations=recommendations,
+            dash_actions=dash_actions,
+            biz_opps=biz_opps,
+            my_contracts=my_contracts,
+            suggested_matches=suggested,
+            for_business=for_business,
+            recent_updates=recent_updates,
+            company_name=profile.get("company_name") if profile else None,
+            has_profile=has_profile,
+            profile_completion=p_completion,
+            profile_hints=p_hints,
+            last_ingest=last_ingest,
+            hours_ago=hours_ago,
+            show_onboarding=show_onboarding,
+            pipeline_summary=pipeline_summary,
+            pipeline_stages=PIPELINE_STAGES,
+            saved_searches=dash_saved_searches,
+            alert_configured=alert_configured,
+        )
+
+    except Exception:
+        import traceback
+        print(traceback.format_exc())
+        return "Dashboard error", 500
 
 
 @app.route("/onboarding/dismiss", methods=["POST"])
@@ -539,6 +732,7 @@ def onboarding_complete():
 def contracts():
     q = request.args.get("q", "")
     agency = request.args.get("agency", "")
+    category = request.args.get("category", "")
     priority = request.args.get("priority", "")
     days = request.args.get("days", None)
     min_value = request.args.get("min_value", type=float)
@@ -662,6 +856,7 @@ def contracts():
         all_categories=ALL_CATEGORIES,
         q=q,
         agency=agency,
+        category=category,
         priority=priority,
         days=days or "",
         min_value=min_value or "",
@@ -669,11 +864,13 @@ def contracts():
         sort=sort,
         direction=direction,
         state=state,
-        category=category,
         discover=discover,
         watchlist_ids=watchlist_ids,
         pipeline_map=pipeline_map,
         saved_searches=saved_searches,
+        filter_chips=active_filter_chips(request.args.to_dict()),
+        quick_views=quick_views(),
+        active_view=active_view_id(request.args.to_dict()),
         for_my_business=for_my_business,
         in_pipeline=in_pipeline,
         has_profile=profile is not None,
@@ -744,10 +941,8 @@ def views_detail(view_id):
 @app.route("/create-checkout-session", methods=["POST"])
 def create_checkout_session():
     try:
-        checkout = stripe.checkout.Session.create(
-            payment_method_types=["card"],
-            mode="subscription",
-            line_items=[{"price": STRIPE_PRICE_ID, "quantity": 1}],
+        checkout = payments.service.create_checkout_session(
+            price_id=STRIPE_PRICE_ID,
             success_url=request.host_url.rstrip("/") + "/success?session_id={CHECKOUT_SESSION_ID}",
             cancel_url=request.host_url.rstrip("/") + "/cancel",
         )
@@ -762,7 +957,7 @@ def success():
     session_id = request.args.get("session_id", "")
     if session_id:
         try:
-            checkout = stripe.checkout.Session.retrieve(session_id)
+            checkout = payments.service.retrieve_checkout_session(session_id)
             details = checkout.get("customer_details") or {}
             email = details.get("email") or ""
             name = details.get("name") or ""
@@ -797,8 +992,8 @@ def billing_portal():
         flash("No active subscription found.", "error")
         return redirect(url_for("dashboard"))
     try:
-        portal = stripe.billing_portal.Session.create(
-            customer=stripe_customer_id,
+        portal = payments.service.create_billing_portal_session(
+            customer_id=stripe_customer_id,
             return_url=request.host_url.rstrip("/") + "/",
         )
         return redirect(portal.url, code=303)
@@ -807,6 +1002,54 @@ def billing_portal():
         logging.exception("Billing portal error: %s", exc)
         flash("Could not open billing portal. Please try again later.", "error")
         return redirect(url_for("dashboard"))
+
+
+def _apply_workspace_billing_event(event):
+    """Update workspace billing from a Stripe event (additive to user-level).
+
+    No-ops when the event carries no workspace linkage, so existing user-level
+    webhook behavior is unaffected.
+    """
+    etype = event.get("type")
+    obj = event.get("data", {}).get("object", {}) or {}
+    event_id = event.get("id")
+
+    if etype == "checkout.session.completed":
+        # create_workspace_checkout_session sets client_reference_id=workspace_id.
+        ref = obj.get("client_reference_id") or (obj.get("metadata") or {}).get("workspace_id")
+        if not ref:
+            return
+        try:
+            workspace_id = int(ref)
+        except (ValueError, TypeError):
+            return
+        plan = (obj.get("metadata") or {}).get("plan")
+        update_workspace_subscription_status(
+            workspace_id,
+            "active",
+            plan=plan if plan in VALID_PLANS else None,
+            stripe_customer_id=obj.get("customer") or None,
+            stripe_subscription_id=obj.get("subscription") or None,
+        )
+        record_workspace_billing_event(workspace_id, etype, event_id, json.dumps(obj, default=str))
+
+    elif etype in ("customer.subscription.updated", "customer.subscription.deleted"):
+        customer = obj.get("customer") or ""
+        if not customer:
+            return
+        workspace = get_workspace_by_stripe_customer(customer)
+        if not workspace:
+            return
+        if etype == "customer.subscription.deleted":
+            status = "canceled"
+        else:
+            status = obj.get("status") or "active"
+        update_workspace_subscription_status(
+            workspace["id"],
+            status,
+            stripe_subscription_id=obj.get("id") or None,
+        )
+        record_workspace_billing_event(workspace["id"], etype, event_id, json.dumps(obj, default=str))
 
 
 @app.route("/stripe/webhook", methods=["POST"])
@@ -818,13 +1061,13 @@ def stripe_webhook():
         logging.warning("Stripe webhook received but STRIPE_WEBHOOK_SECRET is not configured")
         return "Webhook secret not configured", 400
     try:
-        event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
-    except (stripe.error.SignatureVerificationError, ValueError) as e:
-        logging.warning("Stripe webhook signature error: %s", e)
+        event = payments.service.construct_webhook_event(payload, sig, STRIPE_WEBHOOK_SECRET)
+    except ValueError as e:
+        logging.warning("Webhook signature error: %s", e)
         return "Bad request", 400
     except Exception as exc:
         sentry_sdk.capture_exception(exc)
-        logging.exception("Unexpected error parsing Stripe webhook: %s", exc)
+        logging.exception("Unexpected error parsing webhook: %s", exc)
         return "Internal error", 500
 
     if event["type"] == "checkout.session.completed":
@@ -858,6 +1101,13 @@ def stripe_webhook():
             user = get_user_by_stripe_customer(stripe_customer_id)
             if user:
                 set_subscription(user["id"], stripe_customer_id, "canceled")
+
+    # Workspace-level billing update (additive; no-ops without workspace linkage).
+    try:
+        _apply_workspace_billing_event(event)
+    except Exception as exc:
+        sentry_sdk.capture_exception(exc)
+        logging.exception("Workspace billing webhook update failed: %s", exc)
 
     return "", 200
 
@@ -933,6 +1183,7 @@ def ingest():
                 run_date = date.today().isoformat()
                 save_snapshot(run_date, rows)
                 detect_changes(run_date)
+                detect_field_changes(run_date)
                 message = f"Imported {len(rows)} contracts from CSV."
 
         elif action == "api":
@@ -1567,11 +1818,17 @@ def compare():
     a = contracts[0][0] if contracts else None
     b = contracts[1][0] if len(contracts) > 1 else None
 
+    # Analytical synthesis across the found contracts (None for < 2 found).
+    from contract_summary import compare_insights
+    found_rows = [c[0] for c in contracts if c[0]]
+    compare_insight = compare_insights(found_rows)
+
     return render_template(
         "compare.html",
         contracts=contracts,
         raw_ids=raw_ids,
         slots=_SLOTS,
+        compare_insight=compare_insight,
         # Legacy vars — kept so existing bookmarks/links using ?a=&b= still work.
         a=a, b=b, id_a=id_a, id_b=id_b,
     )
@@ -1609,6 +1866,180 @@ def settings_account_company():
     update_company_name(user["id"], company_name)
     flash("Company name updated.")
     return redirect(url_for("settings_account"))
+
+
+def _save_workspace_logo(workspace_id, file_storage):
+    """Validate and persist an uploaded logo. Returns (logo_path, error).
+
+    logo_path is the static-relative path on success, else None with an error
+    string. Rejects empty uploads, disallowed extensions, and oversized files.
+    """
+    filename = (file_storage.filename or "").strip()
+    if not filename:
+        return None, "No file selected."
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext not in ALLOWED_LOGO_EXTENSIONS:
+        return None, "Logo must be a PNG, JPG, GIF, WEBP, or SVG image."
+    os.makedirs(WORKSPACE_LOGO_DIR, exist_ok=True)
+    # Deterministic per-workspace name avoids collisions and stale files.
+    stored_name = secure_filename(f"workspace_{workspace_id}.{ext}")
+    abs_path = os.path.join(WORKSPACE_LOGO_DIR, stored_name)
+    file_storage.save(abs_path)
+    if os.path.getsize(abs_path) == 0:
+        os.remove(abs_path)
+        return None, "Uploaded file was empty."
+    # Path relative to the static folder, for url_for('static', ...).
+    return f"uploads/logos/{stored_name}", None
+
+
+@app.route("/settings/workspace", methods=["GET", "POST"])
+def settings_workspace():
+    user = g.get("user")
+    if not user:
+        return redirect(url_for("auth.login"))
+    workspace = get_or_create_workspace_for_user(user["id"])
+    error = None
+    success = None
+    if request.method == "POST":
+        action = request.form.get("action", "save")
+        if action == "remove_logo":
+            update_workspace(workspace["id"], logo_path="")
+            flash("Logo removed.")
+            return redirect(url_for("settings_workspace"))
+
+        name = request.form.get("workspace_name", "").strip()
+        logo_path = None
+        upload = request.files.get("logo")
+        if upload and (upload.filename or "").strip():
+            logo_path, error = _save_workspace_logo(workspace["id"], upload)
+        if not error:
+            update_workspace(workspace["id"], name=name, logo_path=logo_path)
+            success = "Workspace updated."
+            workspace = get_workspace_for_user(user["id"])
+
+    members = list_workspace_members(workspace["id"]) if workspace else []
+    return render_template(
+        "settings_workspace.html",
+        user=user,
+        workspace=workspace,
+        members=members,
+        error=error,
+        success=success,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Workspace billing — Stripe foundation
+# ---------------------------------------------------------------------------
+
+def create_workspace_stripe_customer(workspace):
+    """Create (and persist) a Stripe customer for a workspace if absent.
+
+    Returns the stripe_customer_id. Reuses an existing one when present.
+    """
+    billing = get_workspace_billing(workspace["id"])
+    if billing and billing.get("stripe_customer_id"):
+        return billing["stripe_customer_id"]
+    customer = stripe.Customer.create(
+        name=workspace.get("name") or f"Workspace {workspace['id']}",
+        metadata={"workspace_id": str(workspace["id"])},
+    )
+    update_workspace_subscription_status(
+        workspace["id"],
+        billing.get("subscription_status") if billing else "trialing",
+        stripe_customer_id=customer["id"],
+    )
+    return customer["id"]
+
+
+def create_workspace_checkout_session(workspace, plan):
+    """Create a Stripe Checkout session to subscribe a workspace to a plan."""
+    price_id = STRIPE_PRICE_IDS.get(plan)
+    if not price_id:
+        raise ValueError(f"No Stripe price configured for plan '{plan}'")
+    customer_id = create_workspace_stripe_customer(workspace)
+    return stripe.checkout.Session.create(
+        mode="subscription",
+        customer=customer_id,
+        client_reference_id=str(workspace["id"]),
+        line_items=[{"price": price_id, "quantity": 1}],
+        metadata={"workspace_id": str(workspace["id"]), "plan": plan},
+        success_url=url_for("settings_billing", _external=True) + "?upgraded=1",
+        cancel_url=url_for("settings_billing", _external=True),
+    )
+
+
+def create_workspace_billing_portal_session(workspace):
+    """Create a Stripe billing-portal session for a workspace's customer."""
+    billing = get_workspace_billing(workspace["id"])
+    customer_id = billing.get("stripe_customer_id") if billing else None
+    if not customer_id:
+        return None
+    return stripe.billing_portal.Session.create(
+        customer=customer_id,
+        return_url=url_for("settings_billing", _external=True),
+    )
+
+
+def _workspace_trial_days_remaining(billing):
+    """Whole days left in the workspace trial, or None when not on trial."""
+    if not billing or not billing.get("trial_end_at"):
+        return None
+    try:
+        trial_end = datetime.fromisoformat(billing["trial_end_at"])
+    except (ValueError, TypeError):
+        return None
+    if trial_end.tzinfo is None:
+        trial_end = trial_end.replace(tzinfo=timezone.utc)
+    delta = trial_end - datetime.now(timezone.utc)
+    return max(0, delta.days + (1 if delta.seconds or delta.microseconds else 0))
+
+
+@app.route("/settings/billing", methods=["GET", "POST"])
+def settings_billing():
+    user = g.get("user")
+    if not user:
+        return redirect(url_for("auth.login"))
+    workspace = get_or_create_workspace_for_user(user["id"])
+    error = None
+
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        if action == "portal":
+            try:
+                portal = create_workspace_billing_portal_session(workspace)
+            except Exception as exc:
+                sentry_sdk.capture_exception(exc)
+                portal = None
+            if portal:
+                return redirect(portal.url, code=303)
+            error = "No billing account yet. Choose a plan to get started."
+        elif action == "upgrade":
+            plan = request.form.get("plan", "")
+            if plan not in VALID_PLANS:
+                error = "Unknown plan."
+            else:
+                try:
+                    checkout = create_workspace_checkout_session(workspace, plan)
+                    return redirect(checkout.url, code=303)
+                except Exception as exc:
+                    sentry_sdk.capture_exception(exc)
+                    error = "Could not start checkout. Please try again."
+
+    billing = get_workspace_billing(workspace["id"])
+    return render_template(
+        "settings_billing.html",
+        user=user,
+        workspace=workspace,
+        billing=billing,
+        plans=VALID_PLANS,
+        in_trial=is_workspace_in_trial(workspace["id"]),
+        trial_days_remaining=_workspace_trial_days_remaining(billing),
+        active=is_workspace_active(workspace["id"]),
+        expired=request.args.get("expired") == "1",
+        upgraded=request.args.get("upgraded") == "1",
+        error=error,
+    )
 
 
 @app.route("/settings/alerts", methods=["GET", "POST"])

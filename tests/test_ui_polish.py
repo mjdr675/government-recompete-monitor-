@@ -285,3 +285,87 @@ class TestMobileLayoutMarkers:
         rv = client.get("/views")
         assert rv.status_code == 200
         assert b"views-grid" in rv.data
+
+
+# ── score explanation modal ────────────────────────────────────────────────
+
+class TestScoreModal:
+    """The score explainer is upgraded to an accessible modal triggered from
+    the info icons on Contracts and Contract Detail."""
+
+    def _create_contract(self, test_db):
+        from sqlalchemy import text
+        engine = db_module._cached_engine(f"sqlite:///{test_db}")
+        with engine.begin() as conn:
+            conn.execute(text("""
+                INSERT INTO contracts
+                  (internal_id, vendor, agency, value, end_date,
+                   priority, recompete_score, competition_type)
+                VALUES
+                  ('MODAL-001', 'Acme Corp', 'DEFENSE', 2500000,
+                   '2026-12-31', 'HIGH', 82, 'FULL AND OPEN')
+            """))
+        return "MODAL-001"
+
+    # --- Contracts page ---
+
+    def test_contracts_renders_score_modal(self, client):
+        rv = client.get("/contracts")
+        assert b'id="scoreModal"' in rv.data
+
+    def test_contracts_modal_is_dialog_role(self, client):
+        rv = client.get("/contracts")
+        assert b'role="dialog"' in rv.data
+        assert b'aria-modal="true"' in rv.data
+
+    def test_contracts_score_icon_is_button_not_bare_span(self, client):
+        rv = client.get("/contracts")
+        # The Score header info icon now opens the modal via a real button.
+        assert b"openScoreModal()" in rv.data
+        assert b"score-info-btn" in rv.data
+
+    def test_contracts_modal_has_close_control(self, client):
+        rv = client.get("/contracts")
+        assert b"closeScoreModal()" in rv.data
+        assert b'aria-label="Close"' in rv.data
+
+    def test_contracts_modal_contains_scoring_components(self, client):
+        rv = client.get("/contracts")
+        assert b"Competition type" in rv.data
+        assert b"Contract value" in rv.data
+        assert b"Time remaining" in rv.data
+
+    def test_contracts_modal_rendered_once(self, client):
+        rv = client.get("/contracts")
+        # A single modal instance — IDs must be unique.
+        assert rv.data.count(b'id="scoreModal"') == 1
+
+    # --- Contract detail page ---
+
+    def test_detail_renders_score_modal(self, client, test_db):
+        self._create_contract(test_db)
+        rv = client.get("/contract/MODAL-001")
+        assert b'id="scoreModal"' in rv.data
+
+    def test_detail_score_icon_opens_modal(self, client, test_db):
+        self._create_contract(test_db)
+        rv = client.get("/contract/MODAL-001")
+        assert b"openScoreModal()" in rv.data
+
+    def test_detail_keeps_no_js_details_fallback(self, client, test_db):
+        self._create_contract(test_db)
+        rv = client.get("/contract/MODAL-001")
+        # The <details> explainer remains as a no-JS accessible fallback.
+        assert b"score-explainer" in rv.data
+        assert b"Competition type" in rv.data
+
+    def test_detail_modal_rendered_once(self, client, test_db):
+        self._create_contract(test_db)
+        rv = client.get("/contract/MODAL-001")
+        assert rv.data.count(b'id="scoreModal"') == 1
+
+    def test_modal_priority_tiers_present(self, client, test_db):
+        self._create_contract(test_db)
+        rv = client.get("/contract/MODAL-001")
+        for tier in (b"CRITICAL", b"HIGH", b"MEDIUM", b"LOW"):
+            assert tier in rv.data

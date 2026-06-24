@@ -415,3 +415,266 @@ class TestCompanyProfileKeywords:
         rv = authed_client.get("/company-profile")
         body = rv.get_data(as_text=True)
         assert "it support" in body.lower()
+
+
+# ---------------------------------------------------------------------------
+# Personalized For Business matching
+# ---------------------------------------------------------------------------
+
+class TestPersonalizedForBusiness:
+    def test_returns_empty_if_no_profile(self, pdb):
+        from analytics import personalized_for_business
+        from db import upsert_contract
+        uid = _uid(pdb)
+        # Insert a contract
+        upsert_contract({
+            "internal_id": "C1", "award_id": "A1", "vendor": "Test",
+            "agency": "GSA", "description": "", "value": 100000,
+            "days_remaining": 90, "recompete_score": 50, "priority": "MEDIUM",
+            "category": "IT", "naics_code": "541512", "place_of_performance_state": "TX"
+        })
+        # No profile → empty result
+        result = personalized_for_business(uid, None)
+        assert result == []
+
+    def test_returns_empty_if_profile_lacks_criteria(self, pdb):
+        from analytics import personalized_for_business
+        from db import upsert_contract
+        uid = _uid(pdb)
+        # Profile with no NAICS/states/agencies
+        save_company_profile(uid, {"company_name": "Empty Profile"})
+        profile = get_company_profile(uid)
+        upsert_contract({
+            "internal_id": "C1", "award_id": "A1", "vendor": "Test",
+            "agency": "GSA", "description": "", "value": 100000,
+            "days_remaining": 90, "recompete_score": 50, "priority": "MEDIUM",
+            "category": "IT", "naics_code": "541512", "place_of_performance_state": "TX"
+        })
+        result = personalized_for_business(uid, profile)
+        assert result == []
+
+    def test_matches_by_state(self, pdb):
+        from analytics import personalized_for_business
+        from db import upsert_contract
+        uid = _uid(pdb)
+        save_company_profile(uid, {"company_name": "TX Co", "states": ["TX"]})
+        profile = get_company_profile(uid)
+        upsert_contract({
+            "internal_id": "C1", "award_id": "A1", "vendor": "Test",
+            "agency": "GSA", "description": "", "value": 100000,
+            "days_remaining": 90, "recompete_score": 50, "priority": "MEDIUM",
+            "category": "IT", "naics_code": "541512", "place_of_performance_state": "TX"
+        })
+        result = personalized_for_business(uid, profile, limit=10)
+        assert len(result) == 1
+        assert result[0]["internal_id"] == "C1"
+        assert "Work in TX" in result[0]["match_reason"]
+
+    def test_matches_by_category(self, pdb):
+        from analytics import personalized_for_business
+        from db import upsert_contract
+        uid = _uid(pdb)
+        save_company_profile(uid, {
+            "company_name": "IT Co",
+            "naics_codes": ["541512"]  # IT category
+        })
+        profile = get_company_profile(uid)
+        upsert_contract({
+            "internal_id": "C1", "award_id": "A1", "vendor": "Test",
+            "agency": "GSA", "description": "", "value": 100000,
+            "days_remaining": 90, "recompete_score": 50, "priority": "MEDIUM",
+            "category": "IT", "naics_code": "541512", "place_of_performance_state": "TX"
+        })
+        result = personalized_for_business(uid, profile, limit=10)
+        assert len(result) == 1
+        assert "IT category" in result[0]["match_reason"]
+
+    def test_matches_by_agency(self, pdb):
+        from analytics import personalized_for_business
+        from db import upsert_contract
+        uid = _uid(pdb)
+        save_company_profile(uid, {
+            "company_name": "GSA Co",
+            "agencies": ["GSA"]
+        })
+        profile = get_company_profile(uid)
+        upsert_contract({
+            "internal_id": "C1", "award_id": "A1", "vendor": "Test",
+            "agency": "GSA", "description": "", "value": 100000,
+            "days_remaining": 90, "recompete_score": 50, "priority": "MEDIUM",
+            "category": "IT", "naics_code": "541512", "place_of_performance_state": "TX"
+        })
+        result = personalized_for_business(uid, profile, limit=10)
+        assert len(result) == 1
+        assert "GSA contract" in result[0]["match_reason"]
+
+    def test_excludes_tracked_contracts(self, pdb):
+        from analytics import personalized_for_business
+        from db import upsert_contract
+        import sqlite3
+        uid = _uid(pdb)
+        save_company_profile(uid, {"company_name": "TX Co", "states": ["TX"]})
+        profile = get_company_profile(uid)
+        upsert_contract({
+            "internal_id": "C1", "award_id": "A1", "vendor": "Test",
+            "agency": "GSA", "description": "", "value": 100000,
+            "days_remaining": 90, "recompete_score": 50, "priority": "MEDIUM",
+            "category": "IT", "naics_code": "541512", "place_of_performance_state": "TX"
+        })
+        # Add to watchlist (tracked)
+        con = sqlite3.connect(pdb)
+        from datetime import datetime
+        con.execute(
+            "INSERT INTO user_watchlist(user_id, internal_id, added_at) VALUES(?, ?, ?)",
+            (uid, "C1", datetime.now().isoformat())
+        )
+        con.commit()
+        con.close()
+        result = personalized_for_business(uid, profile, limit=10)
+        # Should be excluded
+        assert len(result) == 0
+
+    def test_respects_value_range(self, pdb):
+        from analytics import personalized_for_business
+        from db import upsert_contract
+        uid = _uid(pdb)
+        save_company_profile(uid, {
+            "company_name": "Value Co",
+            "states": ["TX"],
+            "min_contract_value": 200000,
+            "max_contract_value": 300000
+        })
+        profile = get_company_profile(uid)
+        # Below range
+        upsert_contract({
+            "internal_id": "C1", "award_id": "A1", "vendor": "Test",
+            "agency": "GSA", "description": "", "value": 100000,
+            "days_remaining": 90, "recompete_score": 50, "priority": "MEDIUM",
+            "category": "IT", "naics_code": "541512", "place_of_performance_state": "TX"
+        })
+        # In range
+        upsert_contract({
+            "internal_id": "C2", "award_id": "A2", "vendor": "Test2",
+            "agency": "GSA", "description": "", "value": 250000,
+            "days_remaining": 90, "recompete_score": 50, "priority": "MEDIUM",
+            "category": "IT", "naics_code": "541512", "place_of_performance_state": "TX"
+        })
+        result = personalized_for_business(uid, profile, limit=10)
+        ids = [r["internal_id"] for r in result]
+        assert "C1" not in ids  # Below range
+        assert "C2" in ids  # In range
+
+    def test_dashboard_shows_for_business_section(self, authed_client, pdb):
+        from db import upsert_contract
+        uid = _uid(pdb)
+        save_company_profile(uid, {"company_name": "TX Co", "states": ["TX"]})
+        upsert_contract({
+            "internal_id": "C1", "award_id": "A1", "vendor": "Test",
+            "agency": "GSA", "description": "", "value": 100000,
+            "days_remaining": 90, "recompete_score": 50, "priority": "MEDIUM",
+            "category": "IT", "naics_code": "541512", "place_of_performance_state": "TX"
+        })
+        rv = authed_client.get("/dashboard")
+        body = rv.get_data(as_text=True)
+        assert "For My Business" in body
+        assert "A1" in body
+
+
+class TestPersonalizedForBusinessSqlSafety:
+    """personalized_for_business() must bind profile values as SQL parameters,
+    never interpolate them as literals.  These tests prove apostrophes don't
+    break the query and that injection-shaped strings are matched literally.
+    """
+
+    def test_apostrophe_in_agency_does_not_break_query(self, pdb):
+        from analytics import personalized_for_business
+        from db import upsert_contract
+        uid = _uid(pdb)
+        # Agency value containing an apostrophe — would break naive f-string SQL.
+        save_company_profile(uid, {"company_name": "Co", "agencies": ["O'Brien Dept"]})
+        profile = get_company_profile(uid)
+        upsert_contract({
+            "internal_id": "C1", "award_id": "A1", "vendor": "Test",
+            "agency": "O'Brien Dept", "description": "", "value": 100000,
+            "days_remaining": 90, "recompete_score": 50, "priority": "MEDIUM",
+            "category": "IT", "naics_code": "541512", "place_of_performance_state": "TX"
+        })
+        # Must not raise, and must match the contract by its literal agency value.
+        result = personalized_for_business(uid, profile, limit=10)
+        ids = [r["internal_id"] for r in result]
+        assert "C1" in ids
+        assert "O'Brien Dept contract" in result[0]["match_reason"]
+
+    def test_apostrophe_in_state_does_not_break_query(self, pdb):
+        from analytics import personalized_for_business
+        import sqlite3
+        uid = _uid(pdb)
+        save_company_profile(uid, {"company_name": "Co", "states": ["A'B"]})
+        profile = get_company_profile(uid)
+        # Insert directly so the apostrophe state value is stored verbatim
+        # (upsert_contract normalizes state to a 2-char abbreviation).
+        con = sqlite3.connect(pdb)
+        con.execute(
+            "INSERT INTO contracts (internal_id, award_id, vendor, agency, value, "
+            "days_remaining, recompete_score, priority, category, naics_code, "
+            "place_of_performance_state) VALUES "
+            "('C1', 'A1', 'Test', 'GSA', 100000, 90, 50, 'MEDIUM', 'IT', '541512', \"A'B\")"
+        )
+        con.commit()
+        con.close()
+        result = personalized_for_business(uid, profile, limit=10)
+        assert [r["internal_id"] for r in result] == ["C1"]
+        assert "Work in A'B" in result[0]["match_reason"]
+
+    def test_injection_string_treated_as_literal_value(self, pdb):
+        from analytics import personalized_for_business
+        from db import upsert_contract
+        uid = _uid(pdb)
+        # Classic IN-clause injection payload as an agency value.
+        payload = "GSA' OR '1'='1"
+        save_company_profile(uid, {"company_name": "Co", "agencies": [payload]})
+        profile = get_company_profile(uid)
+        # A normal contract that an injection would wrongly expose...
+        upsert_contract({
+            "internal_id": "REAL", "award_id": "AR", "vendor": "Test",
+            "agency": "GSA", "description": "", "value": 100000,
+            "days_remaining": 90, "recompete_score": 50, "priority": "MEDIUM",
+            "category": "IT", "naics_code": "541512", "place_of_performance_state": "TX"
+        })
+        # ...and one whose agency literally equals the payload string.
+        upsert_contract({
+            "internal_id": "LITERAL", "award_id": "AL", "vendor": "Test",
+            "agency": payload, "description": "", "value": 100000,
+            "days_remaining": 90, "recompete_score": 50, "priority": "MEDIUM",
+            "category": "IT", "naics_code": "541512", "place_of_performance_state": "TX"
+        })
+        result = personalized_for_business(uid, profile, limit=10)
+        ids = {r["internal_id"] for r in result}
+        # Bound as a literal: only the exact-match row is returned; the "OR 1=1"
+        # is NOT interpreted as SQL, so the plain GSA contract is excluded.
+        assert ids == {"LITERAL"}
+
+    def test_malicious_state_does_not_alter_database(self, pdb):
+        from analytics import personalized_for_business
+        from db import upsert_contract
+        import sqlite3
+        uid = _uid(pdb)
+        save_company_profile(uid, {
+            "company_name": "Co",
+            "states": ["TX'); DROP TABLE contracts; --"],
+        })
+        profile = get_company_profile(uid)
+        upsert_contract({
+            "internal_id": "C1", "award_id": "A1", "vendor": "Test",
+            "agency": "GSA", "description": "", "value": 100000,
+            "days_remaining": 90, "recompete_score": 50, "priority": "MEDIUM",
+            "category": "IT", "naics_code": "541512", "place_of_performance_state": "TX"
+        })
+        # Must not raise; payload matches nothing (treated as a literal state).
+        result = personalized_for_business(uid, profile, limit=10)
+        assert result == []
+        # The contracts table is intact and still holds the row.
+        con = sqlite3.connect(pdb)
+        count = con.execute("SELECT COUNT(*) FROM contracts").fetchone()[0]
+        con.close()
+        assert count == 1

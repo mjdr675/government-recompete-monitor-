@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Email Alerts{% endblock %}
+
+{% block content %}
+<h1>Email Alerts</h1>
+<div class="muted">Daily alerts for watched contracts, priority upgrades, and new opportunities.</div>
+
+<h2>Configuration</h2>
+<table style="margin-top:12px;max-width:500px;">
+  <tr><th>Setting</th><th>Value</th><th>Env Var</th></tr>
+  <tr><td>Recipient</td><td>{{ config.to or "<em>not set</em>" }}</td><td><code>ALERT_TO</code></td></tr>
+  <tr><td>SMTP Host</td><td>{{ config.host }}</td><td><code>SMTP_HOST</code></td></tr>
+  <tr><td>SMTP Port</td><td>{{ config.port }}</td><td><code>SMTP_PORT</code></td></tr>
+  <tr><td>SMTP User</td><td>{{ config.user or "<em>not set</em>" }}</td><td><code>SMTP_USER</code></td></tr>
+  <tr><td>SMTP Password</td><td>{{ config.password or "<em>not set</em>" }}</td><td><code>SMTP_PASS</code></td></tr>
+  <tr><td>From Address</td><td>{{ config.from_addr }}</td><td><code>SMTP_FROM</code></td></tr>
+</table>
+
+{% if not config.to %}
+<div class="muted" style="margin-top:12px;">
+  Set the <code>ALERT_TO</code> environment variable to enable email delivery.
+</div>
+{% endif %}
+
+<h2>Send Alert</h2>
+<form method="post" style="margin-top:12px;">
+  <label>Run date (leave blank for today):
+    <input name="run_date" placeholder="YYYY-MM-DD" style="width:160px;margin-left:8px;">
+  </label>
+  <button type="submit" style="margin-left:12px;">Send Now</button>
+</form>
+
+{% if result %}
+  {% if result.sent %}
+  <div style="margin-top:16px;color:#166534;background:#dcfce7;padding:10px 16px;border-radius:6px;">
+    Alert sent successfully.
+  </div>
+  {% else %}
+  <div style="margin-top:16px;color:#b00020;background:#fee2e2;padding:10px 16px;border-radius:6px;">
+    Not sent: {{ result.reason }}
+  </div>
+  {% endif %}
+{% endif %}
+
+<h2>What's Included</h2>
+<ul>
+  <li>All contracts on your <a href="/watchlist">Watchlist</a></li>
+  <li>Priority upgrades detected on the selected date</li>
+  <li>New recompete opportunities detected on the selected date</li>
+</ul>
+{% endblock %}

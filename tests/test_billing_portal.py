@@ -1,8 +1,9 @@
 """Tests for POST /billing/portal route (task F-2)."""
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 import db as db_module
 import users as users_module
+import payments as payments_module
 
 
 @pytest.fixture()
@@ -40,28 +41,34 @@ class TestBillingPortal:
         assert resp.status_code == 302
         assert "/" in resp.headers["Location"]
 
-    def test_redirects_to_portal_url_when_customer_exists(self, client, db):
+    def test_redirects_to_portal_url_when_customer_exists(self, client, db, monkeypatch):
         user = users_module.create_user("portal2@example.com", "pass123")
         users_module.set_subscription(user["id"], "cus_portal", "active")
         _login(client, user["id"])
 
         mock_portal = MagicMock()
         mock_portal.url = "https://billing.stripe.com/session/test"
-        with patch("stripe.billing_portal.Session.create", return_value=mock_portal) as mock_create:
-            resp = client.post("/billing/portal")
+        calls = []
+
+        def fake_portal(customer_id, return_url):
+            calls.append({"customer_id": customer_id, "return_url": return_url})
+            return mock_portal
+
+        monkeypatch.setattr(payments_module.service, "create_billing_portal_session", fake_portal)
+        resp = client.post("/billing/portal")
         assert resp.status_code == 303
         assert resp.headers["Location"] == "https://billing.stripe.com/session/test"
-        mock_create.assert_called_once_with(
-            customer="cus_portal",
-            return_url="http://localhost/",
-        )
+        assert calls == [{"customer_id": "cus_portal", "return_url": "http://localhost/"}]
 
-    def test_redirects_to_index_on_stripe_error(self, client, db):
+    def test_redirects_to_index_on_stripe_error(self, client, db, monkeypatch):
         user = users_module.create_user("portal3@example.com", "pass123")
         users_module.set_subscription(user["id"], "cus_err", "active")
         _login(client, user["id"])
 
-        with patch("stripe.billing_portal.Session.create", side_effect=Exception("API error")):
-            resp = client.post("/billing/portal")
+        def raise_exc(customer_id, return_url):
+            raise Exception("API error")
+
+        monkeypatch.setattr(payments_module.service, "create_billing_portal_session", raise_exc)
+        resp = client.post("/billing/portal")
         assert resp.status_code == 302
         assert "/" in resp.headers["Location"]

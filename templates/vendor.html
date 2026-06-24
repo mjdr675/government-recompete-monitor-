@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Vendor Profile{% endblock %}
+{% block title %}{{ vendor }} — Vendor Intelligence{% endblock %}
 
 {% block content %}
 <div style="margin-bottom:16px">
@@ -11,14 +11,19 @@
   </div>
 </div>
 
+{# ── Summary cards (7) ───────────────────────────────────────────── #}
 <div class="cards">
   <div class="card">
-    <div class="muted">Pipeline Value</div>
-    <div class="num">${{ "{:,.0f}".format(profile.summary.pipeline_value or 0) }}</div>
+    <div class="muted">Active Contracts</div>
+    <div class="num">{{ profile.summary.contracts }}</div>
   </div>
   <div class="card">
-    <div class="muted">Contracts</div>
-    <div class="num">{{ profile.summary.contracts }}</div>
+    <div class="muted">Pipeline Value</div>
+    <div class="num" style="font-size:22px;">${{ "{:,.0f}".format(profile.summary.pipeline_value or 0) }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Avg Recompete Score</div>
+    <div class="num">{{ "{:.1f}".format(profile.summary.avg_score or 0) }}</div>
   </div>
   <div class="card">
     <div class="muted">Active</div>
@@ -33,8 +38,37 @@
     <div class="num">{{ profile.summary.critical_contracts }}</div>
   </div>
   <div class="card">
-    <div class="muted">Avg Score</div>
-    <div class="num">{{ "{:.1f}".format(profile.summary.avg_score or 0) }}</div>
+    <div class="muted">Avg Days Remaining</div>
+    <div class="num">{{ "{:.0f}".format(profile.summary.avg_days_remaining or 0) }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Earliest Expiration</div>
+    <div class="num" style="font-size:18px;">{{ profile.summary.earliest_expiration or "—" }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Latest Expiration</div>
+    <div class="num" style="font-size:18px;">{{ profile.summary.latest_expiration or "—" }}</div>
+  </div>
+</div>
+
+{# ── Charts ──────────────────────────────────────────────────────── #}
+{% if profile.summary.contracts %}
+<h2>Charts</h2>
+<div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:32px;">
+
+  <div style="background:white;border-radius:10px;padding:18px;box-shadow:0 1px 4px #ddd;flex:2;min-width:320px;">
+    <div style="font-weight:bold;margin-bottom:10px;font-size:14px;">Pipeline Value by Agency</div>
+    <canvas id="chartAgency" height="220"></canvas>
+  </div>
+
+  <div style="background:white;border-radius:10px;padding:18px;box-shadow:0 1px 4px #ddd;flex:1;min-width:220px;">
+    <div style="font-weight:bold;margin-bottom:10px;font-size:14px;">Contracts by Priority</div>
+    <canvas id="chartPriority" height="220"></canvas>
+  </div>
+
+  <div style="background:white;border-radius:10px;padding:18px;box-shadow:0 1px 4px #ddd;flex:2;min-width:320px;">
+    <div style="font-weight:bold;margin-bottom:10px;font-size:14px;">Contracts Expiring per Month</div>
+    <canvas id="chartMonthly" height="220"></canvas>
   </div>
   <div class="card">
     <div class="muted">Top Score</div>
@@ -142,6 +176,7 @@
 {% endfor %}
 </table>
 </div>
+{% endif %}
 
 <h2>Agencies Served</h2>
 <div style="overflow-x:auto">
