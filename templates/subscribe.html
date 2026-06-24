@@ -1,6 +1,17 @@
 {% extends "base.html" %}
 {% block title %}Subscribe — Recompete.{% endblock %}
 {% block content %}
+
+{# ── Stripe Payment Link placeholders ──────────────────────────────────────
+   Replace each value with the live Stripe Payment Link URL when created.
+   These are public URLs — safe to embed in the frontend.
+   Do NOT add STRIPE_SECRET_KEY or any server-side keys here.
+   ───────────────────────────────────────────────────────────────────────── #}
+{% set BASIC_MONTHLY_LINK = "BASIC_MONTHLY_PAYMENT_LINK" %}
+{% set BASIC_YEARLY_LINK  = "BASIC_YEARLY_PAYMENT_LINK"  %}
+{% set PRO_MONTHLY_LINK   = "PRO_MONTHLY_PAYMENT_LINK"   %}
+{% set PRO_YEARLY_LINK    = "PRO_YEARLY_PAYMENT_LINK"    %}
+
 <style>
   /* ── Page shell ── */
   .sub-page { max-width: 960px; margin: 0 auto; padding: 0 0 48px; }
@@ -60,9 +71,8 @@
   .sub-price-row { display: flex; align-items: baseline; gap: 5px; margin-bottom: 3px; }
   .sub-price-big { font-size: 38px; font-weight: 700; color: var(--text-primary); line-height: 1; }
   .sub-price-per { font-size: 15px; color: var(--text-muted); }
-  .sub-price-custom { font-size: 28px; font-weight: 700; color: var(--text-primary); line-height: 1; margin-bottom: 3px; }
+  .sub-price-custom { font-size: 22px; font-weight: 600; color: var(--text-muted); line-height: 1; margin-bottom: 3px; }
   .sub-price-annual { font-size: 12.5px; color: #059669; font-weight: 600; margin-bottom: 16px; }
-  .sub-price-note   { font-size: 12.5px; color: var(--text-muted); margin-bottom: 16px; }
 
   /* ── Feature list ── */
   .sub-features { list-style: none; padding: 0; margin: 0 0 20px; flex: 1; }
@@ -79,41 +89,57 @@
   .sub-features li:last-child { border-bottom: none; }
   .sub-features li::before { content: "✓"; color: #16a34a; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
 
-  /* ── CTAs ── */
-  .btn-checkout {
+  /* ── CTA buttons ── */
+  .btn-cta-primary {
     display: block;
-    width: 100%;
+    text-align: center;
     padding: 13px;
+    border-radius: 6px;
+    font-size: 15px;
+    font-weight: 700;
+    text-decoration: none;
     background: var(--accent);
     color: #fff;
-    border: none;
-    border-radius: 6px;
-    font-size: 15px;
-    font-weight: 700;
-    cursor: pointer;
-    text-align: center;
-    box-sizing: border-box;
+    border: 2px solid transparent;
     transition: background .15s;
-    font-family: inherit;
+    margin-bottom: 8px;
   }
-  .btn-checkout:hover { background: var(--accent-hover); }
-  .btn-contact {
+  .btn-cta-primary:hover { background: var(--accent-hover); text-decoration: none; color: #fff; }
+
+  .btn-cta-outline {
+    display: block;
+    text-align: center;
+    padding: 11px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    background: transparent;
+    color: var(--accent);
+    border: 2px solid var(--accent);
+    transition: background .12s, color .12s;
+  }
+  .btn-cta-outline:hover { background: var(--accent-light); text-decoration: none; color: var(--accent); }
+
+  .btn-cta-contact {
     display: block;
     text-align: center;
     padding: 13px;
     border-radius: 6px;
     font-size: 15px;
     font-weight: 700;
-    color: var(--text-primary);
-    background: var(--surface);
-    border: 2px solid var(--border-strong);
     text-decoration: none;
+    background: var(--surface);
+    color: var(--text-primary);
+    border: 2px solid var(--border-strong);
     transition: border-color .12s, background .12s;
   }
-  .btn-contact:hover { border-color: var(--accent); background: var(--accent-light); text-decoration: none; color: var(--text-primary); }
+  .btn-cta-contact:hover { border-color: var(--accent); background: var(--accent-light); text-decoration: none; color: var(--text-primary); }
 
-  /* ── Trust / footer ── */
+  /* ── Trust row ── */
   .trust-row { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 14px; font-size: 12.5px; color: var(--text-muted); }
+
+  /* ── Footer box ── */
   .sub-footer-box {
     background: var(--bg);
     border: 1px solid var(--border);
@@ -153,10 +179,10 @@
 
   <div class="plans-grid">
 
-    {# ── Basic ── #}
+    {# ── Basic ───────────────────────────────────────────────────────────── #}
     <div class="sub-plan">
       <h2>Basic</h2>
-      <p class="sub-plan-desc">Essential contract discovery for small BD teams just getting started with GovCon.</p>
+      <p class="sub-plan-desc">Essential recompete discovery for small businesses getting started with federal contracting.</p>
       <div class="sub-price-row">
         <span class="sub-price-big">$29</span>
         <span class="sub-price-per">/ month</span>
@@ -164,66 +190,75 @@
       <div class="sub-price-annual">or $290/year &mdash; save $58</div>
       <ul class="sub-features">
         <li>Up to 50 tracked contracts</li>
-        <li>Weekly watchlist digest email</li>
-        <li>Recompete opportunity scoring</li>
-        <li>Search &amp; filter by agency, NAICS, state</li>
-        <li>Export to CSV</li>
+        <li>Weekly watchlist digest</li>
+        <li>Basic recompete scoring</li>
+        <li>Search and filter by agency, NAICS, and state</li>
+        <li>Up to 3 saved searches</li>
       </ul>
-      <a href="mailto:hello@recompete.us?subject=Basic%20plan%20inquiry" class="btn-contact">
-        Contact us for Basic &rarr;
+      <a href="{{ BASIC_MONTHLY_LINK }}" class="btn-cta-primary" target="_blank" rel="noopener">
+        Start Basic &mdash; $29/month
       </a>
-      <p style="font-size:12px;color:var(--text-faint);margin-top:10px;text-align:center">
-        We'll respond within one business day
-      </p>
+      <a href="{{ BASIC_YEARLY_LINK }}" class="btn-cta-outline" target="_blank" rel="noopener">
+        Start Basic yearly &mdash; $290/year
+      </a>
+      <div class="trust-row" style="margin-top:12px">
+        <span>&#128274; Secure payment via Stripe</span>
+        <span>&#128274; Cancel anytime</span>
+      </div>
     </div>
 
-    {# ── Pro (Stripe checkout) ── #}
+    {# ── Pro ─────────────────────────────────────────────────────────────── #}
     <div class="sub-plan featured">
       <span class="sub-plan-badge">Most Popular</span>
       <h2>Pro</h2>
-      <p class="sub-plan-desc">Everything you need to build a winning GovCon pipeline from day one.</p>
+      <p class="sub-plan-desc">Full contract intelligence for contractors actively building a GovCon pipeline.</p>
       <div class="sub-price-row">
         <span class="sub-price-big">$49</span>
         <span class="sub-price-per">/ month</span>
       </div>
       <div class="sub-price-annual">or $490/year &mdash; save $98 (~2 months free)</div>
       <ul class="sub-features">
-        <li>Unlimited contract tracking across all agencies</li>
-        <li>Daily watchlist expiry alerts by email</li>
-        <li>Recompete opportunity scoring on every contract</li>
-        <li>Agency &amp; vendor intelligence profiles</li>
-        <li>Saved searches and custom views</li>
+        <li>Unlimited tracked contracts</li>
+        <li>Daily watchlist expiry alerts</li>
+        <li>Full recompete scoring on every contract</li>
+        <li>Agency and vendor intelligence profiles</li>
+        <li>My Current Contracts dashboard</li>
+        <li>Pipeline tracking</li>
+        <li>Unlimited saved searches and custom views</li>
         <li>Export contracts to CSV</li>
         <li>Contract notes and annotations</li>
       </ul>
-      <form method="post" action="/create-checkout-session" style="margin:0">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn-checkout">Subscribe now — $49/month</button>
-      </form>
+      <a href="{{ PRO_MONTHLY_LINK }}" class="btn-cta-primary" target="_blank" rel="noopener">
+        Subscribe now &mdash; $49/month
+      </a>
+      <a href="{{ PRO_YEARLY_LINK }}" class="btn-cta-outline" target="_blank" rel="noopener">
+        Subscribe yearly &mdash; $490/year
+      </a>
       <div class="trust-row">
         <span>&#128274; Secure payment via Stripe</span>
         <span>&#128274; Cancel anytime</span>
       </div>
     </div>
 
-    {# ── Enterprise ── #}
+    {# ── Enterprise ───────────────────────────────────────────────────────── #}
     <div class="sub-plan">
       <h2>Enterprise</h2>
-      <p class="sub-plan-desc">Pro features plus multi-user collaboration for growing BD teams and agencies.</p>
-      <div class="sub-price-custom">$149</div>
-      <div class="sub-price-annual">or $1,490/year &mdash; save $298 (~2 months free)</div>
+      <p class="sub-plan-desc">Team-ready contract intelligence with shared workflows, custom profiles, priority support, and onboarding.</p>
+      <div class="sub-price-custom">Custom pricing</div>
+      <div class="sub-price-annual" style="color:var(--text-muted);font-weight:400">Contact us for a quote</div>
       <ul class="sub-features">
         <li>Everything in Pro</li>
-        <li>Up to 5 team seats</li>
-        <li>Shared team watchlists</li>
-        <li>Custom agency &amp; NAICS profiles</li>
-        <li>Priority email support</li>
+        <li>Team collaboration options</li>
+        <li>Shared watchlists and pipeline workflows</li>
+        <li>Custom agency, NAICS, and geographic profiles</li>
+        <li>Priority support</li>
+        <li>Onboarding assistance</li>
       </ul>
-      <a href="mailto:hello@recompete.us?subject=Enterprise%20plan%20inquiry" class="btn-contact">
-        Contact sales &rarr;
+      <a href="mailto:hello@recompete.us?subject=Enterprise%20plan%20inquiry" class="btn-cta-contact">
+        Contact sales
       </a>
       <p style="font-size:12px;color:var(--text-faint);margin-top:10px;text-align:center">
-        Custom onboarding &middot; volume discounts available
+        We respond within one business day
       </p>
     </div>
 
@@ -232,9 +267,7 @@
   <div class="sub-footer-box">
     <strong style="color:var(--text-primary)">Questions?</strong>
     <a href="/demo">Request a demo</a> or email
-    <a href="mailto:hello@recompete.us">hello@recompete.us</a> — we respond within one business day.
-    {# Platform handoff: Basic and Enterprise Stripe checkout requires
-       lane/platform to add price IDs and a plan param to /create-checkout-session. #}
+    <a href="mailto:hello@recompete.us">hello@recompete.us</a> &mdash; we respond within one business day.
   </div>
 
 </div>{# /sub-page #}
