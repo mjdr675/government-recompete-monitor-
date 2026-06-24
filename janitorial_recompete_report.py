@@ -27,14 +27,6 @@ def money(v):
     except Exception:
         return 0.0
 
-def get_nested(d, path, default=""):
-    cur = d
-    for key in path:
-        if not isinstance(cur, dict):
-            return default
-        cur = cur.get(key)
-    return default if cur is None else cur
-
 def fetch_contracts():
     out = []
     session = requests.Session()
@@ -62,6 +54,11 @@ def fetch_contracts():
                 "Description",
                 "generated_internal_id",
                 "NAICS Code",
+                # Place of performance — available from search endpoint directly
+                "Place of Performance City Name",
+                "Place of Performance State/Province",
+                "Place of Performance Zip5",
+                "Place of Performance Country Name",
             ],
             "page": page,
             "limit": 100,
@@ -128,16 +125,20 @@ def days_score(days):
     return 25 if days <= 30 else 20 if days <= 60 else 15 if days <= 90 else 10 if days <= 180 else 0
 
 def agency_bonus(row):
-    a=(row.get("agency") or "").upper(); return 5 if "DEFENSE" in a else 4 if "VETERANS AFFAIRS" in a else 3 if "HOMELAND SECURITY" in a else 0
+    a = (row.get("agency") or "").upper()
+    return 5 if "DEFENSE" in a else 4 if "VETERANS AFFAIRS" in a else 3 if "HOMELAND SECURITY" in a else 0
 
 def solicitation_bonus(row):
     return 5 if row.get("solicitation_id") else 0
 
 def office_bonus(row):
-    o=(row.get("awarding_office") or "").upper(); return 5 if any(x in o for x in ["697DCK","NETWORK CONTRACT OFFICE","DEFENSE HEALTH AGENCY","NAVFAC","W40M"]) else 0
+    o = (row.get("awarding_office") or "").upper()
+    return 5 if any(x in o for x in ["697DCK","NETWORK CONTRACT OFFICE","DEFENSE HEALTH AGENCY","NAVFAC","W40M"]) else 0
 
 def recompete_score(row):
-    return competition_score(row.get("competition_type")) + value_score(row.get("value")) + days_score(row.get("days_remaining")) + agency_bonus(row) + solicitation_bonus(row) + office_bonus(row)
+    return (competition_score(row.get("competition_type")) + value_score(row.get("value")) +
+            days_score(row.get("days_remaining")) + agency_bonus(row) +
+            solicitation_bonus(row) + office_bonus(row))
 
 def priority(score):
     return "CRITICAL" if score >= 90 else "HIGH" if score >= 75 else "MEDIUM" if score >= 60 else "LOW"
@@ -180,6 +181,7 @@ def enrichment_from_detail(data):
         "recipient_country": recipient_loc.get("country_name") or recipient_loc.get("location_country_code") or "",
         "recipient_address": recipient_loc.get("address_line1") or "",
         "recipient_zip": recipient_loc.get("zip5") or recipient_loc.get("zip4") or recipient_loc.get("foreign_postal_code") or "",
+        # Enrichment overrides search-level pop fields with more precise data
         "performance_city": pop.get("city_name") or "",
         "performance_state": pop.get("state_code") or pop.get("state_name") or "",
         "performance_country": pop.get("country_name") or pop.get("location_country_code") or "",
@@ -209,6 +211,12 @@ def main():
 
         days_left = (end - TODAY).days
 
+        # Pull place of performance directly from search results
+        pop_city = c.get("Place of Performance City Name") or ""
+        pop_state = c.get("Place of Performance State/Province") or ""
+        pop_zip = c.get("Place of Performance Zip5") or ""
+        pop_country = c.get("Place of Performance Country Name") or ""
+
         rows.append({
             "score": score(amount, days_left),
             "days_remaining": days_left,
@@ -232,10 +240,11 @@ def main():
             "recipient_country": "",
             "recipient_address": "",
             "recipient_zip": "",
-            "performance_city": "",
-            "performance_state": "",
-            "performance_country": "",
-            "performance_zip": "",
+            # Populated from search results for every contract
+            "performance_city": pop_city,
+            "performance_state": pop_state,
+            "performance_country": pop_country,
+            "performance_zip": pop_zip,
             "competition_type": "",
             "solicitation_procedure": "",
             "pricing_type": "",
@@ -251,7 +260,11 @@ def main():
     for row in rows:
         if should_enrich(row):
             detail = fetch_award_detail(enrichment_award_id(row))
-            row.update(enrichment_from_detail(detail))
+            enriched = enrichment_from_detail(detail)
+            # Only override pop fields if enrichment has better data
+            for k, v in enriched.items():
+                if v or k not in ("performance_city", "performance_state", "performance_zip", "performance_country"):
+                    row[k] = v
             enrich_count += 1
             time.sleep(0.2)
 
