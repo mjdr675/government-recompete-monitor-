@@ -50,6 +50,17 @@ jobs:
           echo "$SSH_KEY" | tr -d '\r' > $RUNNER_TEMP/deploy_key
           chmod 644 $RUNNER_TEMP/deploy_key
 
+      - name: Debug key file
+        run: |
+          echo "=== size ==="
+          wc -c < $RUNNER_TEMP/deploy_key
+          echo "=== lines ==="
+          wc -l < $RUNNER_TEMP/deploy_key
+          echo "=== first line ==="
+          head -1 $RUNNER_TEMP/deploy_key
+          echo "=== last line ==="
+          tail -1 $RUNNER_TEMP/deploy_key
+
       - name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
