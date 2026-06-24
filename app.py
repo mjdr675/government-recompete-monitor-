@@ -739,7 +739,8 @@ def contracts():
     discover = request.args.get("discover", "")
     # Apply-window filter: default ON. Only show contracts a small business can
     # realistically still bid on (enough runway, not already closed/too far out).
-    # Pass applyable=0 in the query string to see everything.
+    # Pass applyable=0 in the query string to see everything. The filtering is
+    # done in SQL (get_contracts applyable=...) so pagination stays cheap.
     applyable = request.args.get("applyable", "1") != "0"
 
     if status not in ("", "open", "expired"):
@@ -781,45 +782,8 @@ def contracts():
     engine = get_engine()
     all_states = list_contract_states(engine)
 
-    # When the apply-window filter is on, fetch all matching rows (the DB query
-    # has no upper days bound), then filter to applyable ones and paginate in
-    # Python. This keeps the "most contracts fall in the right window" behaviour
-    # without changing the SQL layer.
     if pipeline_ids is not None and len(pipeline_ids) == 0:
         result = {"contracts": [], "total": 0, "count": 0, "start": 0, "page": page}
-    elif applyable:
-        full = get_contracts(
-            q=q,
-            agency=agency,
-            priority=priority,
-            days=days_int,
-            min_value=min_value,
-            status=status,
-            sort=sort,
-            direction=direction,
-            page=1,
-            limit=100000,
-            profile_filter=pf,
-            internal_ids=pipeline_ids,
-            state=state,
-            category=category,
-            exclude_ids=discover_exclude_ids,
-            all_rows=True,
-        )
-        applyable_rows = [
-            r for r in full["contracts"] if is_applyable(r.get("days_remaining"))
-        ]
-        _page_size = 25
-        total_applyable = len(applyable_rows)
-        start_idx = (page - 1) * _page_size
-        page_rows = applyable_rows[start_idx:start_idx + _page_size]
-        result = {
-            "contracts": page_rows,
-            "total": total_applyable,
-            "count": len(page_rows),
-            "start": start_idx,
-            "page": page,
-        }
     else:
         result = get_contracts(
             q=q,
@@ -837,6 +801,7 @@ def contracts():
             state=state,
             category=category,
             exclude_ids=discover_exclude_ids,
+            applyable=applyable,
         )
 
     _total = result["total"]
