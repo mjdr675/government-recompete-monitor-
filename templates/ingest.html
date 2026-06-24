@@ -51,7 +51,7 @@
     <button id="start-pull-btn" onclick="startPull()" class="btn btn-primary" style="margin-bottom:14px">Start Pull</button>
 
     <div id="pull-status" style="display:none">
-      <p id="pull-status-text" class="muted" style="font-size:12.5px;margin-bottom:8px">Enqueuing…</p>
+      <p id="pull-status-text" class="muted" style="font-size:12.5px;margin-bottom:8px">Starting…</p>
       <div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden">
         <div id="pull-progress-fill" style="height:5px;background:var(--accent);border-radius:3px;width:0%;transition:width 0.4s"></div>
       </div>
@@ -108,7 +108,7 @@ function startPull() {
 
   btn.disabled = true;
   statusDiv.style.display = 'block';
-  statusText.textContent = 'Enqueuing ingest task…';
+  statusText.textContent = 'Starting ingest…';
 
   var formData = new FormData();
   formData.append('action', 'api');
@@ -117,39 +117,20 @@ function startPull() {
   fetch('/ingest', {method: 'POST', body: formData})
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      if (!data.task_id) {
-        statusText.textContent = 'Error: no task ID returned.';
+      if (data.status === 'started') {
+        statusText.textContent = 'Ingest running in background — check back in a few minutes.';
+        progressFill.style.width = '100%';
+        progressFill.style.background = '#10b981';
         btn.disabled = false;
-        return;
+      } else {
+        statusText.textContent = 'Error: ' + (data.error || 'unknown error');
+        btn.disabled = false;
       }
-      statusText.textContent = 'Task enqueued. Polling for status…';
-      pollStatus(data.task_id);
     })
     .catch(function(err) {
-      statusText.textContent = 'Failed to enqueue: ' + err;
+      statusText.textContent = 'Failed to start: ' + err;
       btn.disabled = false;
     });
-}
-
-function pollStatus(taskId) {
-  var statusText = document.getElementById('pull-status-text');
-  var progressFill = document.getElementById('pull-progress-fill');
-  var btn = document.getElementById('start-pull-btn');
-
-  var interval = setInterval(function() {
-    fetch('/ingest/status?task_id=' + encodeURIComponent(taskId))
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        statusText.textContent = data.message || data.status;
-        progressFill.style.width = (data.progress || 0) + '%';
-        if (data.status === 'SUCCESS' || data.status === 'FAILURE') {
-          clearInterval(interval);
-          btn.disabled = false;
-          progressFill.style.background = data.status === 'SUCCESS' ? '#10b981' : '#ef4444';
-        }
-      })
-      .catch(function() { /* keep polling on transient error */ });
-  }, 2000);
 }
 </script>
 {% endblock %}
