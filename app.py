@@ -83,6 +83,7 @@ from business_match import (
 )
 from report_builder import build_report
 from views import SAVED_VIEWS, build_view_query, format_filter_summary, active_filter_chips, quick_views, active_view_id
+from apply_window import apply_stage, is_applyable, in_sweet_spot, MIN_APPLY_DAYS, MAX_PREP_DAYS
 import hubspot_service
 from users import (
     get_user_by_email,
@@ -175,6 +176,8 @@ app.view_functions["auth.register"] = limiter.limit(
     "10 per hour", per_method=True, methods=["POST"]
 )(app.view_functions["auth.register"])
 app.jinja_env.globals["format_filter_summary"] = format_filter_summary
+app.jinja_env.globals["apply_stage"] = apply_stage
+app.jinja_env.globals["is_applyable"] = is_applyable
 
 init_db()
 
@@ -734,6 +737,10 @@ def contracts():
     state = request.args.get("state", "")
     category = request.args.get("category", "")
     discover = request.args.get("discover", "")
+    # Apply-window filter: default ON. Only show contracts a small business can
+    # realistically still bid on (enough runway, not already closed/too far out).
+    # Pass applyable=0 in the query string to see everything.
+    applyable = request.args.get("applyable", "1") != "0"
 
     if status not in ("", "open", "expired"):
         status = ""
@@ -774,8 +781,45 @@ def contracts():
     engine = get_engine()
     all_states = list_contract_states(engine)
 
+    # When the apply-window filter is on, fetch all matching rows (the DB query
+    # has no upper days bound), then filter to applyable ones and paginate in
+    # Python. This keeps the "most contracts fall in the right window" behaviour
+    # without changing the SQL layer.
     if pipeline_ids is not None and len(pipeline_ids) == 0:
         result = {"contracts": [], "total": 0, "count": 0, "start": 0, "page": page}
+    elif applyable:
+        full = get_contracts(
+            q=q,
+            agency=agency,
+            priority=priority,
+            days=days_int,
+            min_value=min_value,
+            status=status,
+            sort=sort,
+            direction=direction,
+            page=1,
+            limit=100000,
+            profile_filter=pf,
+            internal_ids=pipeline_ids,
+            state=state,
+            category=category,
+            exclude_ids=discover_exclude_ids,
+            all_rows=True,
+        )
+        applyable_rows = [
+            r for r in full["contracts"] if is_applyable(r.get("days_remaining"))
+        ]
+        _page_size = 25
+        total_applyable = len(applyable_rows)
+        start_idx = (page - 1) * _page_size
+        page_rows = applyable_rows[start_idx:start_idx + _page_size]
+        result = {
+            "contracts": page_rows,
+            "total": total_applyable,
+            "count": len(page_rows),
+            "start": start_idx,
+            "page": page,
+        }
     else:
         result = get_contracts(
             q=q,
@@ -851,6 +895,7 @@ def contracts():
         direction=direction,
         state=state,
         discover=discover,
+        applyable=applyable,
         watchlist_ids=watchlist_ids,
         pipeline_map=pipeline_map,
         saved_searches=saved_searches,
@@ -1246,6 +1291,10 @@ def contract_detail(internal_id):
     matters = why_it_matters(row)
     timeline = contract_timeline(row)
 
+    # Apply-window staging for the "How to apply" CTA on the detail page.
+    stage_key, stage_label, stage_detail = apply_stage(row.get("days_remaining"))
+    applyable = is_applyable(row.get("days_remaining"))
+
     biz_match_score = None
     biz_match_reasons_list = []
     biz_mismatch_reasons_list = []
@@ -1282,7 +1331,64 @@ def contract_detail(internal_id):
                            category=category,
                            performance_state=performance_state,
                            performance_city=performance_city,
-                           psc_description=psc_description)
+                           psc_description=psc_description,
+                           stage_key=stage_key,
+                           stage_label=stage_label,
+                           stage_detail=stage_detail,
+                           applyable=applyable)
+
+
+@app.route("/contract/<internal_id>/apply")
+def contract_apply(internal_id):
+    con = connect()
+    con.row_factory = lambda cur, row: {col[0]: row[i] for i, col in enumerate(cur.description)}
+    row = con.execute(
+        "SELECT * FROM contracts WHERE internal_id=?",
+        (internal_id,),
+    ).fetchone()
+    con.close()
+
+    if not row:
+        return redirect("/contracts")
+
+    stage_key, stage_label, stage_detail = apply_stage(row.get("days_remaining"))
+    applyable = is_applyable(row.get("days_remaining"))
+
+    # Build a SAM.gov search URL seeded with the incumbent solicitation number
+    # (if known) or the agency/work description so the user can find the live notice.
+    solicitation_id = row.get("solicitation_id") or extract_raw_field(row, "solicitation_id") or ""
+    sam_naics = extract_raw_field(row, "sam_naics") or extract_raw_field(row, "naics_code") or row.get("naics_code") or ""
+    if solicitation_id:
+        sam_search_url = "https://sam.gov/search/?keywords=" + urllib.parse.quote(str(solicitation_id))
+    else:
+        terms = " ".join(filter(None, [row.get("agency") or "", row.get("description") or ""]))[:120]
+        sam_search_url = "https://sam.gov/search/?keywords=" + urllib.parse.quote(terms)
+
+    category = infer_category(
+        description=row.get("description") or "",
+        naics_code=sam_naics,
+        vendor=row.get("vendor") or "",
+    )
+    performance_state = (
+        row.get("place_of_performance_state")
+        or extract_raw_field(row, "performance_state")
+        or extract_raw_field(row, "recipient_state")
+        or ""
+    )
+
+    return render_template(
+        "contract_apply.html",
+        row=row,
+        stage_key=stage_key,
+        stage_label=stage_label,
+        stage_detail=stage_detail,
+        applyable=applyable,
+        sam_search_url=sam_search_url,
+        sam_naics=sam_naics,
+        solicitation_id=solicitation_id,
+        category=category,
+        performance_state=performance_state,
+    )
 
 
 @app.route("/watchlist/add", methods=["POST"])
