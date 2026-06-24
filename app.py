@@ -1626,7 +1626,7 @@ def health_detailed():
     except Exception:
         pass
 
-    healthy = db_status == "ok"
+    healthy = db_status == "ok" and redis_status == "ok"
     return jsonify({
         "db": db_status,
         "redis": redis_status,
