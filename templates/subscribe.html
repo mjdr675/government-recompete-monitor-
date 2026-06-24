@@ -1,43 +1,50 @@
 {% extends "base.html" %}
-{% block title %}Subscribe — Recompete{% endblock %}
+{% block title %}Subscribe — Recompete.{% endblock %}
 {% block content %}
 <style>
   .subscribe-wrap{max-width:520px;margin:0 auto;padding:0 0 48px}
-  .plan-card{background:white;border-radius:10px;box-shadow:0 2px 8px #ddd;padding:28px 32px;margin-bottom:24px}
-  .price-row{display:flex;align-items:baseline;gap:6px;margin:12px 0 20px}
-  .price-big{font-size:44px;font-weight:bold;color:#1a2744;line-height:1}
-  .price-per{font-size:16px;color:#666}
+  .plan-card{background:var(--surface);border-radius:10px;box-shadow:var(--shadow-md);padding:28px 32px;margin-bottom:20px;border:1px solid var(--border)}
+  .price-row{display:flex;align-items:baseline;gap:6px;margin:12px 0 4px}
+  .price-big{font-size:44px;font-weight:bold;color:var(--text-primary);line-height:1}
+  .price-per{font-size:16px;color:var(--text-muted)}
+  .price-annual{font-size:13px;color:#059669;font-weight:600;margin-bottom:20px}
   .feature-list{list-style:none;padding:0;margin:0 0 24px}
-  .feature-list li{padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:15px;color:#333}
+  .feature-list li{padding:8px 0;border-bottom:1px solid var(--border);font-size:15px;color:var(--text-primary)}
   .feature-list li::before{content:"✓ ";color:#16a34a;font-weight:bold}
   .btn-checkout{display:block;width:100%;padding:14px;background:#2563eb;color:white;border:none;
-    border-radius:6px;font-size:16px;font-weight:bold;cursor:pointer;text-align:center;box-sizing:border-box}
+    border-radius:6px;font-size:16px;font-weight:bold;cursor:pointer;text-align:center;
+    box-sizing:border-box;transition:background .15s}
   .btn-checkout:hover{background:#1d4ed8}
-  .trust-row{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;font-size:13px;color:#555}
+  .trust-row{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;font-size:13px;color:var(--text-muted)}
+  .other-plans{background:var(--bg);border:1px solid var(--border);border-radius:8px;
+    padding:16px 20px;font-size:14px;color:var(--text-muted);margin-bottom:16px;line-height:1.6}
+  .other-plans strong{color:var(--text-primary)}
+  .other-plans a{color:var(--accent);font-weight:500}
 </style>
 
 <div class="subscribe-wrap">
   <h1 style="margin-bottom:6px">Upgrade to Pro</h1>
 
   {% if expired %}
-  <div style="background:#fee2e2;border:1px solid #ef4444;border-radius:6px;padding:12px 16px;margin-bottom:20px;color:#991b1b;">
+  <div style="background:#fee2e2;border:1px solid #ef4444;border-radius:6px;padding:12px 16px;margin-bottom:20px;color:#991b1b">
     <strong>Your free trial has ended.</strong> Subscribe now to continue tracking government recompetes.
   </div>
   {% else %}
-  <p style="color:#555;margin-bottom:24px">
+  <p style="color:var(--text-muted);margin-bottom:24px">
     Continue after your trial with full access to the contract intelligence platform.
   </p>
   {% endif %}
 
   <div class="plan-card">
     <div style="display:flex;justify-content:space-between;align-items:center">
-      <h2 style="margin:0;color:#1a2744">Pro Plan</h2>
+      <h2 style="margin:0;color:var(--text-primary)">Pro Plan</h2>
       <span style="background:#dbeafe;color:#1e40af;font-size:12px;font-weight:bold;padding:3px 10px;border-radius:999px">MOST POPULAR</span>
     </div>
     <div class="price-row">
       <span class="price-big">$49</span>
       <span class="price-per">/ month</span>
     </div>
+    <div class="price-annual">or $490/year &mdash; save $98 (~2 months free)</div>
 
     <ul class="feature-list">
       <li>Unlimited contract tracking across all agencies</li>
@@ -58,6 +65,14 @@
       <span>&#128274; Secure payment via Stripe</span>
       <span>&#128274; Cancel anytime</span>
     </div>
+  </div>
+
+  <div class="other-plans">
+    <strong>Looking for Basic or Enterprise?</strong>
+    Email us at <a href="mailto:hello@recompete.us?subject=Plan%20inquiry">hello@recompete.us</a>
+    and we'll get you set up on the right plan.
+    {# Platform handoff: Basic ($29/mo) and Enterprise ($149/mo) plan checkout wiring
+       requires Stripe price IDs and /create-checkout-session plan param — lane/platform. #}
   </div>
 
   <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:16px 20px;font-size:14px;color:#166534">

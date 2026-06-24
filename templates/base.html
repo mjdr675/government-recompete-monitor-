@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Recompete — Government Contract Intelligence{% endblock %}</title>
+  <title>{% block title %}Recompete.{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232563eb'/><text x='16' y='22' text-anchor='middle' font-family='Inter,Arial,sans-serif' font-size='18' font-weight='800' fill='%23ffffff'>R</text></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
@@ -96,8 +97,8 @@
   <div class="sidebar-backdrop" onclick="document.body.classList.remove('sidebar-open')" aria-hidden="true"></div>
   <aside class="sidebar">
     <a class="sidebar-brand" href="/dashboard">
-      <span class="brand-mark" aria-hidden="true">R</span>
-      <span class="brand-name">Recompete</span>
+      <span class="brand-mark" aria-hidden="true">{{ user_initial }}</span>
+      <span class="brand-name">{{ g.user.get('company_name') or 'Recompete' }}</span>
     </a>
     {% set ws_name = (workspace.name if workspace else None) or g.user.get('company_name') %}
     {% if ws_name or (workspace and workspace.logo_path) %}

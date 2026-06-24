@@ -201,6 +201,7 @@
         <th class="col-r">{{ sort_link("days_remaining", "Days") }}</th>
         <th class="col-r">{{ sort_link("recompete_score", "Score") }} <button type="button" class="score-info-btn" onclick="openScoreModal()" aria-haspopup="dialog" aria-label="How the Recompete Score is calculated" title="How the Recompete Score is calculated">&#9432;</button></th>
         {% if for_my_business %}<th class="col-r" title="How well this contract matches your Company Profile">Match</th>{% endif %}
+        <th style="width:90px"></th>
       </tr>
     </thead>
     <tbody>
@@ -231,10 +232,11 @@
         </td>
         <td class="col-r">{{ r["recompete_score"] }}</td>
         {% if for_my_business %}<td class="col-r" style="font-weight:600;color:var(--accent)">{% if r.get("match_score") is not none %}{{ r.get("match_score") }}%{% endif %}</td>{% endif %}
+        <td><a href="/contract/{{ r['internal_id'] }}" class="btn btn-ghost" style="padding:3px 10px;font-size:11.5px;white-space:nowrap">View details &rarr;</a></td>
       </tr>
       {% else %}
       <tr>
-        <td colspan="{{ 12 if for_my_business else 11 }}" style="text-align:center;padding:40px 20px;color:var(--text-muted)">
+        <td colspan="{{ 13 if for_my_business else 12 }}" style="text-align:center;padding:40px 20px;color:var(--text-muted)">
           No contracts match your current filters. <a href="/contracts">Clear all filters</a> to see the full list.
         </td>
       </tr>
@@ -278,7 +280,7 @@
     </div>
     {% endif %}
     <div class="mobile-card-actions">
-      <a href="/contract/{{ r['internal_id'] }}" class="btn btn-ghost">View</a>
+      <a href="/contract/{{ r['internal_id'] }}" class="btn btn-ghost">View details &rarr;</a>
       {% if g.user %}
       <button class="mobile-bm-btn bm-btn" data-id="{{ r['internal_id'] }}" onclick="bookmarkToggle(this)" title="Watch">{{ "★" if r['internal_id'] in watchlist_ids else "☆" }}</button>
       {% endif %}

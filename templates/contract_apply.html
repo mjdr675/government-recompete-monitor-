@@ -2,6 +2,7 @@
 {% block title %}How to Apply — {{ row["award_id"] or row["internal_id"] }}{% endblock %}
 
 {% block content %}
+<div style="max-width:720px">
 <div style="margin-bottom:6px">
   <a href="/contract/{{ row['internal_id'] }}" class="muted" style="font-size:13px;text-decoration:none">&larr; Back to contract</a>
 </div>
@@ -55,7 +56,7 @@
 
   {# Step 1 — Register #}
   <div style="display:flex;gap:14px;align-items:flex-start">
-    <div style="flex-shrink:0;width:30px;height:30px;border-radius:50%;background:var(--accent);color:var(--bg);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">1</div>
+    <div style="flex-shrink:0;width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">1</div>
     <div style="flex:1;line-height:1.6">
       <div style="font-weight:700;font-size:16px;margin-bottom:3px">Register on SAM.gov (required before you can bid)</div>
       <div style="font-size:14px;color:var(--text-muted);margin-bottom:6px">
@@ -69,7 +70,7 @@
 
   {# Step 2 — Certifications #}
   <div style="display:flex;gap:14px;align-items:flex-start">
-    <div style="flex-shrink:0;width:30px;height:30px;border-radius:50%;background:var(--accent);color:var(--bg);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">2</div>
+    <div style="flex-shrink:0;width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">2</div>
     <div style="flex:1;line-height:1.6">
       <div style="font-weight:700;font-size:16px;margin-bottom:3px">Check if you qualify for a set-aside (optional, but a big edge)</div>
       <div style="font-size:14px;color:var(--text-muted);margin-bottom:6px">
@@ -88,7 +89,7 @@
 
   {# Step 3 — Find the live solicitation #}
   <div style="display:flex;gap:14px;align-items:flex-start">
-    <div style="flex-shrink:0;width:30px;height:30px;border-radius:50%;background:var(--accent);color:var(--bg);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">3</div>
+    <div style="flex-shrink:0;width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">3</div>
     <div style="flex:1;line-height:1.6">
       <div style="font-weight:700;font-size:16px;margin-bottom:3px">Find the live solicitation for this recompete</div>
       <div style="font-size:14px;color:var(--text-muted);margin-bottom:6px">
@@ -107,7 +108,7 @@
 
   {# Step 4 — Write and submit #}
   <div style="display:flex;gap:14px;align-items:flex-start">
-    <div style="flex-shrink:0;width:30px;height:30px;border-radius:50%;background:var(--accent);color:var(--bg);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">4</div>
+    <div style="flex-shrink:0;width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">4</div>
     <div style="flex:1;line-height:1.6">
       <div style="font-weight:700;font-size:16px;margin-bottom:3px">Write and submit your proposal before the deadline</div>
       <div style="font-size:14px;color:var(--text-muted)">
@@ -150,4 +151,5 @@
   Timelines and requirements are general guidance for federal contracting. Always follow the specific instructions in
   the official solicitation on SAM.gov, which govern the actual process for this opportunity.
 </p>
+</div>{# /max-width wrapper #}
 {% endblock %}

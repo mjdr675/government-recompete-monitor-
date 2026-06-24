@@ -56,18 +56,18 @@
 <h2>Charts</h2>
 <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:32px;">
 
-  <div style="background:white;border-radius:10px;padding:18px;box-shadow:0 1px 4px #ddd;flex:2;min-width:320px;">
-    <div style="font-weight:bold;margin-bottom:10px;font-size:14px;">Pipeline Value by Agency</div>
+  <div style="background:var(--surface);border-radius:10px;padding:18px;box-shadow:var(--shadow-sm);flex:2;min-width:320px;border:1px solid var(--border)">
+    <div style="font-weight:bold;margin-bottom:10px;font-size:14px;color:var(--text-primary)">Pipeline Value by Agency</div>
     <canvas id="chartAgency" height="220"></canvas>
   </div>
 
-  <div style="background:white;border-radius:10px;padding:18px;box-shadow:0 1px 4px #ddd;flex:1;min-width:220px;">
-    <div style="font-weight:bold;margin-bottom:10px;font-size:14px;">Contracts by Priority</div>
+  <div style="background:var(--surface);border-radius:10px;padding:18px;box-shadow:var(--shadow-sm);flex:1;min-width:220px;border:1px solid var(--border)">
+    <div style="font-weight:bold;margin-bottom:10px;font-size:14px;color:var(--text-primary)">Contracts by Priority</div>
     <canvas id="chartPriority" height="220"></canvas>
   </div>
 
-  <div style="background:white;border-radius:10px;padding:18px;box-shadow:0 1px 4px #ddd;flex:2;min-width:320px;">
-    <div style="font-weight:bold;margin-bottom:10px;font-size:14px;">Contracts Expiring per Month</div>
+  <div style="background:var(--surface);border-radius:10px;padding:18px;box-shadow:var(--shadow-sm);flex:2;min-width:320px;border:1px solid var(--border)">
+    <div style="font-weight:bold;margin-bottom:10px;font-size:14px;color:var(--text-primary)">Contracts Expiring per Month</div>
     <canvas id="chartMonthly" height="220"></canvas>
   </div>
   <div class="card">
@@ -242,6 +242,12 @@
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script>
+(function() {
+  var cs = getComputedStyle(document.documentElement);
+  Chart.defaults.color = cs.getPropertyValue('--text-muted').trim() || '#6b7280';
+  Chart.defaults.borderColor = cs.getPropertyValue('--border').trim() || '#e5e7eb';
+  Chart.defaults.backgroundColor = cs.getPropertyValue('--surface').trim() || '#ffffff';
+})();
 (function() {
   var timelineData = {{ profile.timeline | tojson }};
   if (timelineData.length > 0) {

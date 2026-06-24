@@ -1,31 +1,59 @@
 {% extends "base.html" %}
-{% block title %}Recompete — Government Contract Recompete Intelligence{% endblock %}
+{% block title %}Recompete. — Government Contract Intelligence{% endblock %}
 {% block content %}
 <style>
   .hero{text-align:center;padding:64px 24px 48px;max-width:720px;margin:0 auto}
   .hero h1{font-size:40px;line-height:1.15;color:#1a2744;margin-bottom:16px}
   .hero p{font-size:18px;color:#444;line-height:1.6;margin-bottom:32px}
   .cta-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
-  .cta-primary{background:#2563eb;color:white;padding:14px 28px;border-radius:6px;font-size:16px;font-weight:bold;text-decoration:none;transition:background .15s}
+  .cta-primary{background:#2563eb;color:white;padding:14px 28px;border-radius:6px;font-size:16px;font-weight:bold;text-decoration:none;transition:background .15s;display:inline-block}
   .cta-primary:hover{background:#1d4ed8;text-decoration:none;color:white}
-  .cta-secondary{background:white;color:#1a2744;padding:14px 28px;border-radius:6px;font-size:16px;font-weight:bold;text-decoration:none;border:2px solid #1a2744;transition:background .15s}
+  .cta-secondary{background:white;color:#1a2744;padding:14px 28px;border-radius:6px;font-size:16px;font-weight:bold;text-decoration:none;border:2px solid #1a2744;transition:background .15s;display:inline-block}
   .cta-secondary:hover{background:#f0f4ff;text-decoration:none}
   .features{display:flex;gap:24px;flex-wrap:wrap;max-width:900px;margin:48px auto;padding:0 24px}
   .feature{flex:1;min-width:220px;background:white;border-radius:10px;padding:24px;box-shadow:0 1px 4px #ddd}
   .feature h3{margin:0 0 10px;color:#1a2744;font-size:17px}
   .feature p{margin:0;color:#555;font-size:14px;line-height:1.6}
   .feature-icon{font-size:28px;margin-bottom:12px}
-  .pricing{background:white;border-radius:12px;box-shadow:0 2px 8px #ddd;max-width:440px;margin:0 auto 64px;padding:32px 36px;text-align:center}
-  .pricing h2{color:#1a2744;margin-bottom:6px}
-  .price{font-size:42px;font-weight:bold;color:#1a2744;margin:16px 0 4px}
-  .price span{font-size:18px;font-weight:normal;color:#666}
-  .pricing ul{list-style:none;padding:0;margin:20px 0 28px;text-align:left}
-  .pricing ul li{padding:8px 0;border-bottom:1px solid #f0f0f0;color:#333;font-size:15px}
-  .pricing ul li::before{content:"✓ ";color:#2563eb;font-weight:bold}
-  .trial-note{font-size:13px;color:#666;margin-top:12px}
   .section-label{text-align:center;font-size:13px;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:8px}
   .divider{border:none;border-top:1px solid #e5e7eb;margin:0 24px}
-  @media(max-width:600px){.hero h1{font-size:28px}.price{font-size:32px}.pricing{padding:24px 20px}}
+  /* Pricing */
+  .pricing-grid{display:flex;gap:20px;flex-wrap:wrap;max-width:960px;margin:0 auto 48px;padding:0 24px;align-items:stretch}
+  .plan-card{flex:1;min-width:240px;background:white;border-radius:12px;box-shadow:0 2px 8px #ddd;padding:28px 24px 22px;text-align:left;display:flex;flex-direction:column;position:relative;border:2px solid transparent}
+  .plan-card.featured{border-color:#2563eb;box-shadow:0 4px 20px rgba(37,99,235,0.18)}
+  .plan-badge{display:inline-block;background:#2563eb;color:white;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:3px 10px;border-radius:999px;margin-bottom:10px}
+  .plan-card h3{color:#1a2744;font-size:20px;font-weight:700;margin:0 0 5px}
+  .plan-desc{color:#666;font-size:13.5px;line-height:1.5;margin:0 0 14px}
+  .plan-price{font-size:40px;font-weight:bold;color:#1a2744;line-height:1;margin-bottom:3px}
+  .plan-price span{font-size:16px;font-weight:normal;color:#666}
+  .plan-year{font-size:12.5px;color:#059669;font-weight:600;margin-bottom:18px}
+  .plan-features{list-style:none;padding:0;margin:0 0 22px;flex:1}
+  .plan-features li{padding:6px 0;border-bottom:1px solid #f3f4f6;color:#333;font-size:14px;display:flex;align-items:flex-start;gap:7px}
+  .plan-features li::before{content:"✓";color:#2563eb;font-weight:700;flex-shrink:0;margin-top:1px}
+  .plan-cta{display:block;text-align:center;padding:12px 20px;border-radius:6px;font-size:15px;font-weight:700;text-decoration:none;transition:background .15s,opacity .15s}
+  .plan-cta.primary{background:#2563eb;color:white}
+  .plan-cta.primary:hover{background:#1d4ed8;text-decoration:none;color:white}
+  .plan-cta.outline{background:white;color:#1a2744;border:2px solid #1a2744}
+  .plan-cta.outline:hover{background:#f0f4ff;text-decoration:none}
+  .plan-trial{font-size:12px;color:#888;margin-top:10px;text-align:center}
+  /* Help & Support */
+  .help-section{padding:40px 24px 8px;max-width:900px;margin:0 auto}
+  .help-grid{display:flex;gap:20px;flex-wrap:wrap;margin-top:24px}
+  .help-card{flex:1;min-width:220px;background:white;border-radius:10px;padding:24px;box-shadow:0 1px 4px #ddd;display:flex;flex-direction:column}
+  .help-card h3{margin:0 0 8px;color:#1a2744;font-size:16px}
+  .help-card p{margin:0 0 16px;color:#555;font-size:14px;line-height:1.6;flex:1}
+  .help-cta{display:inline-block;padding:9px 18px;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;background:white;color:#1a2744;border:1px solid #d1d5db;transition:background .15s;align-self:flex-start}
+  .help-cta:hover{background:#f5f7fb;text-decoration:none}
+  /* Responsive */
+  @media(max-width:700px){
+    .hero h1{font-size:28px}
+    .plan-price{font-size:32px}
+    .pricing-grid,.help-grid{flex-direction:column;gap:16px}
+  }
+  @media(max-width:480px){
+    .plan-card{padding:20px 18px 16px}
+    .hero{padding:40px 16px 32px}
+  }
 </style>
 
 <div class="hero">
@@ -66,31 +94,101 @@
 
 <hr class="divider">
 
-<div style="padding:48px 24px 16px;text-align:center">
+<div style="padding:48px 24px 24px;text-align:center">
   <div class="section-label">Pricing</div>
-  <h2 style="font-size:26px;color:#1a2744;margin-bottom:32px">Simple, transparent pricing</h2>
+  <h2 style="font-size:26px;color:#1a2744;margin-bottom:6px">Simple, transparent pricing</h2>
+  <p style="color:#666;font-size:15px;margin:0 0 32px">All plans include a 14-day free trial. No credit card required.</p>
 </div>
 
-<div class="pricing">
-  <h2>Pro Plan</h2>
-  <div class="price">$49<span>/month</span></div>
-  <ul>
-    <li>Unlimited contract tracking</li>
-    <li>Daily watchlist expiry alerts</li>
-    <li>Recompete opportunity scoring</li>
-    <li>Export to CSV</li>
-    <li>Saved searches &amp; custom views</li>
-    <li>Agency &amp; vendor profiles</li>
-  </ul>
-  <a href="/register" class="cta-primary" style="display:block;text-align:center">Start 14-day free trial</a>
-  <p class="trial-note">14-day free trial included. No credit card required. Cancel anytime.</p>
+<div class="pricing-grid">
+
+  <div class="plan-card">
+    <h3>Basic</h3>
+    <p class="plan-desc">Essential discovery for small BD teams just getting started with GovCon.</p>
+    <div class="plan-price">$29<span>/mo</span></div>
+    <div class="plan-year">or $290/year &mdash; save $58</div>
+    <ul class="plan-features">
+      <li>Up to 50 tracked contracts</li>
+      <li>Weekly watchlist digest email</li>
+      <li>Recompete opportunity scoring</li>
+      <li>Search &amp; filter by agency, NAICS, state</li>
+      <li>Export to CSV</li>
+    </ul>
+    <a href="/register" class="plan-cta outline">Start free trial</a>
+    <p class="plan-trial">14-day trial &middot; No credit card needed</p>
+  </div>
+
+  <div class="plan-card featured">
+    <div class="plan-badge">Most Popular</div>
+    <h3>Pro</h3>
+    <p class="plan-desc">Everything you need to build a winning GovCon pipeline from day one.</p>
+    <div class="plan-price">$49<span>/mo</span></div>
+    <div class="plan-year">or $490/year &mdash; save $98 (~2 months free)</div>
+    <ul class="plan-features">
+      <li>Unlimited contract tracking</li>
+      <li>Daily watchlist expiry alerts</li>
+      <li>Agency &amp; vendor intelligence profiles</li>
+      <li>Saved searches &amp; custom views</li>
+      <li>Contract notes &amp; annotations</li>
+      <li>Export to CSV</li>
+    </ul>
+    <a href="/register" class="plan-cta primary">Start free trial</a>
+    <p class="plan-trial">14-day trial &middot; No credit card needed</p>
+  </div>
+
+  <div class="plan-card">
+    <h3>Enterprise</h3>
+    <p class="plan-desc">Pro features plus multi-user collaboration for growing BD teams.</p>
+    <div class="plan-price">$149<span>/mo</span></div>
+    <div class="plan-year">or $1,490/year &mdash; save $298 (~2 months free)</div>
+    <ul class="plan-features">
+      <li>Everything in Pro</li>
+      <li>Up to 5 team seats</li>
+      <li>Shared team watchlists</li>
+      <li>Custom agency &amp; NAICS profiles</li>
+      <li>Priority email support</li>
+    </ul>
+    <a href="mailto:hello@recompete.us?subject=Enterprise%20plan%20inquiry" class="plan-cta outline">Contact us</a>
+    <p class="plan-trial">Custom onboarding &middot; Volume discounts available</p>
+  </div>
+
 </div>
 
-<div style="text-align:center;padding:0 24px 64px">
+<div style="text-align:center;padding:0 24px 16px">
   <p style="color:#888;font-size:14px">
-    Already have an account? <a href="/login">Sign in →</a>
+    Already have an account? <a href="/login">Sign in &rarr;</a>
   </p>
 </div>
+
+<hr class="divider">
+
+<div class="help-section">
+  <div class="section-label">Support</div>
+  <h2 style="font-size:26px;color:#1a2744;margin-bottom:6px;text-align:center">Help &amp; Feedback</h2>
+  <p style="color:#666;font-size:15px;margin:0;text-align:center">We're a small team and respond within one business day.</p>
+  <div class="help-grid">
+    <div class="help-card">
+      <div class="feature-icon">&#10067;</div>
+      <h3>Help &amp; FAQ</h3>
+      <p>Questions about contract tracking, recompete scoring, watchlist alerts, or your account? We're here.</p>
+      <a href="mailto:hello@recompete.us?subject=Help" class="help-cta">Email support &rarr;</a>
+    </div>
+    <div class="help-card">
+      <div class="feature-icon">&#128172;</div>
+      <h3>Send Feedback</h3>
+      <p>Tell us what's working, what isn't, or what you'd love to see added. We read every message.</p>
+      <a href="mailto:feedback@recompete.us?subject=Feedback" class="help-cta">Send feedback &rarr;</a>
+    </div>
+    <div class="help-card">
+      <div class="feature-icon">&#128197;</div>
+      <h3>Request a Demo</h3>
+      <p>Want a guided walkthrough? We'll show you how to find your first opportunity and set up your pipeline.</p>
+      <a href="/demo" class="help-cta">Book a demo &rarr;</a>
+    </div>
+  </div>
+</div>
+
+<hr class="divider" style="margin-top:40px">
 
 <footer id="contact" style="border-top:1px solid #e5e7eb;background:#f9fafb;padding:40px 24px;text-align:center">
   <div class="section-label">Contact</div>
@@ -99,6 +197,6 @@
     Email us at <a href="mailto:hello@recompete.us" style="color:#2563eb;font-weight:600">hello@recompete.us</a>
     and we'll get back to you within one business day.
   </p>
-  <p style="color:#9ca3af;font-size:13px;margin:14px 0 0">&copy; Recompete — Government Contract Recompete Intelligence</p>
+  <p style="color:#9ca3af;font-size:13px;margin:14px 0 0">&copy; Recompete &mdash; Government Contract Recompete Intelligence</p>
 </footer>
 {% endblock %}
