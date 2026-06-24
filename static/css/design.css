@@ -1958,6 +1958,50 @@ tbody tr:hover > th { background: var(--accent-light) !important; }
 .table-empty-state .empty-desc { margin-bottom: 16px; }
 
 /* ─────────────────────────────────────────────────
+   CONTRACT CARD POLISH — score bar, tighter meta row
+───────────────────────────────────────────────── */
+
+/* Inline score bar on mobile cards */
+.score-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 6px 0 10px;
+}
+.score-bar-track {
+  flex: 1;
+  height: 5px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.score-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width .3s;
+}
+.score-bar-fill.score-high   { background: #16a34a; }
+.score-bar-fill.score-medium { background: #ca8a04; }
+.score-bar-fill.score-low    { background: var(--accent); }
+.score-bar-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 26px;
+  text-align: right;
+}
+
+/* Improved mobile card chrome */
+.mobile-card {
+  transition: box-shadow .15s, border-color .15s;
+}
+.mobile-card:hover {
+  border-color: #c7d2e8;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ─────────────────────────────────────────────────
    MOBILE PASS 2 — collapsible filter, compare, polish
    Desktop layout is never altered; all behavioural
    changes are scoped inside the 768px media query.

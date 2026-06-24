@@ -2,103 +2,241 @@
 {% block title %}Recompete — Government Contract Recompete Intelligence{% endblock %}
 {% block content %}
 <style>
-  .hero{text-align:center;padding:64px 24px 48px;max-width:720px;margin:0 auto}
-  .hero h1{font-size:40px;line-height:1.15;color:#1a2744;margin-bottom:16px}
-  .hero p{font-size:18px;color:#444;line-height:1.6;margin-bottom:32px}
+  /* ── Hero ── */
+  .hero{text-align:center;padding:72px 24px 56px;max-width:760px;margin:0 auto}
+  .hero-eyebrow{display:inline-block;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);background:var(--accent-light);padding:4px 12px;border-radius:var(--radius-full);margin-bottom:20px}
+  .hero h1{font-size:42px;line-height:1.13;color:#0f172a;margin-bottom:18px;font-weight:800}
+  .hero p{font-size:18px;color:#475569;line-height:1.65;margin-bottom:36px;max-width:560px;margin-left:auto;margin-right:auto}
   .cta-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
-  .cta-primary{background:#2563eb;color:white;padding:14px 28px;border-radius:6px;font-size:16px;font-weight:bold;text-decoration:none;transition:background .15s}
-  .cta-primary:hover{background:#1d4ed8;text-decoration:none;color:white}
-  .cta-secondary{background:white;color:#1a2744;padding:14px 28px;border-radius:6px;font-size:16px;font-weight:bold;text-decoration:none;border:2px solid #1a2744;transition:background .15s}
-  .cta-secondary:hover{background:#f0f4ff;text-decoration:none}
-  .features{display:flex;gap:24px;flex-wrap:wrap;max-width:900px;margin:48px auto;padding:0 24px}
-  .feature{flex:1;min-width:220px;background:white;border-radius:10px;padding:24px;box-shadow:0 1px 4px #ddd}
-  .feature h3{margin:0 0 10px;color:#1a2744;font-size:17px}
-  .feature p{margin:0;color:#555;font-size:14px;line-height:1.6}
-  .feature-icon{font-size:28px;margin-bottom:12px}
-  .pricing{background:white;border-radius:12px;box-shadow:0 2px 8px #ddd;max-width:440px;margin:0 auto 64px;padding:32px 36px;text-align:center}
-  .pricing h2{color:#1a2744;margin-bottom:6px}
-  .price{font-size:42px;font-weight:bold;color:#1a2744;margin:16px 0 4px}
-  .price span{font-size:18px;font-weight:normal;color:#666}
-  .pricing ul{list-style:none;padding:0;margin:20px 0 28px;text-align:left}
-  .pricing ul li{padding:8px 0;border-bottom:1px solid #f0f0f0;color:#333;font-size:15px}
-  .pricing ul li::before{content:"✓ ";color:#2563eb;font-weight:bold}
-  .trial-note{font-size:13px;color:#666;margin-top:12px}
-  .section-label{text-align:center;font-size:13px;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:8px}
-  .divider{border:none;border-top:1px solid #e5e7eb;margin:0 24px}
-  @media(max-width:600px){.hero h1{font-size:28px}.price{font-size:32px}.pricing{padding:24px 20px}}
+  .cta-primary{background:var(--accent);color:white;padding:14px 28px;border-radius:var(--radius-sm);font-size:15px;font-weight:600;text-decoration:none;transition:background .15s;box-shadow:0 1px 3px rgba(37,99,235,.3)}
+  .cta-primary:hover{background:var(--accent-hover);text-decoration:none;color:white}
+  .cta-secondary{background:white;color:#1e293b;padding:14px 28px;border-radius:var(--radius-sm);font-size:15px;font-weight:600;text-decoration:none;border:1.5px solid #cbd5e1;transition:background .15s}
+  .cta-secondary:hover{background:#f8fafc;text-decoration:none}
+  /* ── Feature cards ── */
+  .features{display:flex;gap:20px;flex-wrap:wrap;max-width:960px;margin:48px auto;padding:0 24px}
+  .feature{flex:1;min-width:210px;background:white;border:1px solid #e2e8f0;border-radius:var(--radius-md);padding:24px;box-shadow:var(--shadow-sm)}
+  .feature h3{margin:0 0 8px;color:#0f172a;font-size:16px;font-weight:600}
+  .feature p{margin:0;color:#64748b;font-size:14px;line-height:1.6}
+  .feature-icon{width:36px;height:36px;background:var(--accent-light);border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+  /* ── Pricing ── */
+  .pricing-section{padding:56px 24px 16px;max-width:1040px;margin:0 auto}
+  .pricing-toggle-row{display:flex;justify-content:center;align-items:center;gap:12px;margin-bottom:40px}
+  .billing-toggle{display:flex;background:#f1f5f9;border-radius:var(--radius-full);padding:3px}
+  .billing-toggle button{border:none;background:transparent;cursor:pointer;padding:7px 20px;border-radius:var(--radius-full);font-size:14px;font-weight:500;color:#64748b;transition:all .15s}
+  .billing-toggle button.active{background:white;color:#0f172a;box-shadow:var(--shadow-xs);font-weight:600}
+  .billing-save-badge{font-size:12px;font-weight:600;color:#16a34a;background:#dcfce7;padding:3px 10px;border-radius:var(--radius-full)}
+  .pricing-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+  @media(max-width:760px){.pricing-grid{grid-template-columns:1fr}}
+  .plan-card{background:white;border:1.5px solid #e2e8f0;border-radius:var(--radius-lg);padding:28px;display:flex;flex-direction:column;position:relative}
+  .plan-card.featured{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+  .plan-badge{position:absolute;top:-1px;left:50%;transform:translateX(-50%);background:var(--accent);color:white;font-size:11px;font-weight:700;letter-spacing:.04em;padding:4px 14px;border-radius:0 0 var(--radius-sm) var(--radius-sm);white-space:nowrap}
+  .plan-name{font-size:17px;font-weight:700;color:#0f172a;margin-bottom:4px}
+  .plan-desc{font-size:13px;color:#64748b;margin-bottom:20px;line-height:1.5}
+  .plan-price{display:flex;align-items:baseline;gap:4px;margin-bottom:6px}
+  .plan-price-big{font-size:40px;font-weight:800;color:#0f172a;line-height:1}
+  .plan-price-per{font-size:14px;color:#94a3b8}
+  .plan-price-note{font-size:12px;color:#94a3b8;margin-bottom:20px}
+  .plan-features{list-style:none;padding:0;margin:0 0 24px;flex:1}
+  .plan-features li{padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:14px;color:#374151;display:flex;gap:8px;align-items:flex-start}
+  .plan-features li:last-child{border-bottom:none}
+  .feat-check{color:#16a34a;font-weight:700;flex-shrink:0;margin-top:1px}
+  .feat-lock{color:#94a3b8;flex-shrink:0;margin-top:1px}
+  .feat-locked{color:#94a3b8}
+  .plan-cta{display:block;text-align:center;padding:12px;border-radius:var(--radius-sm);font-size:15px;font-weight:600;text-decoration:none;border:none;cursor:pointer;width:100%;box-sizing:border-box;transition:all .15s}
+  .plan-cta-primary{background:var(--accent);color:white}
+  .plan-cta-primary:hover{background:var(--accent-hover);color:white;text-decoration:none}
+  .plan-cta-ghost{background:transparent;color:var(--accent);border:1.5px solid var(--accent)}
+  .plan-cta-ghost:hover{background:var(--accent-light);text-decoration:none;color:var(--accent)}
+  .plan-cta-dark{background:#0f172a;color:white}
+  .plan-cta-dark:hover{background:#1e293b;color:white;text-decoration:none}
+  /* ── Section divider ── */
+  .section-divider{border:none;border-top:1px solid #e5e7eb;margin:0 24px}
+  .section-eyebrow{text-align:center;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px}
+  /* ── Footer contact bar ── */
+  .landing-footer{border-top:1px solid #e2e8f0;padding:28px 24px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;font-size:13px;color:#94a3b8;background:#f8fafc}
+  .landing-footer a{color:var(--accent);text-decoration:none}
+  .landing-footer a:hover{text-decoration:underline}
+  @media(max-width:600px){.hero h1{font-size:30px}.landing-footer{justify-content:center;text-align:center}}
 </style>
 
 <div class="hero">
-  <div class="section-label">Government Contract Intelligence</div>
+  <div class="hero-eyebrow">Government Contract Intelligence</div>
   <h1>Know which contracts are up for recompete — before your competitors do</h1>
   <p>Recompete monitors the full SAM.gov contract database and alerts you when high-value government contracts approach expiration. Never miss a recompete opportunity again.</p>
   <div class="cta-row">
     <a href="/register" class="cta-primary">Start 14-day free trial</a>
     <a href="/demo" class="cta-secondary">Request a demo</a>
   </div>
-  <p style="font-size:13px;color:#888;margin-top:16px">No credit card required to start your trial.</p>
+  <p style="font-size:13px;color:#94a3b8;margin-top:14px">No credit card required to start your trial.</p>
 </div>
 
-<hr class="divider">
+<hr class="section-divider">
 
 <div class="features">
   <div class="feature">
-    <div class="feature-icon">&#128269;</div>
+    <div class="feature-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </div>
     <h3>Contract Discovery</h3>
-    <p>Search and filter thousands of active government contracts by agency, value, priority, and expiration date. Find opportunities that match your capabilities.</p>
+    <p>Search and filter thousands of active government contracts by agency, value, priority, and expiration date.</p>
   </div>
   <div class="feature">
-    <div class="feature-icon">&#9201;</div>
+    <div class="feature-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+    </div>
     <h3>Expiry Alerts</h3>
-    <p>Add contracts to your watchlist and receive daily email alerts when they approach expiration. Get notified 30, 60, or 90 days before a recompete window opens.</p>
+    <p>Daily email alerts when contracts on your watchlist approach expiration — 30, 60, or 90 days out.</p>
   </div>
   <div class="feature">
-    <div class="feature-icon">&#128200;</div>
+    <div class="feature-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    </div>
     <h3>Recompete Scoring</h3>
-    <p>Every contract is scored for recompete probability based on incumbent history, budget cycles, and expiration proximity. Focus your BD on the highest-probability opportunities.</p>
+    <p>Every contract is scored for recompete probability based on incumbent history, budget cycles, and expiry proximity.</p>
   </div>
   <div class="feature">
-    <div class="feature-icon">&#127775;</div>
-    <h3>Saved Views</h3>
-    <p>Build custom views and saved searches for your target agencies, NAICS codes, or contract value ranges. Your pipeline, organized your way.</p>
+    <div class="feature-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="6" height="18" rx="1"/><rect x="9" y="8" width="6" height="13" rx="1"/><rect x="16" y="5" width="6" height="16" rx="1"/></svg>
+    </div>
+    <h3>Pipeline Management</h3>
+    <p>Track opportunities from discovery through bid submission. Share your pipeline with your BD team.</p>
   </div>
 </div>
 
-<hr class="divider">
+<hr class="section-divider">
 
-<div style="padding:48px 24px 16px;text-align:center">
-  <div class="section-label">Pricing</div>
-  <h2 style="font-size:26px;color:#1a2744;margin-bottom:32px">Simple, transparent pricing</h2>
+<div class="pricing-section">
+  <div class="section-eyebrow">Pricing</div>
+  <h2 style="text-align:center;font-size:30px;color:#0f172a;margin:0 0 8px;font-weight:800">Simple, transparent pricing</h2>
+  <p style="text-align:center;font-size:16px;color:#64748b;margin:0 0 32px">Start free. Upgrade when you're ready.</p>
+
+  <div class="pricing-toggle-row">
+    <div class="billing-toggle" id="billing-toggle">
+      <button class="active" onclick="setBilling('monthly')" id="btn-monthly">Monthly</button>
+      <button onclick="setBilling('yearly')" id="btn-yearly">Yearly</button>
+    </div>
+    <span class="billing-save-badge" id="yearly-badge">Save 20%</span>
+  </div>
+
+  <div class="pricing-grid">
+    {# ── Basic ── #}
+    <div class="plan-card">
+      <div class="plan-name">Basic</div>
+      <div class="plan-desc">Get started tracking contracts and setting up alerts.</div>
+      <div class="plan-price">
+        <span class="plan-price-big" id="basic-price">$19</span>
+        <span class="plan-price-per">/month</span>
+      </div>
+      <div class="plan-price-note" id="basic-note">&nbsp;</div>
+      <ul class="plan-features">
+        <li><span class="feat-check">✓</span> Contract discovery &amp; search</li>
+        <li><span class="feat-check">✓</span> Watchlist (up to 10 contracts)</li>
+        <li><span class="feat-check">✓</span> Daily expiry email alerts</li>
+        <li><span class="feat-check">✓</span> 90-day contract history</li>
+        <li><span class="feat-lock">—</span> <span class="feat-locked">Recompete scoring</span></li>
+        <li><span class="feat-lock">—</span> <span class="feat-locked">Pipeline management</span></li>
+        <li><span class="feat-lock">—</span> <span class="feat-locked">Agency &amp; vendor profiles</span></li>
+        <li><span class="feat-lock">—</span> <span class="feat-locked">CSV export</span></li>
+        <li><span class="feat-lock">—</span> <span class="feat-locked">Saved searches &amp; views</span></li>
+      </ul>
+      <form method="post" action="/create-checkout-session">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="plan" value="basic">
+        <input type="hidden" name="billing" id="basic-billing" value="monthly">
+        <button type="submit" class="plan-cta plan-cta-ghost">Start free trial</button>
+      </form>
+    </div>
+
+    {# ── Pro ── #}
+    <div class="plan-card featured">
+      <div class="plan-badge">MOST POPULAR</div>
+      <div class="plan-name" style="margin-top:12px">Pro</div>
+      <div class="plan-desc">Everything you need to win more government contracts.</div>
+      <div class="plan-price">
+        <span class="plan-price-big" id="pro-price">$49</span>
+        <span class="plan-price-per">/month</span>
+      </div>
+      <div class="plan-price-note" id="pro-note">&nbsp;</div>
+      <ul class="plan-features">
+        <li><span class="feat-check">✓</span> Everything in Basic</li>
+        <li><span class="feat-check">✓</span> Unlimited contract watchlist</li>
+        <li><span class="feat-check">✓</span> Recompete scoring on every contract</li>
+        <li><span class="feat-check">✓</span> Pipeline management</li>
+        <li><span class="feat-check">✓</span> Agency &amp; vendor intelligence</li>
+        <li><span class="feat-check">✓</span> Saved searches &amp; custom views</li>
+        <li><span class="feat-check">✓</span> CSV export</li>
+        <li><span class="feat-check">✓</span> Contract compare tool</li>
+      </ul>
+      <form method="post" action="/create-checkout-session">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="plan" value="pro">
+        <input type="hidden" name="billing" id="pro-billing" value="monthly">
+        <button type="submit" class="plan-cta plan-cta-primary">Start free trial</button>
+      </form>
+    </div>
+
+    {# ── Enterprise ── #}
+    <div class="plan-card">
+      <div class="plan-name">Enterprise</div>
+      <div class="plan-desc">Everything in Pro, plus team seats and shared workspaces.</div>
+      <div class="plan-price">
+        <span class="plan-price-big" id="ent-price">$149</span>
+        <span class="plan-price-per">/month</span>
+      </div>
+      <div class="plan-price-note" id="ent-note">&nbsp;</div>
+      <ul class="plan-features">
+        <li><span class="feat-check">✓</span> Everything in Pro</li>
+        <li><span class="feat-check">✓</span> Up to 5 team members</li>
+        <li><span class="feat-check">✓</span> Shared pipeline &amp; watchlist</li>
+        <li><span class="feat-check">✓</span> Team expiry notifications</li>
+        <li><span class="feat-check">✓</span> Priority support</li>
+        <li><span class="feat-check">✓</span> Onboarding call</li>
+      </ul>
+      <form method="post" action="/create-checkout-session">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="plan" value="enterprise">
+        <input type="hidden" name="billing" id="ent-billing" value="monthly">
+        <button type="submit" class="plan-cta plan-cta-dark">Start free trial</button>
+      </form>
+    </div>
+  </div>
+
+  <p style="text-align:center;font-size:13px;color:#94a3b8;margin:24px 0 0">All plans include a 14-day free trial. No credit card required. Cancel anytime.</p>
 </div>
 
-<div class="pricing">
-  <h2>Pro Plan</h2>
-  <div class="price">$49<span>/month</span></div>
-  <ul>
-    <li>Unlimited contract tracking</li>
-    <li>Daily watchlist expiry alerts</li>
-    <li>Recompete opportunity scoring</li>
-    <li>Export to CSV</li>
-    <li>Saved searches &amp; custom views</li>
-    <li>Agency &amp; vendor profiles</li>
-  </ul>
-  <a href="/register" class="cta-primary" style="display:block;text-align:center">Start 14-day free trial</a>
-  <p class="trial-note">14-day free trial included. No credit card required. Cancel anytime.</p>
-</div>
-
-<div style="text-align:center;padding:0 24px 64px">
-  <p style="color:#888;font-size:14px">
-    Already have an account? <a href="/login">Sign in →</a>
+<div style="padding:32px 24px 48px;text-align:center">
+  <p style="color:#94a3b8;font-size:14px">
+    Already have an account? <a href="/login" style="color:var(--accent)">Sign in →</a>
   </p>
 </div>
 
-<footer id="contact" style="border-top:1px solid #e5e7eb;background:#f9fafb;padding:40px 24px;text-align:center">
-  <div class="section-label">Contact</div>
-  <h2 style="font-size:22px;color:#1a2744;margin:0 0 8px">Questions? We'd love to help.</h2>
-  <p style="color:#555;font-size:15px;margin:0 0 6px">
-    Email us at <a href="mailto:hello@recompete.us" style="color:#2563eb;font-weight:600">hello@recompete.us</a>
-    and we'll get back to you within one business day.
-  </p>
-  <p style="color:#9ca3af;font-size:13px;margin:14px 0 0">&copy; Recompete — Government Contract Recompete Intelligence</p>
+<footer class="landing-footer">
+  <span>&copy; 2024 Recompete — Government Contract Recompete Intelligence</span>
+  <span>Questions? Email <a href="mailto:hello@recompete.us">hello@recompete.us</a> — we reply within one business day.</span>
 </footer>
+
+<script>
+var PRICES = {
+  basic:      {monthly: {price: '$19', note: 'billed monthly'},      yearly: {price: '$15', note: 'billed $180/year'}},
+  pro:        {monthly: {price: '$49', note: 'billed monthly'},      yearly: {price: '$39', note: 'billed $468/year'}},
+  enterprise: {monthly: {price: '$149', note: 'billed monthly'},     yearly: {price: '$119', note: 'billed $1,428/year'}}
+};
+
+function setBilling(mode) {
+  document.getElementById('btn-monthly').classList.toggle('active', mode === 'monthly');
+  document.getElementById('btn-yearly').classList.toggle('active', mode === 'yearly');
+  document.getElementById('yearly-badge').style.visibility = mode === 'yearly' ? 'visible' : 'hidden';
+
+  ['basic', 'pro', 'ent'].forEach(function(key) {
+    var planKey = key === 'ent' ? 'enterprise' : key;
+    var data = PRICES[planKey][mode];
+    document.getElementById(key + '-price').textContent = data.price;
+    document.getElementById(key + '-note').textContent = data.note;
+    document.getElementById(key + '-billing').value = mode;
+  });
+}
+
+// Hide badge initially (monthly is default)
+document.getElementById('yearly-badge').style.visibility = 'hidden';
+</script>
 {% endblock %}

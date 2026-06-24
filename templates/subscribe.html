@@ -2,68 +2,177 @@
 {% block title %}Subscribe — Recompete{% endblock %}
 {% block content %}
 <style>
-  .subscribe-wrap{max-width:520px;margin:0 auto;padding:0 0 48px}
-  .plan-card{background:white;border-radius:10px;box-shadow:0 2px 8px #ddd;padding:28px 32px;margin-bottom:24px}
-  .price-row{display:flex;align-items:baseline;gap:6px;margin:12px 0 20px}
-  .price-big{font-size:44px;font-weight:bold;color:#1a2744;line-height:1}
-  .price-per{font-size:16px;color:#666}
-  .feature-list{list-style:none;padding:0;margin:0 0 24px}
-  .feature-list li{padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:15px;color:#333}
-  .feature-list li::before{content:"✓ ";color:#16a34a;font-weight:bold}
-  .btn-checkout{display:block;width:100%;padding:14px;background:#2563eb;color:white;border:none;
-    border-radius:6px;font-size:16px;font-weight:bold;cursor:pointer;text-align:center;box-sizing:border-box}
-  .btn-checkout:hover{background:#1d4ed8}
-  .trust-row{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;font-size:13px;color:#555}
+  .sub-wrap{max-width:900px;margin:0 auto;padding:0 0 56px}
+  .billing-toggle{display:flex;background:#f1f5f9;border-radius:999px;padding:3px;width:fit-content}
+  .billing-toggle button{border:none;background:transparent;cursor:pointer;padding:7px 22px;border-radius:999px;font-size:14px;font-weight:500;color:#64748b;transition:all .15s}
+  .billing-toggle button.active{background:white;color:#0f172a;box-shadow:0 1px 2px rgba(0,0,0,.06);font-weight:600}
+  .sub-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:28px}
+  @media(max-width:720px){.sub-grid{grid-template-columns:1fr}}
+  .sub-plan{background:white;border:1.5px solid #e2e8f0;border-radius:12px;padding:24px;display:flex;flex-direction:column;position:relative;cursor:pointer;transition:border-color .15s}
+  .sub-plan:hover{border-color:#94a3b8}
+  .sub-plan.selected{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+  .sub-plan.featured{border-color:var(--accent)}
+  .plan-select-ring{position:absolute;top:16px;right:16px;width:18px;height:18px;border-radius:50%;border:2px solid #cbd5e1;background:white;transition:all .15s}
+  .sub-plan.selected .plan-select-ring{background:var(--accent);border-color:var(--accent);box-shadow:inset 0 0 0 4px white}
+  .sub-plan-badge{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--accent);background:var(--accent-light);padding:3px 10px;border-radius:999px;margin-bottom:8px}
+  .sub-plan-name{font-size:17px;font-weight:700;color:#0f172a;margin-bottom:3px}
+  .sub-plan-desc{font-size:13px;color:#64748b;margin-bottom:16px;line-height:1.5}
+  .sub-price{display:flex;align-items:baseline;gap:4px;margin-bottom:4px}
+  .sub-price-big{font-size:34px;font-weight:800;color:#0f172a;line-height:1}
+  .sub-price-per{font-size:13px;color:#94a3b8}
+  .sub-price-note{font-size:12px;color:#94a3b8;margin-bottom:16px}
+  .sub-features{list-style:none;padding:0;margin:0;font-size:13px;color:#374151}
+  .sub-features li{padding:5px 0;display:flex;gap:7px;align-items:flex-start}
+  .sub-features li:not(:last-child){border-bottom:1px solid #f8fafc}
+  .feat-check{color:#16a34a;font-weight:700;flex-shrink:0}
+  .feat-lock{color:#94a3b8;flex-shrink:0}
+  .feat-locked{color:#94a3b8}
+  .sub-cta{display:block;width:100%;padding:13px;border-radius:6px;font-size:15px;font-weight:600;text-align:center;border:none;cursor:pointer;box-sizing:border-box;margin-top:20px;transition:all .15s}
+  .sub-cta-primary{background:var(--accent);color:white}
+  .sub-cta-primary:hover{background:var(--accent-hover)}
+  .sub-cta-ghost{background:transparent;color:var(--accent);border:1.5px solid var(--accent)}
+  .sub-cta-ghost:hover{background:var(--accent-light)}
+  .sub-cta-dark{background:#0f172a;color:white}
+  .sub-cta-dark:hover{background:#1e293b}
 </style>
 
-<div class="subscribe-wrap">
-  <h1 style="margin-bottom:6px">Upgrade to Pro</h1>
+<div class="sub-wrap">
+  <h1 style="margin-bottom:4px">Choose your plan</h1>
 
   {% if expired %}
-  <div style="background:#fee2e2;border:1px solid #ef4444;border-radius:6px;padding:12px 16px;margin-bottom:20px;color:#991b1b;">
+  <div style="background:#fee2e2;border:1px solid #ef4444;border-radius:6px;padding:12px 16px;margin-bottom:20px;color:#991b1b">
     <strong>Your free trial has ended.</strong> Subscribe now to continue tracking government recompetes.
   </div>
   {% else %}
-  <p style="color:#555;margin-bottom:24px">
-    Continue after your trial with full access to the contract intelligence platform.
-  </p>
+  <p style="color:#64748b;margin-bottom:24px">All plans include a 14-day free trial. No credit card required.</p>
   {% endif %}
 
-  <div class="plan-card">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <h2 style="margin:0;color:#1a2744">Pro Plan</h2>
-      <span style="background:#dbeafe;color:#1e40af;font-size:12px;font-weight:bold;padding:3px 10px;border-radius:999px">MOST POPULAR</span>
-    </div>
-    <div class="price-row">
-      <span class="price-big">$49</span>
-      <span class="price-per">/ month</span>
-    </div>
-
-    <ul class="feature-list">
-      <li>Unlimited contract tracking across all agencies</li>
-      <li>Daily watchlist expiry alerts by email</li>
-      <li>Recompete opportunity scoring on every contract</li>
-      <li>Agency &amp; vendor intelligence profiles</li>
-      <li>Saved searches and custom views</li>
-      <li>Export contracts to CSV</li>
-      <li>Contract notes and annotations</li>
-    </ul>
-
-    <form method="post" action="/create-checkout-session">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="btn-checkout">Subscribe now — $49/month</button>
-    </form>
-
-    <div class="trust-row">
-      <span>&#128274; Secure payment via Stripe</span>
-      <span>&#128274; Cancel anytime</span>
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <div class="billing-toggle" id="billing-toggle">
+      <button class="active" onclick="setBilling('monthly')" id="btn-monthly">Monthly</button>
+      <button onclick="setBilling('yearly')" id="btn-yearly">Yearly — save 20%</button>
     </div>
   </div>
 
-  <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:16px 20px;font-size:14px;color:#166534">
+  <div class="sub-grid">
+    {# ── Basic ── #}
+    <div class="sub-plan" id="plan-basic" onclick="selectPlan('basic')">
+      <div class="plan-select-ring"></div>
+      <div class="sub-plan-name">Basic</div>
+      <div class="sub-plan-desc">Get started tracking contracts and setting up alerts.</div>
+      <div class="sub-price">
+        <span class="sub-price-big" id="basic-price">$19</span>
+        <span class="sub-price-per">/month</span>
+      </div>
+      <div class="sub-price-note" id="basic-note">billed monthly</div>
+      <ul class="sub-features">
+        <li><span class="feat-check">✓</span> Contract discovery &amp; search</li>
+        <li><span class="feat-check">✓</span> Watchlist (up to 10 contracts)</li>
+        <li><span class="feat-check">✓</span> Daily expiry email alerts</li>
+        <li><span class="feat-lock">—</span> <span class="feat-locked">Recompete scoring</span></li>
+        <li><span class="feat-lock">—</span> <span class="feat-locked">Pipeline management</span></li>
+        <li><span class="feat-lock">—</span> <span class="feat-locked">CSV export</span></li>
+      </ul>
+    </div>
+
+    {# ── Pro ── #}
+    <div class="sub-plan featured selected" id="plan-pro" onclick="selectPlan('pro')">
+      <div class="sub-plan-badge">MOST POPULAR</div>
+      <div class="plan-select-ring"></div>
+      <div class="sub-plan-name">Pro</div>
+      <div class="sub-plan-desc">Everything you need to win more government contracts.</div>
+      <div class="sub-price">
+        <span class="sub-price-big" id="pro-price">$49</span>
+        <span class="sub-price-per">/month</span>
+      </div>
+      <div class="sub-price-note" id="pro-note">billed monthly</div>
+      <ul class="sub-features">
+        <li><span class="feat-check">✓</span> Everything in Basic</li>
+        <li><span class="feat-check">✓</span> Unlimited watchlist</li>
+        <li><span class="feat-check">✓</span> Recompete scoring</li>
+        <li><span class="feat-check">✓</span> Pipeline management</li>
+        <li><span class="feat-check">✓</span> Agency &amp; vendor profiles</li>
+        <li><span class="feat-check">✓</span> CSV export &amp; compare</li>
+      </ul>
+    </div>
+
+    {# ── Enterprise ── #}
+    <div class="sub-plan" id="plan-enterprise" onclick="selectPlan('enterprise')">
+      <div class="plan-select-ring"></div>
+      <div class="sub-plan-name">Enterprise</div>
+      <div class="sub-plan-desc">Everything in Pro, plus team seats and shared workspaces.</div>
+      <div class="sub-price">
+        <span class="sub-price-big" id="ent-price">$149</span>
+        <span class="sub-price-per">/month</span>
+      </div>
+      <div class="sub-price-note" id="ent-note">billed monthly</div>
+      <ul class="sub-features">
+        <li><span class="feat-check">✓</span> Everything in Pro</li>
+        <li><span class="feat-check">✓</span> Up to 5 team members</li>
+        <li><span class="feat-check">✓</span> Shared pipeline &amp; watchlist</li>
+        <li><span class="feat-check">✓</span> Priority support</li>
+        <li><span class="feat-check">✓</span> Onboarding call</li>
+      </ul>
+    </div>
+  </div>
+
+  <form method="post" action="/create-checkout-session" style="margin-top:24px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="plan" id="selected-plan" value="pro">
+    <input type="hidden" name="billing" id="selected-billing" value="monthly">
+    <button type="submit" id="checkout-btn" class="sub-cta sub-cta-primary" style="max-width:360px">
+      Subscribe to Pro — $49/month
+    </button>
+  </form>
+
+  <div style="margin-top:16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 18px;font-size:13px;color:#166534;max-width:360px">
     <strong>Questions?</strong>
     <a href="/demo" style="color:#15803d">Request a demo</a> or email
     <a href="mailto:hello@recompete.us" style="color:#15803d">hello@recompete.us</a>.
   </div>
 </div>
+
+<script>
+var PRICES = {
+  basic:      {monthly: {price: '$19', note: 'billed monthly',       label: 'Basic — $19/month'},
+               yearly:  {price: '$15', note: 'billed $180/year',     label: 'Basic — $15/month (yearly)'}},
+  pro:        {monthly: {price: '$49', note: 'billed monthly',       label: 'Pro — $49/month'},
+               yearly:  {price: '$39', note: 'billed $468/year',     label: 'Pro — $39/month (yearly)'}},
+  enterprise: {monthly: {price: '$149', note: 'billed monthly',      label: 'Enterprise — $149/month'},
+               yearly:  {price: '$119', note: 'billed $1,428/year',  label: 'Enterprise — $119/month (yearly)'}}
+};
+
+var currentBilling = 'monthly';
+var currentPlan = 'pro';
+
+function selectPlan(plan) {
+  currentPlan = plan;
+  ['basic', 'pro', 'enterprise'].forEach(function(p) {
+    document.getElementById('plan-' + p).classList.toggle('selected', p === plan);
+  });
+  document.getElementById('selected-plan').value = plan;
+  updateCTA();
+}
+
+function setBilling(mode) {
+  currentBilling = mode;
+  document.getElementById('btn-monthly').classList.toggle('active', mode === 'monthly');
+  document.getElementById('btn-yearly').classList.toggle('active', mode === 'yearly');
+  document.getElementById('selected-billing').value = mode;
+
+  document.getElementById('basic-price').textContent = PRICES.basic[mode].price;
+  document.getElementById('basic-note').textContent = PRICES.basic[mode].note;
+  document.getElementById('pro-price').textContent = PRICES.pro[mode].price;
+  document.getElementById('pro-note').textContent = PRICES.pro[mode].note;
+  document.getElementById('ent-price').textContent = PRICES.enterprise[mode].price;
+  document.getElementById('ent-note').textContent = PRICES.enterprise[mode].note;
+
+  updateCTA();
+}
+
+function updateCTA() {
+  var data = PRICES[currentPlan][currentBilling];
+  document.getElementById('checkout-btn').textContent = 'Subscribe to ' + data.label;
+}
+</script>
 {% endblock %}

@@ -115,8 +115,18 @@ if _sentry_dsn:
     )
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+# Legacy single-price vars (kept for backward compat with existing Railway config)
 STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
 STRIPE_PRICE_ID_YEARLY = os.getenv("STRIPE_PRICE_ID_YEARLY")
+# 3-tier price map: plan × billing → Stripe price ID
+STRIPE_PRICE_MAP = {
+    ("basic",      "monthly"): os.getenv("STRIPE_PRICE_BASIC_MONTHLY"),
+    ("basic",      "yearly"):  os.getenv("STRIPE_PRICE_BASIC_YEARLY"),
+    ("pro",        "monthly"): os.getenv("STRIPE_PRICE_ID"),            # reuse existing
+    ("pro",        "yearly"):  os.getenv("STRIPE_PRICE_ID_YEARLY"),     # reuse existing
+    ("enterprise", "monthly"): os.getenv("STRIPE_PRICE_ENTERPRISE_MONTHLY"),
+    ("enterprise", "yearly"):  os.getenv("STRIPE_PRICE_ENTERPRISE_YEARLY"),
+}
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("RAILWAY_ENVIRONMENT") == "production"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
@@ -743,11 +753,20 @@ def views_detail(view_id):
 
 @app.route("/create-checkout-session", methods=["POST"])
 def create_checkout_session():
+    plan = request.form.get("plan", "pro").lower().strip()
+    billing = request.form.get("billing", "monthly").lower().strip()
+    if plan not in ("basic", "pro", "enterprise"):
+        plan = "pro"
+    if billing not in ("monthly", "yearly"):
+        billing = "monthly"
+    price_id = STRIPE_PRICE_MAP.get((plan, billing)) or STRIPE_PRICE_ID
+    if not price_id:
+        return "Stripe price not configured for this plan.", 500
     try:
         checkout = stripe.checkout.Session.create(
             payment_method_types=["card"],
             mode="subscription",
-            line_items=[{"price": STRIPE_PRICE_ID, "quantity": 1}],
+            line_items=[{"price": price_id, "quantity": 1}],
             success_url=request.host_url.rstrip("/") + "/success?session_id={CHECKOUT_SESSION_ID}",
             cancel_url=request.host_url.rstrip("/") + "/cancel",
         )

@@ -235,12 +235,10 @@
     <div class="mobile-card-meta">
       <span class="mobile-card-value">${{ "{:,.0f}".format(r["value"] or 0) }}</span>
       <span class="sep">·</span>
-      {% if days is none or days == "" %}<span class="muted">—d</span>
-      {% elif days|int <= 30 %}<span class="days-critical">{{ days }}d</span>
-      {% elif days|int <= 90 %}<span class="days-warning">{{ days }}d</span>
-      {% else %}<span>{{ days }}d</span>{% endif %}
-      <span class="sep">·</span>
-      <span class="muted">Score {{ r["recompete_score"] or '—' }}</span>
+      {% if days is none or days == "" %}<span class="muted">—</span>
+      {% elif days|int <= 30 %}<span class="days-critical">{{ days }}d left</span>
+      {% elif days|int <= 90 %}<span class="days-warning">{{ days }}d left</span>
+      {% else %}<span class="muted">{{ days }}d</span>{% endif %}
       {% if r.get("category") and r["category"] != "Other" %}
       <span class="sep">·</span>
       <span class="muted">{{ r["category"] }}</span>
@@ -250,6 +248,16 @@
       <span style="font-weight:600;color:var(--accent)">{{ r.get("match_score") }}% match</span>
       {% endif %}
     </div>
+    {% if r["recompete_score"] is not none %}
+    {% set sc = r["recompete_score"]|int %}
+    <div class="score-bar-wrap">
+      <div class="score-bar-track">
+        <div class="score-bar-fill {% if sc >= 70 %}score-high{% elif sc >= 40 %}score-medium{% else %}score-low{% endif %}"
+             style="width:{{ sc }}%"></div>
+      </div>
+      <span class="score-bar-label">{{ sc }}</span>
+    </div>
+    {% endif %}
     {% if pipeline_map and r['internal_id'] in pipeline_map %}
     <div style="margin-bottom:8px">
       <a href="/pipeline/{{ pipeline_map[r['internal_id']] }}"
