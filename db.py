@@ -277,11 +277,16 @@ def _apply_migrations(migrations_dir: "Path | None" = None) -> None:
             continue
 
         _log.info("Applying migration: %s", sql_file.name)
-        statements = [
-            s.strip()
-            for s in sql_file.read_text().split(";")
-            if s.strip() and not s.strip().startswith("--")
-        ]
+        statements = []
+        for seg in sql_file.read_text().split(";"):
+            # Strip comment lines from each semicolon-delimited segment so that
+            # a CREATE TABLE preceded by a comment block isn't silently dropped.
+            body = "\n".join(
+                line for line in seg.splitlines()
+                if line.strip() and not line.strip().startswith("--")
+            ).strip()
+            if body:
+                statements.append(body)
 
         try:
             with engine.begin() as conn:
