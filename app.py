@@ -9,7 +9,7 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from logging.handlers import RotatingFileHandler
 
 import payments
@@ -182,20 +182,28 @@ app.jinja_env.globals["is_applyable"] = is_applyable
 init_db()
 
 # ---------------------------------------------------------------------------
-# Daily ingest scheduler — runs janitorial_recompete_report.main() at 2 AM UTC
-# inside the web process so it shares the same volume/DB as the Flask app.
-# Uses a daemon thread so it never blocks gunicorn shutdown.
+# Daily ingest scheduler — local dev fallback only.
+#
+# In production (Railway) the canonical schedule is the Railway cron service
+# defined in railway.toml, which POSTs to /ingest/run at 06:00 UTC.
+# The thread below runs only in local dev so developers don't need a cron
+# service to see ingest fire.  It is intentionally NOT started on Railway.
 # ---------------------------------------------------------------------------
+
+def _next_2am_utc(after: datetime) -> datetime:
+    """Return the next 02:00 UTC datetime strictly after `after`."""
+    candidate = after.replace(hour=2, minute=0, second=0, microsecond=0)
+    if candidate <= after:
+        candidate += timedelta(days=1)
+    return candidate
+
 
 def _run_daily_ingest():
     _log = logging.getLogger("ingest.scheduler")
-    _log.info("Daily ingest scheduler started")
+    _log.info("Daily ingest scheduler started (local-dev mode)")
     while True:
         now = datetime.now(timezone.utc)
-        # Calculate seconds until next 2 AM UTC
-        next_run = now.replace(hour=2, minute=0, second=0, microsecond=0)
-        if next_run <= now:
-            next_run = next_run.replace(day=next_run.day + 1)
+        next_run = _next_2am_utc(now)
         sleep_secs = (next_run - now).total_seconds()
         _log.info("Next ingest scheduled in %.0f seconds (at %s UTC)", sleep_secs, next_run.isoformat())
         time.sleep(sleep_secs)
@@ -208,10 +216,19 @@ def _run_daily_ingest():
             _log.exception("Scheduled ingest failed: %s", exc)
 
 
-# Only start the scheduler in the main gunicorn worker (not in reloader child processes)
-if os.environ.get("RAILWAY_ENVIRONMENT") or not os.environ.get("WERKZEUG_RUN_MAIN"):
+# Start thread ONLY in local dev: not on Railway (Railway cron handles it),
+# and not in the werkzeug reloader child process (would cause two threads).
+_ON_RAILWAY = bool(os.environ.get("RAILWAY_ENVIRONMENT"))
+if not _ON_RAILWAY and not os.environ.get("WERKZEUG_RUN_MAIN"):
     _scheduler_thread = threading.Thread(target=_run_daily_ingest, daemon=True, name="ingest-scheduler")
     _scheduler_thread.start()
+
+# ---------------------------------------------------------------------------
+# Ingest overlap prevention — one ingest at a time across all callers.
+# ---------------------------------------------------------------------------
+import threading as _threading
+_ingest_lock = _threading.Lock()
+_ingest_running = False
 
 # ---------------------------------------------------------------------------
 # Redis availability check (degraded mode on failure — never blocks startup)
@@ -274,6 +291,11 @@ def _warn_if_ephemeral_db() -> None:
 _warn_if_ephemeral_db()
 
 _CRON_SECRET = os.environ.get("CRON_SECRET", "")
+if _ON_RAILWAY and not _CRON_SECRET:
+    logging.warning(
+        "SECURITY: CRON_SECRET is not set. POST /ingest/run is unprotected "
+        "and can be triggered by anyone. Set CRON_SECRET in Railway environment variables."
+    )
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 if not STRIPE_WEBHOOK_SECRET:
     logging.warning(
@@ -461,18 +483,54 @@ def health():
 
 @app.route("/ingest/run", methods=["POST"])
 def ingest_run():
-    """Manual trigger endpoint. Protected by CRON_SECRET bearer token."""
+    """Ingest trigger endpoint called daily by the Railway cron service.
+
+    Protection:
+      - Requires Authorization: Bearer <CRON_SECRET> when CRON_SECRET is set.
+      - Returns 409 if an ingest is already running (overlap prevention).
+      - Returns 200 with {"status": "already_ran"} if a successful ingest was
+        recorded in ingest_log today (idempotent for Railway retry logic).
+        Pass force=1 in the request body to override the idempotency check.
+    """
+    global _ingest_running
+
     if _CRON_SECRET:
         auth_header = request.headers.get("Authorization", "")
         if auth_header != f"Bearer {_CRON_SECRET}":
             return {"error": "unauthorized"}, 401
 
+    # Overlap prevention: reject if another ingest is already in progress.
+    with _ingest_lock:
+        if _ingest_running:
+            return {"status": "already_running"}, 409
+
+    # Idempotency: if ingest already succeeded today, skip unless forced.
+    force = (request.get_json(silent=True) or {}).get("force") or request.args.get("force")
+    if not force:
+        today = date.today().isoformat()
+        engine = get_engine()
+        with engine.connect() as conn:
+            ran_today = conn.execute(
+                text(
+                    "SELECT 1 FROM ingest_log WHERE run_date = :d AND status = 'success' LIMIT 1"
+                ),
+                {"d": today},
+            ).fetchone()
+        if ran_today:
+            return {"status": "already_ran", "date": today}, 200
+
     def _run():
+        global _ingest_running
+        with _ingest_lock:
+            _ingest_running = True
         try:
             from janitorial_recompete_report import main
             main()
         except Exception as exc:
             logging.getLogger("ingest").exception("Manual ingest failed: %s", exc)
+        finally:
+            with _ingest_lock:
+                _ingest_running = False
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()

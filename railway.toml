@@ -6,8 +6,16 @@
   [services.deploy]
     startCommand = "gunicorn app:app --bind 0.0.0.0:$PORT"
 
+# Daily contract ingest cron — canonical production schedule.
+# Fires at 06:00 UTC every day and POSTs to /ingest/run.
+# Required Railway env vars:
+#   CRON_SECRET — shared secret that authenticates the cron caller
+#   (also set on the web service so /ingest/run can verify it)
+# The /ingest/run endpoint is idempotent: if a successful ingest already ran
+# today it returns 200 {"status":"already_ran"} without re-running.
+# Pass the request body {"force":1} to bypass this check if needed.
 [[services]]
   name = "daily-ingest"
   [services.deploy]
     cronSchedule = "0 6 * * *"
-    startCommand = "curl -s -X POST https://recompete.us/ingest/run -H \"Authorization: Bearer $CRON_SECRET\""
+    startCommand = "curl -sf -X POST https://recompete.us/ingest/run -H \"Authorization: Bearer $CRON_SECRET\" -H \"Content-Type: application/json\" -d '{}'"
