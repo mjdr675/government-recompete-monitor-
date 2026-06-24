@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Alert Settings — Recompete{% endblock %}
+{% block title %}Alerts — Recompete{% endblock %}
 {% block content %}
-<h1>Alert Settings</h1>
-<div class="page-meta" style="margin-bottom:20px">Configure email notifications for expiring contracts.</div>
+<h1>Alerts</h1>
+<div class="page-meta" style="margin-bottom:20px">Manage notifications for watched contracts, pipeline opportunities, and upcoming expirations.</div>
 
 {% with messages = get_flashed_messages(with_categories=true) %}
   {% for category, msg in messages %}
@@ -12,7 +12,7 @@
 
 <div class="settings-page">
   <div class="settings-card">
-    <h2>Email Notifications</h2>
+    <h2>Watchlist Expiry Alerts</h2>
     <form method="post" action="/settings/alerts">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
@@ -22,7 +22,7 @@
           Enable watchlist expiry alerts
         </label>
         <p style="font-size:12.5px;color:var(--text-muted);margin:6px 0 0 26px">
-          Receive email alerts when watchlisted contracts are approaching expiry.
+          Receive email alerts when contracts on your watchlist are approaching expiry.
         </p>
       </div>
 
@@ -39,6 +39,12 @@
     </form>
   </div>
 
-  <p style="font-size:13px;color:var(--text-muted)"><a href="/settings/account">&larr; Account settings</a></p>
+  <div class="settings-card">
+    <h2>Pipeline &amp; Opportunity Alerts</h2>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">
+      Configure pipeline digest emails, opportunity alerts, and next action reminders.
+    </p>
+    <a href="/settings/notifications" class="btn btn-secondary" style="font-size:13px">Manage notification settings &rarr;</a>
+  </div>
 </div>
 {% endblock %}

@@ -135,7 +135,7 @@
       <a href="/views" class="{{ 'active' if p.startswith('/views') }}">
         <span class="nav-icon">{{ icon_views() }}</span>Views
       </a>
-      <a href="/settings/alerts" class="{{ 'active' if p.startswith('/settings') }}">
+      <a href="/settings/alerts" class="{{ 'active' if (p.startswith('/settings/alerts') or p.startswith('/settings/notifications')) }}">
         <span class="nav-icon">{{ icon_alerts() }}</span>Alerts
       </a>
       <a href="/ingest" class="{{ 'active' if p == '/ingest' }}">
