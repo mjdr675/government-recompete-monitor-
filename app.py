@@ -16,7 +16,7 @@ import payments
 import sentry_sdk
 import stripe
 from dotenv import load_dotenv
-from flask import Flask, flash, g, jsonify, redirect, render_template, request, session, url_for
+from flask import Flask, abort, flash, g, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
@@ -212,7 +212,12 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get("RAILWAY_ENVIRONMENT") == "
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2 MB
-WORKSPACE_LOGO_DIR = os.path.join(app.static_folder, "uploads", "logos")
+# UPLOAD_DIR env var overrides the default so logos survive Railway restarts.
+# On Railway: attach a Volume at /data and set UPLOAD_DIR=/data/uploads/logos.
+# On dev/default: files go into static/uploads/logos (served via the old static path too).
+WORKSPACE_LOGO_DIR = os.environ.get(
+    "UPLOAD_DIR", os.path.join(app.static_folder, "uploads", "logos")
+)
 ALLOWED_LOGO_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp", "svg"}
 csrf = CSRFProtect(app)
 limiter = Limiter(app=app, key_func=get_remote_address, default_limits=[])
@@ -546,11 +551,17 @@ def observe_access_decision():
 def inject_workspace():
     user = g.get("user")
     if not user:
-        return {"workspace": None}
+        return {"workspace": None, "profile_company_name": None}
     try:
-        return {"workspace": get_workspace_for_user(user["id"])}
+        ws = get_workspace_for_user(user["id"])
+        if ws:
+            ws = dict(ws)
+            ws["logo_url"] = _logo_url(ws.get("logo_path"))
+        profile = get_company_profile(user["id"])
+        pcn = (profile or {}).get("company_name") or None
+        return {"workspace": ws, "profile_company_name": pcn}
     except Exception:
-        return {"workspace": None}
+        return {"workspace": None, "profile_company_name": None}
 
 
 @app.context_processor
@@ -2096,6 +2107,9 @@ def company_profile_page():
 
     profile = get_company_profile(user["id"])
     workspace = get_workspace_for_user(user["id"]) or workspace
+    if workspace:
+        workspace = dict(workspace)
+        workspace["logo_url"] = _logo_url(workspace.get("logo_path"))
     p_completion = profile_completeness(profile) if profile else 0
 
     return render_template(
@@ -2201,6 +2215,38 @@ def settings_account():
 def settings_account_company():
     # Redirect to company profile — company name is now managed there.
     return redirect(url_for("company_profile_page"))
+
+
+@app.route("/uploads/logos/<path:filename>")
+def serve_workspace_logo(filename):
+    """Serve workspace logos from WORKSPACE_LOGO_DIR (survives UPLOAD_DIR override).
+
+    Using send_from_directory prevents path traversal; secure_filename further
+    rejects any name that contains slashes or other unsafe characters so the
+    <path:> converter cannot be abused.
+    """
+    safe_name = secure_filename(filename)
+    if not safe_name or safe_name != filename:
+        abort(404)
+    logo_file = os.path.join(WORKSPACE_LOGO_DIR, safe_name)
+    if not os.path.isfile(logo_file):
+        abort(404)
+    return send_from_directory(WORKSPACE_LOGO_DIR, safe_name)
+
+
+def _logo_url(logo_path):
+    """Return the URL to serve a stored logo, or None if no path is recorded.
+
+    Does NOT check disk — the serve_workspace_logo route returns 404 when the
+    file is missing, and templates add an onerror fallback to show the initial
+    avatar without a broken-image icon.
+    """
+    if not logo_path:
+        return None
+    filename = os.path.basename(logo_path)
+    if not filename:
+        return None
+    return url_for("serve_workspace_logo", filename=filename)
 
 
 def _save_workspace_logo(workspace_id, file_storage):

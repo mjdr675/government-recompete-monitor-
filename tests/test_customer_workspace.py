@@ -176,7 +176,7 @@ class TestWorkspaceSettingsPage:
 # ---------------------------------------------------------------------------
 
 class TestBrandingDisplay:
-    def test_workspace_name_in_sidebar(self, authed_client, pdb):
+    def test_workspace_name_in_topbar(self, authed_client, pdb):
         uid = _uid(pdb)
         ws = get_or_create_workspace_for_user(uid)
         update_workspace(ws["id"], name="Brandable LLC")
@@ -188,9 +188,10 @@ class TestBrandingDisplay:
         ws = get_or_create_workspace_for_user(uid)
         update_workspace(ws["id"], logo_path="uploads/logos/workspace_1.png")
         body = authed_client.get("/dashboard").get_data(as_text=True)
+        # Logo path appears in the top-bar company link (header-company)
         assert "uploads/logos/workspace_1.png" in body
 
-    def test_sidebar_workspace_links_to_company_profile(self, authed_client, pdb):
+    def test_topbar_company_links_to_company_profile(self, authed_client, pdb):
         uid = _uid(pdb)
         ws = get_or_create_workspace_for_user(uid)
         update_workspace(ws["id"], name="Link Test Co")
@@ -198,15 +199,15 @@ class TestBrandingDisplay:
         assert 'href="/company-profile"' in body
         assert "Link Test Co" in body
 
-    def test_no_duplicate_company_row_in_sidebar(self, authed_client, pdb):
+    def test_no_company_identity_in_sidebar(self, authed_client, pdb):
         uid = _uid(pdb)
         ws = get_or_create_workspace_for_user(uid)
         update_workspace(ws["id"], name="Unique Name Corp")
         body = authed_client.get("/dashboard").get_data(as_text=True)
-        # Company name appears in sidebar-workspace block; sidebar-user-name shows email instead.
-        assert "sidebar-workspace" in body
-        assert "sidebar-workspace-name" in body
-        # The user footer block should NOT contain the company name in sidebar-user-name
+        # Company name appears in the top-bar header-company block, not sidebar
+        assert "Unique Name Corp" in body
+        assert "sidebar-workspace" not in body
+        # The sidebar-user block shows email, not the company name
         import re as _re
         user_block = _re.search(r'class="sidebar-user"(.*?)class="sidebar-footer-links"', body, _re.S)
         if user_block:
@@ -281,3 +282,73 @@ class TestCompanyProfileLogo:
         update_workspace(ws["id"], logo_path="uploads/logos/workspace_1.png")
         body = authed_client.get("/dashboard").get_data(as_text=True)
         assert "uploads/logos/workspace_1.png" in body
+
+    def test_upload_saves_stable_path(self, authed_client, pdb):
+        # Logo path in DB uses the stable /uploads/logos/ prefix, not static/
+        data = {
+            "company_name": "Stable Path Co",
+            "geo_coverage": "nationwide",
+            "logo": (io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"\x00" * 20), "mylogo.png"),
+        }
+        authed_client.post("/company-profile", data=data, content_type="multipart/form-data")
+        uid = _uid(pdb)
+        ws = get_workspace_for_user(uid)
+        assert ws["logo_path"] is not None
+        assert ws["logo_path"].startswith("uploads/logos/")
+        assert "static" not in ws["logo_path"]
+
+    def test_save_without_logo_does_not_clear_existing(self, authed_client, pdb):
+        uid = _uid(pdb)
+        ws = get_or_create_workspace_for_user(uid)
+        update_workspace(ws["id"], logo_path="uploads/logos/workspace_1.png")
+        # Submit form without a logo file — existing logo must survive
+        data = {"company_name": "Acme Federal", "geo_coverage": "nationwide"}
+        authed_client.post("/company-profile", data=data, content_type="multipart/form-data")
+        ws = get_workspace_for_user(uid)
+        assert ws["logo_path"] == "uploads/logos/workspace_1.png"
+
+    def test_topbar_shows_logo_when_present(self, authed_client, pdb):
+        uid = _uid(pdb)
+        ws = get_or_create_workspace_for_user(uid)
+        update_workspace(ws["id"], logo_path="uploads/logos/workspace_1.png")
+        body = authed_client.get("/dashboard").get_data(as_text=True)
+        assert "header-company-logo" in body
+        assert "uploads/logos/workspace_1.png" in body
+
+    def test_topbar_shows_name_fallback_without_logo(self, authed_client, pdb):
+        uid = _uid(pdb)
+        ws = get_or_create_workspace_for_user(uid)
+        update_workspace(ws["id"], name="No Logo Corp")
+        body = authed_client.get("/dashboard").get_data(as_text=True)
+        assert "No Logo Corp" in body
+        assert "header-company-logo" not in body
+
+    def test_no_empty_img_src_in_html(self, authed_client, pdb):
+        uid = _uid(pdb)
+        get_or_create_workspace_for_user(uid)
+        body = authed_client.get("/dashboard").get_data(as_text=True)
+        assert 'src=""' not in body
+        assert "src=''" not in body
+
+    def test_unsafe_filename_rejected(self, authed_client, pdb):
+        # Path-traversal filename must not end up on disk or in DB
+        data = {
+            "company_name": "Hack Attempt",
+            "geo_coverage": "nationwide",
+            "logo": (io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"\x00" * 20), "../evil.png"),
+        }
+        rv = authed_client.post("/company-profile", data=data, content_type="multipart/form-data")
+        assert rv.status_code in (200, 302)
+        uid = _uid(pdb)
+        ws = get_workspace_for_user(uid)
+        logo = ws["logo_path"] or ""
+        assert ".." not in logo
+        assert "/" not in logo.replace("uploads/logos/", "", 1).lstrip("/")
+
+    def test_serve_logo_404_for_missing_file(self, authed_client):
+        rv = authed_client.get("/uploads/logos/nonexistent_file.png")
+        assert rv.status_code == 404
+
+    def test_serve_logo_404_for_path_traversal(self, authed_client):
+        rv = authed_client.get("/uploads/logos/../../../etc/passwd")
+        assert rv.status_code == 404

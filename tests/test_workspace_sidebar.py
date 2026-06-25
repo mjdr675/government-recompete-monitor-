@@ -1,14 +1,15 @@
-"""Tests for company workspace display in the authenticated sidebar.
+"""Tests for company identity display in the authenticated layout.
 
 Verifies that:
-- Company name appears in the sidebar workspace block when set
-- Workspace block is absent when company name is not set
-- Company initials avatar character is rendered
+- Company name appears in the top-bar header-company block when set
+- Sidebar does NOT contain a sidebar-workspace block (moved to top bar)
+- Email initial is used for the header avatar
 - Fallback to email initial in the header avatar when no company name
 """
 import pytest
 import db as db_module
 import users as users_module
+from db import get_or_create_workspace_for_user
 from users import set_trial
 
 
@@ -40,25 +41,31 @@ def _login(client, user_id):
         sess["onboarding_skipped"] = "1"
 
 
-def test_workspace_block_shown_when_company_set(db, client):
+def test_company_name_in_topbar_when_set(db, client):
+    """Company name (from workspace) appears in the top-bar, not the sidebar."""
     user = users_module.create_user("ws@example.com", "Pass1234!", company_name="Omega Inc")
     set_trial(user["id"], days=14)
+    get_or_create_workspace_for_user(user["id"])
     _login(client, user["id"])
     body = client.get("/dashboard").get_data(as_text=True)
-    assert "sidebar-workspace" in body
+    assert "header-company" in body
     assert "Omega Inc" in body
+    assert "sidebar-workspace" not in body
 
 
-def test_workspace_avatar_initial(db, client):
+def test_company_name_in_topbar_workspace_fallback(db, client):
+    """Workspace name appears in the top-bar when company profile is not set."""
     user = users_module.create_user("init@example.com", "Pass1234!", company_name="Zeta Corp")
     set_trial(user["id"], days=14)
+    get_or_create_workspace_for_user(user["id"])
     _login(client, user["id"])
     body = client.get("/dashboard").get_data(as_text=True)
-    assert "sidebar-workspace-avatar" in body
-    assert ">Z<" in body
+    assert "header-company" in body
+    assert "Zeta Corp" in body
 
 
-def test_workspace_block_absent_without_company(db, client):
+def test_sidebar_workspace_block_never_rendered(db, client):
+    """Sidebar workspace block is removed; company identity lives in the top bar."""
     user = users_module.create_user("noco@example.com", "Pass1234!")
     set_trial(user["id"], days=14)
     _login(client, user["id"])
@@ -66,13 +73,14 @@ def test_workspace_block_absent_without_company(db, client):
     assert "sidebar-workspace" not in body
 
 
-def test_header_avatar_uses_company_initial_when_set(db, client):
+def test_header_avatar_uses_email_initial(db, client):
+    """Header avatar always uses email initial, not company initial."""
     user = users_module.create_user("hdr@example.com", "Pass1234!", company_name="Kappa Group")
     set_trial(user["id"], days=14)
     _login(client, user["id"])
     body = client.get("/dashboard").get_data(as_text=True)
     assert "header-avatar" in body
-    assert ">K<" in body
+    assert ">H<" in body
 
 
 def test_header_avatar_falls_back_to_email_initial(db, client):

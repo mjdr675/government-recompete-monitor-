@@ -415,39 +415,34 @@ body.sidebar-open .sidebar-backdrop { display: block; }
 }
 .sidebar-toggle:hover { background: var(--bg); color: var(--text-primary); }
 
-/* Header search bar */
-.header-search {
-  flex: 1;
-  max-width: 400px;
-}
-.header-search-inner {
-  position: relative;
+/* Header company identity link */
+.header-company {
   display: flex;
   align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.12s;
+  max-width: 260px;
+  overflow: hidden;
 }
-.header-search-inner svg {
-  position: absolute;
-  left: 10px;
-  color: var(--text-faint);
-  pointer-events: none;
+.header-company:hover { background: var(--bg); }
+.header-company-logo {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  object-fit: cover;
   flex-shrink: 0;
 }
-.header-search input {
-  width: 100%;
-  padding: 6px 12px 6px 34px;
-  font-size: 13px;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--border-strong);
-  background: var(--bg);
-  color: var(--text-primary);
-  transition: border-color 0.12s, box-shadow 0.12s;
+.header-company-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.header-search input:focus {
-  background: var(--surface);
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-ring);
-}
-.header-search input::placeholder { color: var(--text-faint); }
 
 .header-spacer { flex: 1; }
 .header-actions { display: flex; align-items: center; gap: 8px; }

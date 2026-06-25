@@ -18,9 +18,10 @@
       Company name and logo are now managed in your Company Profile.
     </p>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-      {% if workspace and workspace.logo_path %}
-        <img src="{{ url_for('static', filename=workspace.logo_path) }}"
-             alt="Company logo" style="width:36px;height:36px;border-radius:6px;object-fit:cover;border:1px solid var(--border)">
+      {% if workspace and workspace.logo_url %}
+        <img src="{{ workspace.logo_url }}"
+             alt="Company logo" style="width:36px;height:36px;border-radius:6px;object-fit:cover;border:1px solid var(--border)"
+             onerror="this.style.display='none'">
       {% endif %}
       {% set ws_name = (workspace.name if workspace else None) or user.company_name %}
       {% if ws_name %}
