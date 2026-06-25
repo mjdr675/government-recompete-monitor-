@@ -2,12 +2,15 @@ import csv
 import logging
 import os
 import time
-from sam_lookup import lookup_solicitation
-from change_detector import detect_changes
-from update_detector import detect_field_changes
-from db import save_snapshot
+from datetime import date, datetime, timedelta, timezone
+
 import requests
-from datetime import date, datetime, timedelta
+from sqlalchemy import text
+
+from change_detector import detect_changes
+from db import get_engine, save_snapshot
+from sam_lookup import lookup_solicitation
+from update_detector import detect_field_changes
 
 logger = logging.getLogger("ingest")
 
@@ -41,7 +44,7 @@ def money(v):
     except Exception:
         return 0.0
 
-def fetch_contracts():
+def fetch_contracts(today, cutoff):
     out = []
     session = requests.Session()
 
@@ -51,8 +54,8 @@ def fetch_contracts():
                 "award_type_codes": ["A", "B", "C", "D"],
                 "time_period": [
                     {
-                        "start_date": TODAY.isoformat(),
-                        "end_date": CUTOFF.isoformat(),
+                        "start_date": today.isoformat(),
+                        "end_date": cutoff.isoformat(),
                         "date_type": "end_date",
                     }
                 ],
@@ -104,7 +107,7 @@ def fetch_contracts():
 
         for c in results:
             end = parse_date(c.get("End Date"))
-            if not end or not (TODAY <= end <= CUTOFF):
+            if not end or not (today <= end <= cutoff):
                 continue
             amount = money(c.get("Award Amount"))
             if amount > MAX_CONTRACT_VALUE:
@@ -209,6 +212,27 @@ def enrichment_from_detail(data):
         "parent_contract_type": parent.get("type_of_idc_description") or parent.get("idv_type_description") or "",
     }
 
+def _write_ingest_log(run_date: str, record_count: int, status: str, error_message) -> None:
+    """Write one row to ingest_log. Failure is non-fatal — log and swallow."""
+    try:
+        engine = get_engine()
+        with engine.begin() as conn:
+            conn.execute(text("""
+                INSERT INTO ingest_log
+                    (run_date, source, record_count, duration_seconds, status, error_message, created_at)
+                VALUES (:run_date, :source, :record_count, NULL, :status, :error_message, :created_at)
+            """), {
+                "run_date": run_date,
+                "source": "usaspending",
+                "record_count": record_count,
+                "status": status,
+                "error_message": error_message,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+    except Exception as log_exc:
+        logger.warning("could not write ingest_log: %s", log_exc)
+
+
 def main():
     today = _today()  # fresh on every call — avoids stale-date bug in long-lived Celery workers
     cutoff = today + timedelta(days=540)
@@ -221,7 +245,7 @@ def main():
     logger.info("ingest starting: today=%s cutoff=%s", today, cutoff)
     rows = []
 
-    for c in fetch_contracts():
+    for c in fetch_contracts(today, cutoff):
         end = parse_date(c.get("End Date"))
         start = parse_date(c.get("Start Date"))
 
@@ -339,9 +363,14 @@ def main():
     # calls init_db() itself, so the job is safe to rerun. detect_changes() is
     # likewise idempotent for the run_date (it clears that date's changes first).
     run_date = str(today)  # today() — not module-level TODAY — so date is always current
-    save_snapshot(run_date, rows)
-    detect_changes(run_date)
-    detect_field_changes(run_date)
+    try:
+        save_snapshot(run_date, rows)
+        detect_changes(run_date)
+        detect_field_changes(run_date)
+    except Exception as exc:
+        logger.error("ingest persistence failed: %s", exc)
+        _write_ingest_log(run_date, 0, "failure", str(exc))
+        raise
 
     if not rows:
         msg = (
@@ -349,11 +378,13 @@ def main():
             "possible API issue or date filter problem"
         )
         logger.error(msg)
+        _write_ingest_log(run_date, 0, "failure", msg)
         raise RuntimeError(msg)
-    else:
-        logger.info("ingest complete: %d contracts persisted (snapshot %s)", len(rows), run_date)
-        logger.info("tier-a enrichment: %d contracts enriched", enrich_count)
-        logger.info("sam.gov enrichment: %d solicitations matched", sam_count)
+
+    logger.info("ingest complete: %d contracts persisted (snapshot %s)", len(rows), run_date)
+    logger.info("tier-a enrichment: %d contracts enriched", enrich_count)
+    logger.info("sam.gov enrichment: %d solicitations matched", sam_count)
+    _write_ingest_log(run_date, len(rows), "success", None)
 
 if __name__ == "__main__":
     main()

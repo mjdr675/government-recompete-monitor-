@@ -178,3 +178,114 @@ class TestZeroResultsGuard:
         zero_errors = [r for r in caplog.records
                        if r.levelno >= logging.ERROR and "0 rows" in r.message]
         assert zero_errors == []
+
+
+# ---------------------------------------------------------------------------
+# fetch_contracts() uses passed today/cutoff, not module-level constants
+# ---------------------------------------------------------------------------
+
+class TestFetchContractsDateParam:
+    def test_fetch_contracts_uses_passed_today_in_api_payload(self, monkeypatch):
+        """fetch_contracts(today, cutoff) must embed the passed dates in the
+        API payload — not the module-level TODAY/CUTOFF frozen at import time."""
+        fixed_today = date(2025, 6, 1)
+        fixed_cutoff = fixed_today + timedelta(days=540)
+        captured = {}
+
+        def fake_post(self_or_url, url_or_none=None, json=None, timeout=None):
+            captured["payload"] = json
+            class FakeResp:
+                status_code = 200
+                def raise_for_status(self): pass
+                def json(self):
+                    return {"results": [], "page_metadata": {"hasNext": False}}
+            return FakeResp()
+
+        monkeypatch.setattr(jrr.requests.Session, "post", fake_post)
+        jrr.fetch_contracts(fixed_today, fixed_cutoff)
+
+        period = captured["payload"]["filters"]["time_period"][0]
+        assert period["start_date"] == "2025-06-01", (
+            "fetch_contracts must use passed today, not module-level TODAY"
+        )
+        assert period["end_date"] == fixed_cutoff.isoformat(), (
+            "fetch_contracts must use passed cutoff, not module-level CUTOFF"
+        )
+
+
+# ---------------------------------------------------------------------------
+# ingest_log writes
+# ---------------------------------------------------------------------------
+
+class TestIngestLogWrites:
+    def test_main_writes_ingest_log_success(self, test_db, monkeypatch):
+        """On successful ingest, main() must write a 'success' row to ingest_log."""
+        today = date.today()
+        award = _award_ending(today + timedelta(days=90))
+        with patch.object(jrr, "fetch_contracts", return_value=[award]):
+            jrr.main()
+
+        from sqlalchemy import text
+        with db_module.get_engine().connect() as conn:
+            row = conn.execute(text(
+                "SELECT status, record_count, source FROM ingest_log LIMIT 1"
+            )).fetchone()
+        assert row is not None, "ingest_log must have a row after successful main()"
+        assert row[0] == "success"
+        assert row[1] >= 1
+        assert row[2] == "usaspending"
+
+    def test_main_writes_ingest_log_failure_on_zero_rows(self, test_db, monkeypatch):
+        """When fetch_contracts returns no usable rows, main() must write a 'failure'
+        row to ingest_log before raising RuntimeError."""
+        expired_award = _award_ending(date(2021, 1, 1))
+        with patch.object(jrr, "fetch_contracts", return_value=[expired_award]):
+            with pytest.raises(RuntimeError):
+                jrr.main()
+
+        from sqlalchemy import text
+        with db_module.get_engine().connect() as conn:
+            row = conn.execute(text(
+                "SELECT status, record_count FROM ingest_log LIMIT 1"
+            )).fetchone()
+        assert row is not None, "ingest_log must have a row even on zero-row failure"
+        assert row[0] == "failure"
+        assert row[1] == 0
+
+    def test_main_writes_ingest_log_failure_on_exception(self, test_db, monkeypatch):
+        """When save_snapshot raises, main() must write a 'failure' row to ingest_log."""
+        today = date.today()
+        award = _award_ending(today + timedelta(days=90))
+
+        def bad_snapshot(*args, **kwargs):
+            raise RuntimeError("DB write blew up")
+
+        with patch.object(jrr, "fetch_contracts", return_value=[award]):
+            with patch.object(jrr, "save_snapshot", bad_snapshot):
+                with pytest.raises(RuntimeError, match="DB write blew up"):
+                    jrr.main()
+
+        from sqlalchemy import text
+        with db_module.get_engine().connect() as conn:
+            row = conn.execute(text(
+                "SELECT status, error_message FROM ingest_log LIMIT 1"
+            )).fetchone()
+        assert row is not None, "ingest_log must have a row when persistence fails"
+        assert row[0] == "failure"
+        assert "DB write blew up" in (row[1] or "")
+
+    def test_main_ingest_log_run_date_matches_today(self, test_db, monkeypatch):
+        """The run_date in ingest_log must reflect _today(), not the module constant."""
+        fixed_today = date(2025, 9, 15)
+        monkeypatch.setattr(jrr, "_today", lambda: fixed_today)
+        award = _award_ending(fixed_today + timedelta(days=90))
+
+        with patch.object(jrr, "fetch_contracts", return_value=[award]):
+            jrr.main()
+
+        from sqlalchemy import text
+        with db_module.get_engine().connect() as conn:
+            run_date = conn.execute(text(
+                "SELECT run_date FROM ingest_log LIMIT 1"
+            )).scalar()
+        assert run_date == "2025-09-15"
