@@ -2009,8 +2009,11 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
         if not tokens:
             base = "FROM contracts c WHERE 1=0"
         elif is_pg:
-            base = "FROM contracts c WHERE c.search_vector @@ to_tsquery('english', :q)"
-            params["q"] = " & ".join(f"{t}:*" for t in tokens)
+            # websearch_to_tsquery handles stop words (LLC, Inc, Corp) and punctuation
+            # gracefully — to_tsquery crashes when those terms exist in the server's
+            # text search stop-word list.
+            base = "FROM contracts c WHERE c.search_vector @@ websearch_to_tsquery('english', :q)"
+            params["q"] = " ".join(tokens)
         else:
             base = """
                 FROM contracts c

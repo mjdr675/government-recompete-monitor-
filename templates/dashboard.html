@@ -129,8 +129,8 @@
 {# When we have a company/vendor match: show company-specific stats first.      #}
 {# Platform totals become secondary labels ("Available Contracts").             #}
 <div class="kpi-row" style="margin-bottom:16px">
-  {% if contract_summary %}
-  {# ── Company-specific KPIs ── #}
+  {% if contract_summary and contract_summary.count %}
+  {# ── Company-specific KPIs (only when we have actual matched contracts) ── #}
   <a href="/contracts?q={{ (contract_summary.match_term or '') | urlencode }}" class="kpi-card">
     <div class="kpi-header">
       <span class="kpi-label">My Current Contracts</span>
