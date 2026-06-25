@@ -2,15 +2,15 @@
 {% block title %}Subscribe — Recompete.{% endblock %}
 {% block content %}
 
-{# ── Stripe Payment Link placeholders ──────────────────────────────────────
-   Replace each value with the live Stripe Payment Link URL when created.
-   These are public URLs — safe to embed in the frontend.
+{# ── Stripe Payment Links (live) ────────────────────────────────────────────
+   These are public buy.stripe.com URLs — safe to embed in the frontend.
+   Basic/Pro yearly include a 7-day free trial configured in Stripe.
    Do NOT add STRIPE_SECRET_KEY or any server-side keys here.
    ───────────────────────────────────────────────────────────────────────── #}
-{% set BASIC_MONTHLY_LINK = "BASIC_MONTHLY_PAYMENT_LINK" %}
-{% set BASIC_YEARLY_LINK  = "BASIC_YEARLY_PAYMENT_LINK"  %}
-{% set PRO_MONTHLY_LINK   = "PRO_MONTHLY_PAYMENT_LINK"   %}
-{% set PRO_YEARLY_LINK    = "PRO_YEARLY_PAYMENT_LINK"    %}
+{% set BASIC_MONTHLY_LINK = "https://buy.stripe.com/eVq3cwgki6R62T32Py28802" %}
+{% set BASIC_YEARLY_LINK  = "https://buy.stripe.com/28E3cwaZYdfubpz0Hq28803" %}
+{% set PRO_MONTHLY_LINK   = "https://buy.stripe.com/9B6aEY0lkejy51bcq828800" %}
+{% set PRO_YEARLY_LINK    = "https://buy.stripe.com/3cIdRa9VU8ZectD0Hq28801" %}
 
 <style>
   /* ── Page shell ── */
@@ -254,7 +254,7 @@
         <li>Priority support</li>
         <li>Onboarding assistance</li>
       </ul>
-      <a href="mailto:hello@recompete.us?subject=Enterprise%20plan%20inquiry" class="btn-cta-contact">
+      <a href="mailto:sales@recompete.us?subject=Enterprise%20plan%20inquiry" class="btn-cta-contact">
         Contact sales
       </a>
       <p style="font-size:12px;color:var(--text-faint);margin-top:10px;text-align:center">
