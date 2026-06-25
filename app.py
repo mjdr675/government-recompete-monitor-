@@ -39,7 +39,6 @@ from db import (
     list_saved_searches,
     list_contract_states,
     save_company_profile,
-    save_demo_request,
     save_early_access,
     save_snapshot,
     upsert_contract,
@@ -1321,36 +1320,9 @@ def stripe_webhook():
     return "", 200
 
 
-@app.route("/demo", methods=["GET", "POST"])
-@limiter.limit("5 per hour", per_method=True, methods=["POST"])
+@app.route("/demo")
 def demo():
-    message = None
-    error = None
-    if request.method == "POST":
-        email = request.form.get("email", "").strip()
-        name = request.form.get("name", "").strip()
-        company = request.form.get("company", "").strip()
-        phone = request.form.get("phone", "").strip()
-        notes = request.form.get("notes", "").strip()
-
-        if not email or "@" not in email:
-            error = "A valid email address is required."
-        else:
-            contact_id, deal_id = hubspot_service.handle_demo_request(
-                email=email, name=name, company=company, phone=phone, notes=notes
-            )
-            save_demo_request(
-                email=email,
-                name=name,
-                company=company,
-                phone=phone,
-                notes=notes,
-                hubspot_contact_id=contact_id,
-                hubspot_deal_id=deal_id,
-            )
-            message = "Thanks! We'll be in touch shortly to schedule your demo."
-
-    return render_template("demo.html", message=message, error=error)
+    return redirect("/register", 301)
 
 
 @app.route("/early-access", methods=["GET", "POST"])

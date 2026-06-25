@@ -1,4 +1,4 @@
-"""Tests for R-04: rate limiting on /demo and /early-access."""
+"""Tests for R-04: rate limiting on /early-access. /demo is removed (301 → /register)."""
 import pytest
 import db as db_module
 
@@ -22,28 +22,15 @@ def client(db):
         yield c
 
 
-class TestDemoRateLimit:
-    def test_demo_get_always_accessible(self, client):
-        for _ in range(10):
-            resp = client.get("/demo")
-            assert resp.status_code == 200
+class TestDemoRemoved:
+    def test_demo_get_redirects_to_register(self, client):
+        resp = client.get("/demo")
+        assert resp.status_code == 301
+        assert "/register" in resp.headers["Location"]
 
-    def test_demo_post_accepted_within_limit(self, client):
-        resp = client.post("/demo", data={
-            "email": "test@example.com",
-            "name": "Test",
-            "company": "ACME",
-        })
-        # Accepted (even if HubSpot/DB fail gracefully, not rate-limited)
-        assert resp.status_code != 429
-
-    def test_demo_post_rate_limited_after_threshold(self, client):
-        data = {"email": "spam@example.com", "name": "Bot", "company": "Bot Co"}
-        # 5 within limit, 6th should be 429
-        for _ in range(5):
-            client.post("/demo", data=data)
-        resp = client.post("/demo", data=data)
-        assert resp.status_code == 429
+    def test_demo_post_redirects(self, client):
+        resp = client.post("/demo", data={"email": "test@example.com"})
+        assert resp.status_code in (301, 302, 405)
 
 
 class TestEarlyAccessRateLimit:
