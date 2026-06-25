@@ -527,14 +527,19 @@ def _uid(db_path):
     return uid
 
 
-class TestMyCurrentContractsUeiCage:
+class TestMyCurrentContractsUeiOnly:
+    """UEI is the only identity key for current-contract matching.
+
+    Company name, vendor name, and CAGE are never used for matching.
+    """
+
     def test_returns_empty_when_no_profile(self, matching_db):
         uid = _uid(matching_db)
         assert my_current_contracts(uid) == []
 
-    def test_returns_empty_when_profile_has_no_identifiers(self, matching_db):
+    def test_returns_empty_when_profile_has_no_uei(self, matching_db):
         uid = _uid(matching_db)
-        save_company_profile(uid, {"company_name": ""})
+        save_company_profile(uid, {"company_name": "Acme Corp"})
         assert my_current_contracts(uid) == []
 
     def test_uei_exact_match(self, matching_db):
@@ -554,71 +559,109 @@ class TestMyCurrentContractsUeiCage:
         results = my_current_contracts(uid)
         assert results[0]["match_method"] == "UEI"
 
-    def test_cage_exact_match(self, matching_db):
+    def test_cage_alone_does_not_match(self, matching_db):
+        """CAGE-only profile must not match any contracts — UEI required."""
         uid = _uid(matching_db)
         _insert_contract(matching_db, "C004", "Beta LLC", cage_code="5AB12")
-        _insert_contract(matching_db, "C005", "Gamma Inc", cage_code="9XY99")
         save_company_profile(uid, {"cage_code": "5AB12"})
-        results = my_current_contracts(uid)
-        ids = [r["internal_id"] for r in results]
-        assert "C004" in ids
-        assert "C005" not in ids
+        assert my_current_contracts(uid) == []
 
-    def test_cage_match_sets_match_method(self, matching_db):
+    def test_vendor_name_alone_does_not_match(self, matching_db):
+        """Vendor name on the profile must not match by name — UEI required."""
         uid = _uid(matching_db)
-        _insert_contract(matching_db, "C006", "Beta LLC", cage_code="7CD34")
-        save_company_profile(uid, {"cage_code": "7CD34"})
-        results = my_current_contracts(uid)
-        assert results[0]["match_method"] == "CAGE"
-
-    def test_vendor_name_fallback_match(self, matching_db):
-        uid = _uid(matching_db)
-        _insert_contract(matching_db, "C007", "Delta Services Inc")
+        _insert_contract(matching_db, "C005", "Delta Services Inc")
         save_company_profile(uid, {"vendor_name": "Delta Services"})
-        results = my_current_contracts(uid)
-        ids = [r["internal_id"] for r in results]
-        assert "C007" in ids
-        assert results[0]["match_method"] == "vendor name"
+        assert my_current_contracts(uid) == []
 
-    def test_uei_takes_priority_over_cage(self, matching_db):
+    def test_company_name_alone_does_not_match(self, matching_db):
+        """Company name on the profile must not match by name — UEI required."""
         uid = _uid(matching_db)
-        _insert_contract(matching_db, "C008", "Alpha Corp", recipient_uei="PPPP12345678")
-        _insert_contract(matching_db, "C009", "Alpha Corp", cage_code="8EF56")
-        save_company_profile(uid, {"uei": "PPPP12345678", "cage_code": "8EF56"})
-        results = my_current_contracts(uid)
-        methods = {r["internal_id"]: r["match_method"] for r in results}
-        assert methods.get("C008") == "UEI"
-        assert methods.get("C009") == "CAGE"
+        _insert_contract(matching_db, "C006", "Foxtrot Systems LLC")
+        save_company_profile(uid, {"company_name": "Foxtrot Systems LLC"})
+        assert my_current_contracts(uid) == []
 
-    def test_deduplication_across_methods(self, matching_db):
-        uid = _uid(matching_db)
-        _insert_contract(matching_db, "C010", "Acme Solutions", recipient_uei="RRRR11112222",
-                         cage_code="1GH78")
-        save_company_profile(uid, {"uei": "RRRR11112222", "cage_code": "1GH78"})
-        results = my_current_contracts(uid)
-        ids = [r["internal_id"] for r in results]
-        assert ids.count("C010") == 1
+    # --- Regression: UEI is the key; name divergence must not prevent a match ---
 
-    def test_uei_match_is_case_insensitive_on_profile(self, matching_db):
+    def test_same_uei_different_company_name_still_matches(self, matching_db):
+        """Contracts must match by UEI even when the display name differs."""
         uid = _uid(matching_db)
-        _insert_contract(matching_db, "C011", "Lower Corp", recipient_uei="SSSS33334444")
-        save_company_profile(uid, {"uei": "ssss33334444"})
+        _insert_contract(matching_db, "C007", "PIEPENBROCK GOVT SERVICES GMBH",
+                         recipient_uei="JRJCX349JCZ4")
+        save_company_profile(uid, {
+            "uei": "JRJCX349JCZ4",
+            "company_name": "Piepenbrock Government Services GmbH + Co. KG",
+        })
         results = my_current_contracts(uid)
-        assert any(r["internal_id"] == "C011" for r in results)
+        assert any(r["internal_id"] == "C007" for r in results)
 
-    def test_summary_returns_none_with_no_identifiers(self, matching_db):
+    def test_correct_name_wrong_uei_does_not_match(self, matching_db):
+        """Correct company name with a wrong UEI must produce zero matches."""
         uid = _uid(matching_db)
+        _insert_contract(matching_db, "C008", "Foxtrot Systems LLC",
+                         recipient_uei="REALUEI12345")
+        save_company_profile(uid, {
+            "company_name": "Foxtrot Systems LLC",
+            "uei": "FAKEUEI99999",
+        })
+        assert my_current_contracts(uid) == []
+
+    def test_correct_name_no_uei_does_not_match(self, matching_db):
+        """Correct company name with no UEI at all must produce zero matches."""
+        uid = _uid(matching_db)
+        _insert_contract(matching_db, "C009", "Foxtrot Systems LLC",
+                         recipient_uei="REALUEI12345")
+        save_company_profile(uid, {"company_name": "Foxtrot Systems LLC"})
+        assert my_current_contracts(uid) == []
+
+    # --- Normalization ---
+
+    def test_uei_normalization_strips_and_uppercases(self, matching_db):
+        """Profile UEI with extra spaces/lowercase must still match."""
+        uid = _uid(matching_db)
+        _insert_contract(matching_db, "C010", "Lower Corp", recipient_uei="SSSS33334444")
+        save_company_profile(uid, {"uei": " ssss 3333 4444 "})
+        results = my_current_contracts(uid)
+        assert any(r["internal_id"] == "C010" for r in results)
+
+    # --- Summary ---
+
+    def test_summary_returns_none_when_no_uei(self, matching_db):
+        """Summary must be None when the profile has no UEI — triggers 'Add your UEI' state."""
+        uid = _uid(matching_db)
+        save_company_profile(uid, {"company_name": "Acme Corp"})
         assert my_current_contract_summary(uid) is None
+
+    def test_summary_returns_dict_with_count_zero_when_uei_set_but_no_matches(self, matching_db):
+        """Summary must be a dict (not None) when UEI is set but no contracts match.
+
+        This lets the dashboard render 'No current contracts matched this UEI yet.'
+        rather than the 'Add your UEI' prompt.
+        """
+        uid = _uid(matching_db)
+        save_company_profile(uid, {"uei": "ZZZZ00000000"})
+        summary = my_current_contract_summary(uid)
+        assert summary is not None
+        assert summary["count"] == 0
+        assert summary["match_term"] == "ZZZZ00000000"
 
     def test_summary_counts_uei_matches(self, matching_db):
         uid = _uid(matching_db)
+        _insert_contract(matching_db, "C011", "Echo Corp", recipient_uei="TTTT55556666")
         _insert_contract(matching_db, "C012", "Echo Corp", recipient_uei="TTTT55556666")
-        _insert_contract(matching_db, "C013", "Echo Corp", recipient_uei="TTTT55556666")
         save_company_profile(uid, {"uei": "TTTT55556666"})
         summary = my_current_contract_summary(uid)
         assert summary is not None
         assert summary["count"] == 2
         assert summary["match_term"] == "TTTT55556666"
+
+    def test_summary_match_term_is_uei_not_name(self, matching_db):
+        """match_term must be the UEI string, not the company name."""
+        uid = _uid(matching_db)
+        _insert_contract(matching_db, "C013", "Acme Corp", recipient_uei="AAAA11112222")
+        save_company_profile(uid, {"uei": "AAAA11112222", "company_name": "Acme Corp"})
+        summary = my_current_contract_summary(uid)
+        assert summary["match_term"] == "AAAA11112222"
+        assert "Acme" not in summary["match_term"]
 
     def test_save_snapshot_persists_uei_and_cage(self, matching_db):
         from db import save_snapshot, get_engine

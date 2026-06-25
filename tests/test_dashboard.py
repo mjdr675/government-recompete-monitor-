@@ -153,17 +153,17 @@ class TestBlankDashboardCTA:
             )
 
     def test_zero_match_shows_readable_empty_state(self, client, tmp_db):
-        """Zero matched contracts shows 'No current contracts matched yet' panel."""
+        """UEI set but no contracts matched shows the UEI empty-state panel."""
         from db import save_company_profile
         import sqlite3
         con = sqlite3.connect(tmp_db)
         uid = con.execute("SELECT id FROM users WHERE email='testuser@example.com'").fetchone()[0]
         con.close()
-        save_company_profile(uid, {"company_name": "Patriot Facility Solutions, LLC"})
+        save_company_profile(uid, {"uei": "ZZZZ00000001"})
         resp = client.get("/dashboard")
         body = resp.get_data(as_text=True)
-        assert "No current contracts matched yet" in body
-        assert "Patriot Facility Solutions, LLC" in body  # shows what was searched
+        assert "No current contracts matched this UEI yet" in body
+        assert "ZZZZ00000001" in body  # shows the UEI that was searched
         assert "/company-profile#import-contracts" in body  # CTA to edit
 
     def test_no_blank_anchor_elements(self, client, tmp_db):

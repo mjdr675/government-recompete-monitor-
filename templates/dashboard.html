@@ -141,7 +141,7 @@
       </svg>
     </div>
     <div class="kpi-value">{{ contract_summary.count or 0 }}</div>
-    <div class="kpi-sub">{{ contract_summary.active_count or 0 }} active &middot; matched to {{ contract_summary.match_term }}</div>
+    <div class="kpi-sub">{{ contract_summary.active_count or 0 }} active &middot; UEI: {{ contract_summary.match_term }}</div>
   </a>
   <a href="/contracts?priority=CRITICAL" class="kpi-card critical">
     <div class="kpi-header">
@@ -264,13 +264,13 @@
       {# My Contracts panel #}
       <div id="panel-my-contracts">
 
-        {# Current Contracts: auto-matched by vendor_name or company_name #}
+        {# Current Contracts: auto-matched by UEI only #}
         {% if contract_summary and contract_summary.contracts %}
         <div class="table-wrapper" style="margin-bottom:12px">
           <div class="table-header">
             <h2>My Current Contracts</h2>
             <span style="font-size:12px;color:var(--text-muted);font-weight:400">
-              {{ contract_summary.count }} matched to <strong>{{ contract_summary.match_term }}</strong>
+              {{ contract_summary.count }} matched by UEI: <strong>{{ contract_summary.match_term }}</strong>
               &middot; <a href="/company-profile" style="font-size:12px">Edit</a>
             </span>
           </div>
@@ -304,10 +304,10 @@
         {% elif contract_summary %}
         {# We have a match term but found 0 contracts #}
         <div style="padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:12px">
-          <div style="font-weight:500;margin-bottom:4px">No current contracts matched yet</div>
+          <div style="font-weight:500;margin-bottom:4px">No current contracts matched this UEI yet.</div>
           <div class="muted" style="font-size:13px;margin-bottom:10px">
-            Matched using: &ldquo;<strong>{{ contract_summary.match_term }}</strong>&rdquo;.
-            If your government contracts use a different name or you have a UEI, update your import details.
+            Matched using UEI: <strong>{{ contract_summary.match_term }}</strong>.
+            No contracts in our data have a matching UEI yet. Contracts are matched as ingest runs.
           </div>
           <a href="/company-profile#import-contracts" class="btn btn-primary" style="font-size:13px">Edit import details</a>
         </div>
@@ -316,7 +316,7 @@
         <div style="padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:12px">
           <div style="font-weight:500;margin-bottom:4px">Import your current contracts</div>
           <div class="muted" style="font-size:13px;margin-bottom:10px">
-            Enter your UEI or exact vendor name to auto-load the contracts your business currently holds in federal award data.
+            Add your UEI to match current contracts. Your UEI is the stable federal identifier for your business.
           </div>
           <a href="/company-profile#import-contracts" class="btn btn-primary" style="font-size:13px">Import My Current Contracts</a>
         </div>
@@ -325,7 +325,7 @@
         <div style="padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:12px">
           <div style="font-weight:500;margin-bottom:4px">Import your current contracts</div>
           <div class="muted" style="font-size:13px;margin-bottom:10px">
-            Set up your company profile to auto-load the contracts your business already holds.
+            Add your UEI to match current contracts. Your UEI is the stable federal identifier for your business.
           </div>
           <a href="/company-profile#import-contracts" class="btn btn-primary" style="font-size:13px">Import My Current Contracts</a>
         </div>
