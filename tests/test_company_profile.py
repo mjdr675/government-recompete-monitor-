@@ -480,3 +480,168 @@ class TestContractImportFields:
         rv = authed_client.get("/company-profile")
         body = rv.get_data(as_text=True)
         assert "3EF67" in body
+
+
+# ---------------------------------------------------------------------------
+# UEI / CAGE contract matching in my_current_contracts()
+# ---------------------------------------------------------------------------
+
+import db as _db_mod
+from analytics import my_current_contracts, my_current_contract_summary
+
+
+def _insert_contract(db_path, internal_id, vendor, recipient_uei="", cage_code="",
+                     days_remaining=30, value=500000.0):
+    """Insert a minimal contract row directly into the test DB."""
+    con = sqlite3.connect(db_path)
+    con.execute("""
+        INSERT OR REPLACE INTO contracts
+            (internal_id, award_id, vendor, agency, value, end_date,
+             days_remaining, recompete_score, priority, category,
+             recipient_uei, cage_code)
+        VALUES (?, ?, ?, 'Test Agency', ?, '2030-01-01',
+                ?, 50, 'MEDIUM', 'IT', ?, ?)
+    """, (internal_id, internal_id, vendor, value, days_remaining,
+          recipient_uei, cage_code))
+    con.commit()
+    con.close()
+
+
+@pytest.fixture()
+def matching_db(tmp_path, monkeypatch):
+    """DB with a user, company profile, and pre-seeded contracts for matching tests."""
+    db_path = str(tmp_path / "match.db")
+    monkeypatch.setattr(_db_mod, "DB_PATH", db_path)
+    _db_mod._cached_engine.cache_clear()
+    _db_mod.init_db()
+    import users as _u
+    _u.create_user("matcher@example.com", "password123")
+    yield db_path
+    _db_mod._cached_engine.cache_clear()
+
+
+def _uid(db_path):
+    con = sqlite3.connect(db_path)
+    uid = con.execute("SELECT id FROM users WHERE email = 'matcher@example.com'").fetchone()[0]
+    con.close()
+    return uid
+
+
+class TestMyCurrentContractsUeiCage:
+    def test_returns_empty_when_no_profile(self, matching_db):
+        uid = _uid(matching_db)
+        assert my_current_contracts(uid) == []
+
+    def test_returns_empty_when_profile_has_no_identifiers(self, matching_db):
+        uid = _uid(matching_db)
+        save_company_profile(uid, {"company_name": ""})
+        assert my_current_contracts(uid) == []
+
+    def test_uei_exact_match(self, matching_db):
+        uid = _uid(matching_db)
+        _insert_contract(matching_db, "C001", "Acme Corp", recipient_uei="AABB11223344")
+        _insert_contract(matching_db, "C002", "Other Corp", recipient_uei="XXXX99998888")
+        save_company_profile(uid, {"uei": "AABB11223344"})
+        results = my_current_contracts(uid)
+        ids = [r["internal_id"] for r in results]
+        assert "C001" in ids
+        assert "C002" not in ids
+
+    def test_uei_match_sets_match_method(self, matching_db):
+        uid = _uid(matching_db)
+        _insert_contract(matching_db, "C003", "Acme Corp", recipient_uei="UUUU11223344")
+        save_company_profile(uid, {"uei": "UUUU11223344"})
+        results = my_current_contracts(uid)
+        assert results[0]["match_method"] == "UEI"
+
+    def test_cage_exact_match(self, matching_db):
+        uid = _uid(matching_db)
+        _insert_contract(matching_db, "C004", "Beta LLC", cage_code="5AB12")
+        _insert_contract(matching_db, "C005", "Gamma Inc", cage_code="9XY99")
+        save_company_profile(uid, {"cage_code": "5AB12"})
+        results = my_current_contracts(uid)
+        ids = [r["internal_id"] for r in results]
+        assert "C004" in ids
+        assert "C005" not in ids
+
+    def test_cage_match_sets_match_method(self, matching_db):
+        uid = _uid(matching_db)
+        _insert_contract(matching_db, "C006", "Beta LLC", cage_code="7CD34")
+        save_company_profile(uid, {"cage_code": "7CD34"})
+        results = my_current_contracts(uid)
+        assert results[0]["match_method"] == "CAGE"
+
+    def test_vendor_name_fallback_match(self, matching_db):
+        uid = _uid(matching_db)
+        _insert_contract(matching_db, "C007", "Delta Services Inc")
+        save_company_profile(uid, {"vendor_name": "Delta Services"})
+        results = my_current_contracts(uid)
+        ids = [r["internal_id"] for r in results]
+        assert "C007" in ids
+        assert results[0]["match_method"] == "vendor name"
+
+    def test_uei_takes_priority_over_cage(self, matching_db):
+        uid = _uid(matching_db)
+        _insert_contract(matching_db, "C008", "Alpha Corp", recipient_uei="PPPP12345678")
+        _insert_contract(matching_db, "C009", "Alpha Corp", cage_code="8EF56")
+        save_company_profile(uid, {"uei": "PPPP12345678", "cage_code": "8EF56"})
+        results = my_current_contracts(uid)
+        methods = {r["internal_id"]: r["match_method"] for r in results}
+        assert methods.get("C008") == "UEI"
+        assert methods.get("C009") == "CAGE"
+
+    def test_deduplication_across_methods(self, matching_db):
+        uid = _uid(matching_db)
+        _insert_contract(matching_db, "C010", "Acme Solutions", recipient_uei="RRRR11112222",
+                         cage_code="1GH78")
+        save_company_profile(uid, {"uei": "RRRR11112222", "cage_code": "1GH78"})
+        results = my_current_contracts(uid)
+        ids = [r["internal_id"] for r in results]
+        assert ids.count("C010") == 1
+
+    def test_uei_match_is_case_insensitive_on_profile(self, matching_db):
+        uid = _uid(matching_db)
+        _insert_contract(matching_db, "C011", "Lower Corp", recipient_uei="SSSS33334444")
+        save_company_profile(uid, {"uei": "ssss33334444"})
+        results = my_current_contracts(uid)
+        assert any(r["internal_id"] == "C011" for r in results)
+
+    def test_summary_returns_none_with_no_identifiers(self, matching_db):
+        uid = _uid(matching_db)
+        assert my_current_contract_summary(uid) is None
+
+    def test_summary_counts_uei_matches(self, matching_db):
+        uid = _uid(matching_db)
+        _insert_contract(matching_db, "C012", "Echo Corp", recipient_uei="TTTT55556666")
+        _insert_contract(matching_db, "C013", "Echo Corp", recipient_uei="TTTT55556666")
+        save_company_profile(uid, {"uei": "TTTT55556666"})
+        summary = my_current_contract_summary(uid)
+        assert summary is not None
+        assert summary["count"] == 2
+        assert summary["match_term"] == "TTTT55556666"
+
+    def test_save_snapshot_persists_uei_and_cage(self, matching_db):
+        from db import save_snapshot, get_engine
+        from sqlalchemy import text as _text
+        rows = [{
+            "internal_id": "SNAP001",
+            "award_id": "SNAP001",
+            "vendor": "Snapshot Vendor",
+            "agency": "Test Agency",
+            "value": 1_000_000.0,
+            "start_date": "2024-01-01",
+            "end_date": "2030-06-30",
+            "days_remaining": 100,
+            "recompete_score": 60,
+            "priority": "MEDIUM",
+            "recipient_uei": "VVVV77778888",
+            "cage_code": "2IJ90",
+        }]
+        save_snapshot("2026-01-01", rows)
+        engine = get_engine()
+        with engine.connect() as conn:
+            row = conn.execute(
+                _text("SELECT recipient_uei, cage_code FROM contracts WHERE internal_id = 'SNAP001'")
+            ).fetchone()
+        assert row[0] == "VVVV77778888"
+        assert row[1] == "2IJ90"

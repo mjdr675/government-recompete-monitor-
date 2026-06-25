@@ -475,93 +475,119 @@ def my_contracts_summary(user_id):
     }
 
 
-def _vendor_match_term(profile):
-    """Return the best available match term for the user's company in the contracts table.
-
-    Prefers vendor_name, falls back to company_name. Returns None if neither is set.
-
-    UEI / CAGE Code fields are stored on the profile but not yet used here because
-    the contracts table has no recipient_uei / cage_code columns. When those columns
-    are added, activate matching by checking profile.get("uei") first, then
-    profile.get("cage_code"), before falling through to the vendor_name substring search.
-    """
-    if not profile:
-        return None
-    return (profile.get("vendor_name") or "").strip() or (profile.get("company_name") or "").strip() or None
-
-
 def my_current_contracts(user_id, limit=20):
-    """Return contracts where vendor matches the user's vendor_name (or company_name fallback).
+    """Return contracts matching the user's company identity: UEI first, CAGE second, vendor name last.
 
-    Uses LIKE for case-insensitive substring matching. Returns [] if the user
-    has no profile or no usable name.
+    Tries each identifier in priority order and combines results (deduped by internal_id).
+    Each result dict includes a 'match_method' key ('UEI', 'CAGE', or 'vendor name').
+    Returns [] if the user has no profile or no usable identifier.
     """
     if not user_id:
         return []
     from db import get_company_profile
     profile = get_company_profile(user_id)
-    match_term = _vendor_match_term(profile)
-    if not match_term:
+    if not profile:
         return []
+
+    uei = (profile.get("uei") or "").strip().upper()
+    cage = (profile.get("cage_code") or "").strip().upper()
+    vendor_term = (
+        (profile.get("vendor_name") or "").strip()
+        or (profile.get("company_name") or "").strip()
+    )
+
+    if not any([uei, cage, vendor_term]):
+        return []
+
+    _BASE = (
+        "SELECT internal_id, award_id, vendor, agency, value,"
+        " end_date, days_remaining, priority, recompete_score, category"
+        " FROM contracts"
+    )
     engine = get_engine()
+    results: list[dict] = []
+    seen: set[str] = set()
+
     with engine.connect() as conn:
-        rows = conn.execute(text("""
-            SELECT internal_id, award_id, vendor, agency, value,
-                   end_date, days_remaining, priority, recompete_score, category
-            FROM contracts
-            WHERE LOWER(vendor) LIKE LOWER(:pattern)
-            ORDER BY days_remaining ASC NULLS LAST, end_date ASC NULLS LAST
-            LIMIT :limit
-        """), {"pattern": f"%{match_term}%", "limit": limit}).mappings().fetchall()
-    return [dict(r) for r in rows]
+        if uei:
+            for r in conn.execute(text(
+                f"{_BASE} WHERE recipient_uei = :uei"
+                " ORDER BY days_remaining ASC NULLS LAST LIMIT :lim"
+            ), {"uei": uei, "lim": limit}).mappings().fetchall():
+                d = dict(r)
+                d["match_method"] = "UEI"
+                results.append(d)
+                seen.add(d["internal_id"])
+
+        if cage:
+            for r in conn.execute(text(
+                f"{_BASE} WHERE cage_code = :cage"
+                " ORDER BY days_remaining ASC NULLS LAST LIMIT :lim"
+            ), {"cage": cage, "lim": limit}).mappings().fetchall():
+                d = dict(r)
+                if d["internal_id"] not in seen:
+                    d["match_method"] = "CAGE"
+                    results.append(d)
+                    seen.add(d["internal_id"])
+
+        if vendor_term:
+            for r in conn.execute(text(
+                f"{_BASE} WHERE LOWER(vendor) LIKE LOWER(:pat)"
+                " ORDER BY days_remaining ASC NULLS LAST, end_date ASC NULLS LAST LIMIT :lim"
+            ), {"pat": f"%{vendor_term}%", "lim": limit}).mappings().fetchall():
+                d = dict(r)
+                if d["internal_id"] not in seen:
+                    d["match_method"] = "vendor name"
+                    results.append(d)
+                    seen.add(d["internal_id"])
+
+    return results[:limit]
 
 
 def my_current_contract_summary(user_id):
     """Aggregate summary of contracts matched to the user's company identity.
 
     Returns a dict with:
-      match_term   — the name we searched for (vendor_name or company_name fallback)
+      match_term   — the primary identifier used (UEI, CAGE code, or vendor name)
       count        — total matched contracts
       active_count — matched contracts with days_remaining > 0
       expiring_90  — matched contracts expiring within 90 days
       total_value  — sum of matched contract values
       contracts    — list of matched contracts (up to 20), ordered by days_remaining
 
-    Returns None if the user has no profile or no usable company name.
+    Returns None if the user has no profile or no usable identifier.
     """
     if not user_id:
         return None
     from db import get_company_profile
     profile = get_company_profile(user_id)
-    match_term = _vendor_match_term(profile)
-    if not match_term:
+    if not profile:
         return None
-    engine = get_engine()
-    with engine.connect() as conn:
-        agg = conn.execute(text("""
-            SELECT
-                COUNT(*) AS count,
-                COALESCE(SUM(value), 0) AS total_value,
-                SUM(CASE WHEN COALESCE(days_remaining, 0) > 0 THEN 1 ELSE 0 END) AS active_count,
-                SUM(CASE WHEN days_remaining BETWEEN 0 AND 90 THEN 1 ELSE 0 END) AS expiring_90
-            FROM contracts
-            WHERE LOWER(vendor) LIKE LOWER(:pattern)
-        """), {"pattern": f"%{match_term}%"}).mappings().fetchone()
-        rows = conn.execute(text("""
-            SELECT internal_id, award_id, vendor, agency, value,
-                   end_date, days_remaining, priority, recompete_score, category
-            FROM contracts
-            WHERE LOWER(vendor) LIKE LOWER(:pattern)
-            ORDER BY days_remaining ASC NULLS LAST, end_date ASC NULLS LAST
-            LIMIT 20
-        """), {"pattern": f"%{match_term}%"}).mappings().fetchall()
+
+    uei = (profile.get("uei") or "").strip().upper()
+    cage = (profile.get("cage_code") or "").strip().upper()
+    vendor_term = (
+        (profile.get("vendor_name") or "").strip()
+        or (profile.get("company_name") or "").strip()
+    )
+
+    if not any([uei, cage, vendor_term]):
+        return None
+
+    all_contracts = my_current_contracts(user_id, limit=500)
+    count = len(all_contracts)
+    active_count = sum(1 for r in all_contracts if (r.get("days_remaining") or 0) > 0)
+    expiring_90 = sum(1 for r in all_contracts if 0 <= (r.get("days_remaining") or -1) <= 90)
+    total_value = sum(float(r.get("value") or 0) for r in all_contracts)
+    match_term = uei or cage or vendor_term
+
     return {
         "match_term": match_term,
-        "count": agg["count"] if agg else 0,
-        "active_count": agg["active_count"] if agg else 0,
-        "expiring_90": agg["expiring_90"] if agg else 0,
-        "total_value": agg["total_value"] if agg else 0,
-        "contracts": [dict(r) for r in rows],
+        "count": count,
+        "active_count": active_count,
+        "expiring_90": expiring_90,
+        "total_value": total_value,
+        "contracts": all_contracts[:20],
     }
 
 

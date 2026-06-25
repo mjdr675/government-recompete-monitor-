@@ -136,6 +136,10 @@ _MIGRATION_PROBES: dict = {
         "SELECT COUNT(*) FROM information_schema.columns "
         "WHERE table_name = 'contracts' AND column_name = 'psc_description'"
     ),
+    "017_contracts_uei_cage.sql": (
+        "SELECT COUNT(*) FROM information_schema.columns "
+        "WHERE table_name = 'contracts' AND column_name = 'recipient_uei'"
+    ),
 }
 
 
@@ -438,7 +442,9 @@ def init_db():
             psc_description TEXT,
             raw_json TEXT,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            vendor_website TEXT
+            vendor_website TEXT,
+            recipient_uei TEXT NOT NULL DEFAULT '',
+            cage_code TEXT NOT NULL DEFAULT ''
         )
         """))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_contracts_vendor ON contracts(vendor)"))
@@ -505,6 +511,14 @@ def init_db():
             conn.execute(text("ALTER TABLE contracts ADD COLUMN sam_url TEXT"))
         except Exception:
             pass
+        for _uei_col in (
+            "recipient_uei TEXT NOT NULL DEFAULT ''",
+            "cage_code TEXT NOT NULL DEFAULT ''",
+        ):
+            try:
+                conn.execute(text(f"ALTER TABLE contracts ADD COLUMN {_uei_col}"))
+            except Exception:
+                pass
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS celery_task_log (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1311,13 +1325,15 @@ def upsert_contract(row):
             naics_code, place_of_performance_state, place_of_performance_city,
             place_of_performance_zip, category, psc_description,
             value, start_date, end_date, days_remaining, competition_type,
-            solicitation_id, recompete_score, priority, raw_json, updated_at, sam_url
+            solicitation_id, recompete_score, priority, raw_json, updated_at, sam_url,
+            recipient_uei, cage_code
         )
         VALUES (:internal_id, :award_id, :vendor, :agency, :sub_agency, :description,
                 :naics_code, :place_of_performance_state, :place_of_performance_city,
                 :place_of_performance_zip, :category, :psc_description,
                 :value, :start_date, :end_date, :days_remaining, :competition_type,
-                :solicitation_id, :recompete_score, :priority, :raw_json, :updated_at, :sam_url)
+                :solicitation_id, :recompete_score, :priority, :raw_json, :updated_at, :sam_url,
+                :recipient_uei, :cage_code)
         ON CONFLICT(internal_id) DO UPDATE SET
             award_id=excluded.award_id,
             vendor=excluded.vendor,
@@ -1340,7 +1356,9 @@ def upsert_contract(row):
             priority=excluded.priority,
             raw_json=excluded.raw_json,
             updated_at=excluded.updated_at,
-            sam_url=excluded.sam_url
+            sam_url=excluded.sam_url,
+            recipient_uei=excluded.recipient_uei,
+            cage_code=excluded.cage_code
         """), {
             "internal_id": internal_id,
             "award_id": row.get("award_id"),
@@ -1365,6 +1383,8 @@ def upsert_contract(row):
             "raw_json": json.dumps(row, default=str),
             "updated_at": now,
             "sam_url": row.get("sam_url") or "",
+            "recipient_uei": row.get("recipient_uei") or "",
+            "cage_code": row.get("cage_code") or "",
         })
 
 
@@ -1428,14 +1448,15 @@ def save_snapshot(run_date, rows):
                 naics_code, place_of_performance_state, place_of_performance_city,
                 place_of_performance_zip, category, psc_description,
                 value, start_date, end_date, days_remaining, competition_type,
-                solicitation_id, recompete_score, priority, raw_json, updated_at, sam_url
+                solicitation_id, recompete_score, priority, raw_json, updated_at, sam_url,
+                recipient_uei, cage_code
             )
             VALUES (:internal_id, :award_id, :vendor, :agency, :sub_agency, :description,
                     :naics_code, :place_of_performance_state, :place_of_performance_city,
                     :place_of_performance_zip, :category, :psc_description,
                     :value, :start_date, :end_date, :days_remaining, :competition_type,
                     :solicitation_id, :recompete_score, :priority, :raw_json, CURRENT_TIMESTAMP,
-                    :sam_url)
+                    :sam_url, :recipient_uei, :cage_code)
             ON CONFLICT(internal_id) DO UPDATE SET
                 award_id=excluded.award_id,
                 vendor=excluded.vendor,
@@ -1458,7 +1479,9 @@ def save_snapshot(run_date, rows):
                 priority=excluded.priority,
                 raw_json=excluded.raw_json,
                 updated_at=CURRENT_TIMESTAMP,
-                sam_url=excluded.sam_url
+                sam_url=excluded.sam_url,
+                recipient_uei=excluded.recipient_uei,
+                cage_code=excluded.cage_code
             """), {
                 "internal_id": internal_id,
                 "award_id": row.get("award_id") or row.get("contract"),
@@ -1482,6 +1505,8 @@ def save_snapshot(run_date, rows):
                 "priority": row.get("priority"),
                 "raw_json": json.dumps(row, default=str),
                 "sam_url": row.get("sam_url") or "",
+                "recipient_uei": row.get("recipient_uei") or "",
+                "cage_code": row.get("cage_code") or "",
             })
             conn.execute(text("""
             INSERT INTO contract_snapshots (
