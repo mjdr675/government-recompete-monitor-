@@ -44,3 +44,6 @@ logs/
 
 # Uploaded company logos (user content / test artifacts)
 static/uploads/
+
+# Python virtualenv (deploy runs git clean -fd; without this it deletes the venv)
+venv/
