@@ -1401,6 +1401,130 @@ tbody tr:hover > th { background: var(--accent-light) !important; }
 }
 
 /* ─────────────────────────────────────────────────
+   FOR MY BUSINESS — compact card rows
+───────────────────────────────────────────────── */
+.fmb-cards { display: flex; flex-direction: column; }
+.fmb-card {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.fmb-card:last-child { border-bottom: none; }
+
+.fmb-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.fmb-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fmb-card-title:hover { text-decoration: underline; }
+
+.fmb-days {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.fmb-days-warn { color: #d97706; font-weight: 700; }
+
+.fmb-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.fmb-card-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 10px;
+  margin-bottom: 2px;
+  line-height: 1.5;
+}
+.fmb-card-meta span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+
+.fmb-card-details {
+  font-size: 12px;
+  color: var(--text-secondary, var(--text-muted));
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 12px;
+  margin-bottom: 3px;
+}
+
+.fmb-card-why {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.fmb-action-chip {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 9999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+
+/* ─────────────────────────────────────────────────
+   RECOMMENDED OPPORTUNITIES — compact aside rows
+───────────────────────────────────────────────── */
+.rec-opp-rows { display: flex; flex-direction: column; }
+.rec-opp-row {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.rec-opp-row:last-child { border-bottom: none; }
+
+.rec-opp-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+.rec-opp-title {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--accent);
+  text-decoration: none;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rec-opp-title:hover { text-decoration: underline; }
+.rec-opp-why {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* ─────────────────────────────────────────────────
    UTILITY
 ───────────────────────────────────────────────── */
 .muted   { color: var(--text-muted); }
