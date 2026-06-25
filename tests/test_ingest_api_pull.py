@@ -318,3 +318,88 @@ class TestIngestLogWrites:
                 "SELECT run_date FROM ingest_log LIMIT 1"
             )).scalar()
         assert run_date == "2025-09-15"
+
+
+# ---------------------------------------------------------------------------
+# Exception handling — retry + logging
+# ---------------------------------------------------------------------------
+
+class TestFetchContractsExceptionHandling:
+    def test_request_exception_is_retried_and_logged(self, monkeypatch, caplog):
+        """Any requests.exceptions.RequestException should trigger a warning
+        and a reconnect rather than propagating out of the retry loop."""
+        import requests as req_lib
+        fixed_today = date(2025, 6, 1)
+        call_count = {"n": 0}
+
+        def flaky_post(self_or_url, url_or_none=None, json=None, timeout=None):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise req_lib.exceptions.Timeout("read timed out")
+            class OkResp:
+                status_code = 200
+                def raise_for_status(self): pass
+                def json(self):
+                    return {"results": [], "page_metadata": {"hasNext": False}}
+            return OkResp()
+
+        monkeypatch.setattr(jrr.requests.Session, "post", flaky_post)
+        with caplog.at_level(logging.WARNING, logger="ingest"):
+            jrr.fetch_contracts(fixed_today, fixed_today + timedelta(days=540))
+
+        assert call_count["n"] >= 2, "fetch_contracts must retry after a RequestException"
+        assert any("request error" in r.message for r in caplog.records), (
+            "fetch_contracts must log a WARNING with 'request error' on RequestException"
+        )
+
+    def test_ssl_error_is_retried_not_raised(self, monkeypatch):
+        """SSLError (a RequestException subclass) must be caught by the broad
+        except clause and trigger a retry, not propagate unhandled."""
+        import requests as req_lib
+        fixed_today = date(2025, 6, 1)
+        call_count = {"n": 0}
+
+        def ssl_then_ok(self_or_url, url_or_none=None, json=None, timeout=None):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise req_lib.exceptions.SSLError("certificate verify failed")
+            class OkResp:
+                status_code = 200
+                def raise_for_status(self): pass
+                def json(self):
+                    return {"results": [], "page_metadata": {"hasNext": False}}
+            return OkResp()
+
+        monkeypatch.setattr(jrr.requests.Session, "post", ssl_then_ok)
+        # Must not raise
+        jrr.fetch_contracts(fixed_today, fixed_today + timedelta(days=540))
+        assert call_count["n"] == 2
+
+
+# ---------------------------------------------------------------------------
+# __main__ logging setup
+# ---------------------------------------------------------------------------
+
+class TestMainBlockLogging:
+    def test_main_block_configures_basicConfig(self):
+        """The __main__ block must call logging.basicConfig so that progress
+        logs are visible when janitorial_recompete_report.py is run directly.
+        Verify by reading the source — not by executing __main__."""
+        import ast, pathlib
+        src = pathlib.Path(jrr.__file__).read_text()
+        tree = ast.parse(src)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.If):
+                test = node.test
+                if (
+                    isinstance(test, ast.Compare)
+                    and isinstance(test.left, ast.Name)
+                    and test.left.id == "__name__"
+                ):
+                    block_src = ast.unparse(node)
+                    assert "basicConfig" in block_src, (
+                        "__main__ block must call logging.basicConfig so that progress "
+                        "logs are visible when the script is run directly"
+                    )
+                    return
+        raise AssertionError("No if __name__ == '__main__' block found in source")

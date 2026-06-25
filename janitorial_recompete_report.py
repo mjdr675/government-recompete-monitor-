@@ -105,10 +105,10 @@ def fetch_contracts(today, cutoff):
                     break
                 logger.warning("fetch page=%d attempt=%d got %d — retrying", page, attempt, r.status_code)
                 time.sleep(3 * attempt)
-            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            except requests.exceptions.RequestException as e:
                 logger.warning(
-                    "fetch page=%d attempt=%d timeout/connection error: %s — reconnecting",
-                    page, attempt, e,
+                    "fetch page=%d attempt=%d request error (%s): %s — reconnecting",
+                    page, attempt, type(e).__name__, e,
                 )
                 time.sleep(5 * attempt)
                 session = requests.Session()
@@ -402,4 +402,10 @@ def main():
     _write_ingest_log(run_date, len(rows), "success", None)
 
 if __name__ == "__main__":
+    import sys
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        stream=sys.stdout,
+    )
     main()
