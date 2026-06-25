@@ -194,6 +194,20 @@ PLAN_CATALOG = {
         ],
     },
 }
+SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "support@recompete.us")
+
+# Public Stripe Payment Links — no secret key required.
+# These are used for self-serve plan upgrades at launch.
+# Full Stripe Customer Portal (cancel, change plan) will be added once
+# stripe_customer_id / stripe_subscription_id are reliably populated via
+# checkout.session.completed webhooks. Until then, customers email support.
+PAYMENT_LINKS = {
+    "basic_monthly":  "https://buy.stripe.com/eVq3cwgki6R62T32Py28802",
+    "basic_yearly":   "https://buy.stripe.com/28E3cwaZYdfubpz0Hq28803",   # 7-day trial
+    "pro_monthly":    "https://buy.stripe.com/9B6aEY0lkejy51bcq828800",
+    "pro_yearly":     "https://buy.stripe.com/3cIdRa9VU8ZectD0Hq28801",    # 7-day trial
+}
+
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("RAILWAY_ENVIRONMENT") == "production"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
@@ -567,7 +581,7 @@ def inject_company_name():
 
 @app.context_processor
 def inject_plan_catalog():
-    """Expose plan catalog and current workspace plan to all templates."""
+    """Expose plan catalog, payment links, and current workspace plan to all templates."""
     user = g.get("user")
     workspace_plan = None
     if user:
@@ -578,7 +592,12 @@ def inject_plan_catalog():
                 workspace_plan = (billing or {}).get("plan")
         except Exception:
             pass
-    return {"plan_catalog": PLAN_CATALOG, "workspace_plan": workspace_plan}
+    return {
+        "plan_catalog": PLAN_CATALOG,
+        "payment_links": PAYMENT_LINKS,
+        "support_email": SUPPORT_EMAIL,
+        "workspace_plan": workspace_plan,
+    }
 
 
 @app.route("/health")
@@ -2366,6 +2385,8 @@ def settings_billing():
         billing=billing,
         plans=VALID_PLANS,
         plan_catalog=PLAN_CATALOG,
+        payment_links=PAYMENT_LINKS,
+        support_email=SUPPORT_EMAIL,
         in_trial=is_workspace_in_trial(workspace["id"]),
         trial_days_remaining=_workspace_trial_days_remaining(billing),
         active=is_workspace_active(workspace["id"]),

@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Billing — Recompete{% endblock %}
 {% block content %}
-<h1>Billing &amp; Plan</h1>
-<div class="page-meta" style="margin-bottom:20px">Manage your workspace subscription.</div>
+<h1>Billing &amp; Subscription</h1>
+<div class="page-meta" style="margin-bottom:20px">Manage your Recompete subscription.</div>
 
 <div class="settings-page">
 
   {% if expired %}
-    <div class="auth-error" style="margin-bottom:16px">Your trial has ended. Choose a plan to keep access.</div>
+    <div class="auth-error" style="margin-bottom:16px">Your trial has ended. Choose a plan below to continue.</div>
   {% endif %}
   {% if upgraded %}
     <div class="auth-success" style="margin-bottom:16px">Subscription updated. Thank you!</div>
@@ -16,58 +16,111 @@
     <div class="auth-error" style="margin-bottom:16px">{{ error }}</div>
   {% endif %}
 
+  {# ── Current plan ──────────────────────────────────────────────── #}
   <div class="settings-card">
     <h2>Current Plan</h2>
-    <p style="margin:0 0 4px"><strong>Plan:</strong> {{ (billing.plan or 'starter') | capitalize }}</p>
+    <p style="margin:0 0 4px">
+      <strong>Plan:</strong>
+      {% if billing and billing.plan %}
+        {{ billing.plan | capitalize }}
+      {% else %}
+        —
+      {% endif %}
+    </p>
     <p style="margin:0 0 4px">
       <strong>Status:</strong>
-      {% if billing.subscription_status == 'active' %}
+      {% if billing and billing.subscription_status == 'active' %}
         <span style="color:#16a34a;font-weight:600">Active</span>
-      {% elif billing.subscription_status == 'trialing' %}
+      {% elif billing and billing.subscription_status == 'trialing' %}
         <span style="color:#d97706;font-weight:600">Trial</span>
         {% if trial_days_remaining is not none %} — {{ trial_days_remaining }} day{{ 's' if trial_days_remaining != 1 }} remaining{% endif %}
-      {% elif billing.subscription_status == 'past_due' %}
+      {% elif billing and billing.subscription_status == 'past_due' %}
         <span style="color:var(--badge-critical-bg);font-weight:600">Past due</span>
       {% else %}
-        <span style="color:var(--badge-critical-bg);font-weight:600">{{ (billing.subscription_status or 'inactive') | capitalize }}</span>
+        <span style="color:var(--text-muted)">No active subscription</span>
       {% endif %}
     </p>
     {% if not active %}
-      <p style="margin:8px 0 0;font-size:13px;color:var(--text-muted)">Access is currently restricted. Choose a plan below to continue.</p>
+      <p style="margin:8px 0 0;font-size:13px;color:var(--text-muted)">
+        Access is currently restricted. Choose a plan below to continue.
+      </p>
     {% endif %}
   </div>
 
+  {# ── Upgrade / choose a plan ───────────────────────────────────── #}
   <div class="settings-card">
-    <h2>Plans</h2>
-    <div style="display:flex;gap:12px;flex-wrap:wrap">
-      {% for plan in plans %}
-      <form method="post" action="/settings/billing" style="margin:0">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="action" value="upgrade">
-        <input type="hidden" name="plan" value="{{ plan }}">
-        <button type="submit"
-                class="btn {{ 'btn-secondary' if billing.plan == plan and billing.subscription_status == 'active' else 'btn-primary' }}"
-                style="font-size:13px"
-                {{ 'disabled' if billing.plan == plan and billing.subscription_status == 'active' }}>
-          {% if billing.plan == plan and billing.subscription_status == 'active' %}Current: {{ plan | capitalize }}{% else %}Choose {{ plan | capitalize }}{% endif %}
-        </button>
-      </form>
-      {% endfor %}
+    <h2>{% if active %}Available Plans{% else %}Choose a Plan{% endif %}</h2>
+    <p style="font-size:13px;color:var(--text-muted);margin:0 0 16px">
+      Plans are billed through Stripe. Yearly plans include a 7-day free trial.
+      {% if not active %}Subscribe below to restore full access.{% endif %}
+    </p>
+    <div style="display:grid;gap:12px">
+
+      {# Basic #}
+      <div style="border:1px solid var(--border);border-radius:8px;padding:16px">
+        <div style="font-weight:600;margin-bottom:4px">Basic</div>
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px">
+          $49/mo &nbsp;·&nbsp;
+          <a href="{{ payment_links.basic_yearly }}" target="_blank" rel="noopener"
+             style="color:var(--text-muted)">$470/yr (7-day trial)</a>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <a href="{{ payment_links.basic_monthly }}" target="_blank" rel="noopener"
+             class="btn btn-secondary" style="font-size:13px">Subscribe monthly →</a>
+          <a href="{{ payment_links.basic_yearly }}" target="_blank" rel="noopener"
+             class="btn btn-primary" style="font-size:13px">Subscribe yearly (trial) →</a>
+        </div>
+      </div>
+
+      {# Pro #}
+      <div style="border:1px solid var(--border);border-radius:8px;padding:16px">
+        <div style="font-weight:600;margin-bottom:4px">Pro</div>
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px">
+          $99/mo &nbsp;·&nbsp;
+          <a href="{{ payment_links.pro_yearly }}" target="_blank" rel="noopener"
+             style="color:var(--text-muted)">$950/yr (7-day trial)</a>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <a href="{{ payment_links.pro_monthly }}" target="_blank" rel="noopener"
+             class="btn btn-secondary" style="font-size:13px">Subscribe monthly →</a>
+          <a href="{{ payment_links.pro_yearly }}" target="_blank" rel="noopener"
+             class="btn btn-primary" style="font-size:13px">Subscribe yearly (trial) →</a>
+        </div>
+      </div>
+
     </div>
   </div>
 
-  {% if billing.stripe_customer_id %}
+  {# ── Cancellation / billing help ───────────────────────────────── #}
   <div class="settings-card">
-    <h2>Manage Subscription</h2>
-    <form method="post" action="/settings/billing" style="margin:0">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="action" value="portal">
-      <button type="submit" class="btn btn-secondary" style="font-size:13px">Open billing portal →</button>
-    </form>
+    <h2>Need to cancel or change your subscription?</h2>
+    <p style="margin:0 0 12px;font-size:14px">
+      Email us and we'll manage your billing promptly.
+    </p>
+    <a href="mailto:{{ support_email }}?subject=Billing%20request"
+       class="btn btn-secondary" style="font-size:13px">
+      Email {{ support_email }}
+    </a>
+    <p style="margin:12px 0 0;font-size:12px;color:var(--text-muted)">
+      Self-service billing management (cancel, upgrade, or change plan without emailing us)
+      is coming soon.
+    </p>
+    <!--
+      Future self-service billing requires:
+        - stripe_customer_id populated via checkout.session.completed webhook
+        - stripe_subscription_id for the active subscription
+        - subscription_status kept in sync via customer.subscription.* webhooks
+        - plan stored on the workspace record
+        - Stripe Customer Portal session creation (stripe.billing_portal.Session.create)
+      Do not implement until webhooks are wired and stripe_customer_id is reliable.
+    -->
   </div>
-  {% endif %}
 
-  <p style="font-size:13px;color:var(--text-muted)"><a href="/settings/workspace">Workspace settings →</a></p>
+  <p style="font-size:13px;color:var(--text-muted)">
+    <a href="/settings/workspace">Workspace settings →</a>
+    &nbsp;·&nbsp;
+    <a href="/settings/account">Account settings →</a>
+  </p>
 
 </div>
 {% endblock %}

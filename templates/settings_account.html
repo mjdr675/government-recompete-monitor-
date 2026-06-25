@@ -27,15 +27,18 @@
         <span style="color:var(--badge-critical-bg);font-weight:600">{{ user.subscription_status | capitalize }}</span>
       {% endif %}
     </p>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      {% if user.stripe_customer_id %}
-        <form method="post" action="/billing/portal" style="display:inline;margin:0">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="btn btn-secondary" style="font-size:13px">Manage subscription →</button>
-        </form>
-      {% else %}
-        <a href="/subscribe" class="btn btn-primary" style="font-size:13px">Upgrade to Pro →</a>
-      {% endif %}
+    {% if user.subscription_status in ('active', 'trialing') %}
+      <p style="margin:8px 0 0;font-size:13px;color:var(--text-muted)">
+        To cancel or change your plan, email
+        <a href="mailto:{{ support_email }}?subject=Billing%20request">{{ support_email }}</a>.
+      </p>
+    {% else %}
+      <p style="margin:8px 0 4px;font-size:13px;color:var(--text-muted)">
+        Subscribe to get full access.
+      </p>
+      <a href="/settings/billing" class="btn btn-primary" style="font-size:13px">View plans →</a>
+    {% endif %}
+    <div style="margin-top:8px">
       <a href="/company-profile" class="btn btn-ghost" style="font-size:13px">Edit company profile →</a>
     </div>
   </div>
