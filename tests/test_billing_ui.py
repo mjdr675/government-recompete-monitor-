@@ -78,9 +78,50 @@ def test_settings_billing_cancellation_copy_present(client):
 
 
 def test_settings_billing_payment_links_present(client):
-    """Public Stripe Payment Links must appear for plan selection."""
+    """Public Stripe Payment Links must appear for Basic and Pro plan selection."""
     rv = client.get("/settings/billing")
     assert b"buy.stripe.com" in rv.data
+
+
+def test_settings_billing_basic_monthly_link(client):
+    rv = client.get("/settings/billing")
+    assert b"eVq3cwgki6R62T32Py28802" in rv.data  # Basic Monthly payment link fragment
+
+
+def test_settings_billing_basic_yearly_link(client):
+    rv = client.get("/settings/billing")
+    assert b"28E3cwaZYdfubpz0Hq28803" in rv.data  # Basic Yearly payment link fragment
+
+
+def test_settings_billing_pro_monthly_link(client):
+    rv = client.get("/settings/billing")
+    assert b"9B6aEY0lkejy51bcq828800" in rv.data  # Pro Monthly payment link fragment
+
+
+def test_settings_billing_pro_yearly_link(client):
+    rv = client.get("/settings/billing")
+    assert b"3cIdRa9VU8ZectD0Hq28801" in rv.data  # Pro Yearly payment link fragment
+
+
+def test_settings_billing_enterprise_goes_to_sales_email(client):
+    """Enterprise CTA must point to mailto:sales@recompete.us, not a Stripe link."""
+    rv = client.get("/settings/billing")
+    assert b"sales@recompete.us" in rv.data
+    assert b"Contact Sales" in rv.data
+
+
+def test_settings_billing_enterprise_has_no_stripe_link(client):
+    """Enterprise plan must not have a buy.stripe.com link."""
+    rv = client.get("/settings/billing")
+    html = rv.data.decode()
+    # Confirm Enterprise section exists
+    assert "Enterprise" in html
+    # Find the Enterprise card block and verify no stripe.com URL in it
+    enterprise_idx = html.find("Enterprise")
+    # The next buy.stripe.com occurrence (if any) must come BEFORE the Enterprise block
+    stripe_idx = html.rfind("buy.stripe.com")
+    assert stripe_idx < enterprise_idx or stripe_idx == -1, \
+        "buy.stripe.com URL found after Enterprise section — Enterprise must not link to Stripe"
 
 
 def test_settings_billing_no_secret_key_in_html(client):
