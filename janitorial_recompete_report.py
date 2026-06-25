@@ -88,10 +88,16 @@ def fetch_contracts(today, cutoff):
             "order": "desc",
         }
 
+        action_start = (today - timedelta(days=ACTION_DATE_LOOKBACK_DAYS)).isoformat()
+        action_end = today.isoformat()
         success = False
         for attempt in range(1, 6):
+            logger.info(
+                "fetch page=%d attempt=%d date_range=%s..%s",
+                page, attempt, action_start, action_end,
+            )
             try:
-                r = session.post(API_URL, json=payload, timeout=60)
+                r = session.post(API_URL, json=payload, timeout=(10, 30))
                 logger.info("fetch page=%d attempt=%d status=%d", page, attempt, r.status_code)
                 if r.status_code < 500:
                     r.raise_for_status()
@@ -100,7 +106,10 @@ def fetch_contracts(today, cutoff):
                 logger.warning("fetch page=%d attempt=%d got %d — retrying", page, attempt, r.status_code)
                 time.sleep(3 * attempt)
             except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-                logger.warning("fetch page=%d attempt=%d connection error: %s — reconnecting", page, attempt, e)
+                logger.warning(
+                    "fetch page=%d attempt=%d timeout/connection error: %s — reconnecting",
+                    page, attempt, e,
+                )
                 time.sleep(5 * attempt)
                 session = requests.Session()
 
