@@ -806,7 +806,9 @@ def test_dashboard_shows_no_refresh_yet_when_no_ingest(client):
 def test_dashboard_shows_freshness_banner_when_ingest_exists(client, test_db):
     import sqlite3
     from datetime import datetime, timezone, timedelta
-    ts = (datetime.now(timezone.utc) - timedelta(hours=3)).isoformat()
+    # Use noon UTC so the timestamp is always on "today" regardless of when the test runs.
+    now = datetime.now(timezone.utc)
+    ts = now.replace(hour=12, minute=0, second=0, microsecond=0).isoformat()
     con = sqlite3.connect(test_db)
     con.execute(
         "INSERT INTO ingest_log (run_date, source, record_count, duration_seconds, status, created_at)"
@@ -817,7 +819,6 @@ def test_dashboard_shows_freshness_banner_when_ingest_exists(client, test_db):
     con.close()
     rv = client.get("/dashboard")
     assert rv.status_code == 200
-    # Freshness should show "Updated today at ..." for a 3-hour-old run
     assert b"Updated today at" in rv.data
 
 
@@ -859,9 +860,10 @@ def test_dashboard_shows_failed_state_when_only_failures(client, test_db):
 def test_dashboard_shows_success_not_failure_when_success_is_newer(client, test_db):
     import sqlite3
     from datetime import datetime, timezone, timedelta
-    # Old failure, then newer success
-    fail_ts = (datetime.now(timezone.utc) - timedelta(hours=5)).isoformat()
-    ok_ts = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    # Use explicit noon/10am UTC so both timestamps are on "today" regardless of when tests run.
+    now = datetime.now(timezone.utc)
+    fail_ts = now.replace(hour=10, minute=0, second=0, microsecond=0).isoformat()
+    ok_ts = now.replace(hour=12, minute=0, second=0, microsecond=0).isoformat()
     con = sqlite3.connect(test_db)
     con.execute(
         "INSERT INTO ingest_log (run_date, source, record_count, duration_seconds, status, error_message, created_at)"

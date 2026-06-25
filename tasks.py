@@ -224,7 +224,7 @@ def run_ingest(self):
             log_id = result.lastrowid
 
     try:
-        from janitorial_recompete_report import main
+        from recompete_report import main
         main()
         duration = time.monotonic() - start_time
         finished_at = datetime.now(timezone.utc).isoformat()

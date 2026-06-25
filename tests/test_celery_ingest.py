@@ -83,7 +83,7 @@ class TestRunIngestTask:
 
         mock_main = MagicMock(return_value=None)
         monkeypatch.setattr(
-            "janitorial_recompete_report.main",
+            "recompete_report.main",
             mock_main,
             raising=False,
         )
@@ -99,7 +99,7 @@ class TestRunIngestTask:
 
         mock_main = MagicMock(return_value=None)
         monkeypatch.setattr(
-            "janitorial_recompete_report.main",
+            "recompete_report.main",
             mock_main,
             raising=False,
         )
@@ -123,7 +123,7 @@ class TestRunIngestTask:
             raise RuntimeError("SAM.gov unreachable")
 
         monkeypatch.setattr(
-            "janitorial_recompete_report.main",
+            "recompete_report.main",
             boom,
             raising=False,
         )
@@ -144,7 +144,7 @@ class TestRunIngestTask:
 
         mock_main = MagicMock(return_value=None)
         monkeypatch.setattr(
-            "janitorial_recompete_report.main",
+            "recompete_report.main",
             mock_main,
             raising=False,
         )
@@ -289,7 +289,7 @@ class TestIngestLog:
         import tasks as tasks_module
         from sqlalchemy import text
 
-        monkeypatch.setattr("janitorial_recompete_report.main", MagicMock(), raising=False)
+        monkeypatch.setattr("recompete_report.main", MagicMock(), raising=False)
         tasks_module.run_ingest.apply()
 
         engine = db_module.get_engine()
@@ -310,7 +310,7 @@ class TestIngestLog:
         def boom():
             raise RuntimeError("network timeout")
 
-        monkeypatch.setattr("janitorial_recompete_report.main", boom, raising=False)
+        monkeypatch.setattr("recompete_report.main", boom, raising=False)
         result = tasks_module.run_ingest.apply()
         assert result.failed()
 
@@ -355,7 +355,7 @@ class TestIngestQualityAlert:
         import tasks as tasks_module
 
         self._insert_contracts(test_db, 2)
-        monkeypatch.setattr("janitorial_recompete_report.main", MagicMock(), raising=False)
+        monkeypatch.setattr("recompete_report.main", MagicMock(), raising=False)
 
         with caplog.at_level(logging.ERROR, logger="tasks"):
             tasks_module.run_ingest.apply()
@@ -367,7 +367,7 @@ class TestIngestQualityAlert:
         import tasks as tasks_module
 
         self._insert_contracts(test_db, 15)
-        monkeypatch.setattr("janitorial_recompete_report.main", MagicMock(), raising=False)
+        monkeypatch.setattr("recompete_report.main", MagicMock(), raising=False)
 
         with caplog.at_level(logging.ERROR, logger="tasks"):
             tasks_module.run_ingest.apply()
@@ -385,7 +385,7 @@ def test_sentry_capture_called_on_ingest_failure(test_db, monkeypatch):
     def boom():
         raise RuntimeError("SAM.gov unreachable")
 
-    monkeypatch.setattr("janitorial_recompete_report.main", boom, raising=False)
+    monkeypatch.setattr("recompete_report.main", boom, raising=False)
     captured = []
     monkeypatch.setattr(sentry_sdk, "capture_exception", lambda exc: captured.append(exc))
 
