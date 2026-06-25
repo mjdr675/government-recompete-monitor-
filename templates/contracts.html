@@ -179,37 +179,37 @@
 {% endmacro %}
 
 {# ── Desktop table (hidden on mobile) ──────────────────────── #}
-<div class="table-wrapper m-hide">
+<div class="table-wrapper contracts-wrap m-hide">
   <div class="table-header">
     <div class="table-header-actions">
       <button id="compare-btn" disabled onclick="compareSelected()" class="btn btn-ghost" style="padding:3px 9px;font-size:11.5px">Compare selected</button>
       <span id="compare-hint" class="faint" style="font-size:11.5px">Select 2</span>
     </div>
   </div>
-  <table>
+  <table class="contracts-tbl">
     <thead>
       <tr>
-        <th>Watch</th>
-        <th></th>
-        <th>{{ sort_link("priority", "Priority") }}</th>
-        <th>{{ sort_link("vendor", "Vendor") }}</th>
-        <th>{{ sort_link("agency", "Agency") }}</th>
-        <th>Category</th>
-        <th>State</th>
-        <th class="col-r">{{ sort_link("value", "Value") }}</th>
-        <th>{{ sort_link("end_date", "End Date") }}</th>
-        <th class="col-r">{{ sort_link("days_remaining", "Days") }}</th>
-        <th class="col-r">{{ sort_link("recompete_score", "Score") }} <button type="button" class="score-info-btn" onclick="openScoreModal()" aria-haspopup="dialog" aria-label="How the Recompete Score is calculated" title="How the Recompete Score is calculated">&#9432;</button></th>
-        {% if for_my_business %}<th class="col-r" title="How well this contract matches your Company Profile">Match</th>{% endif %}
-        <th style="width:90px"></th>
+        <th class="cw-watch">Watch</th>
+        <th class="cw-cmp"></th>
+        <th class="cw-pri">{{ sort_link("priority", "Priority") }}</th>
+        <th class="cw-vendor">{{ sort_link("vendor", "Vendor") }}</th>
+        <th class="cw-agency">{{ sort_link("agency", "Agency") }}</th>
+        <th class="cw-cat">Category</th>
+        <th class="cw-state">State</th>
+        <th class="cw-val col-r">{{ sort_link("value", "Value") }}</th>
+        <th class="cw-date">{{ sort_link("end_date", "End Date") }}</th>
+        <th class="cw-days col-r">{{ sort_link("days_remaining", "Days") }}</th>
+        <th class="cw-score col-r">{{ sort_link("recompete_score", "Score") }} <button type="button" class="score-info-btn" onclick="openScoreModal()" aria-haspopup="dialog" aria-label="How the Recompete Score is calculated" title="How the Recompete Score is calculated">&#9432;</button></th>
+        {% if for_my_business %}<th class="cw-match col-r" title="How well this contract matches your Company Profile">Match</th>{% endif %}
+        <th class="cw-action"></th>
       </tr>
     </thead>
     <tbody>
       {% for r in rows %}
       <tr>
-        <td style="width:36px"><button class="bm-btn" data-id="{{ r['internal_id'] }}" onclick="bookmarkToggle(this)" title="Bookmark">{{ "★" if r['internal_id'] in watchlist_ids else "☆" }}</button></td>
-        <td style="width:28px"><input type="checkbox" class="cmp-check" value="{{ r['internal_id'] }}" onchange="updateCompare()"></td>
-        <td>
+        <td class="cw-watch"><button class="bm-btn" data-id="{{ r['internal_id'] }}" onclick="bookmarkToggle(this)" title="Bookmark">{{ "★" if r['internal_id'] in watchlist_ids else "☆" }}</button></td>
+        <td class="cw-cmp"><input type="checkbox" class="cmp-check" value="{{ r['internal_id'] }}" onchange="updateCompare()"></td>
+        <td class="cw-pri">
           <a class="priority-badge priority-{{ (r["priority"] or "unknown").lower().replace(" ", "-").replace("_", "-") }}"
              href="/contract/{{ r["internal_id"] }}">{{ r["priority"] }}</a>
           {% if pipeline_map and r['internal_id'] in pipeline_map %}
@@ -217,22 +217,22 @@
              style="font-size:10.5px;padding:1px 6px;border-radius:var(--radius-sm);background:#d1fae5;color:#065f46;font-weight:600;text-decoration:none;vertical-align:middle;margin-left:4px">&#10003; Pipeline</a>
           {% endif %}
         </td>
-        <td><a href="/vendor/{{ r["vendor"]|urlencode }}">{{ r["vendor"] }}</a></td>
-        <td><a href="/agency/{{ r["agency"]|urlencode }}">{{ r["agency"] }}</a></td>
-        <td>{% if r.get("category") and r["category"] != "Other" %}<a href="/contracts?category={{ r['category'] }}" style="font-size:12px;color:var(--text-muted)">{{ r["category"] }}</a>{% endif %}</td>
-        <td>{% if r.get("place_of_performance_state") %}<a href="/contracts?state={{ r['place_of_performance_state'] }}" style="font-size:12px;color:var(--text-muted)">{% if r.get("place_of_performance_city") %}{{ r["place_of_performance_city"] }}, {% endif %}{{ r["place_of_performance_state"] }}{% if r.get("place_of_performance_zip") %} {{ r["place_of_performance_zip"] }}{% endif %}</a>{% endif %}</td>
-        <td class="col-r">${{ "{:,.0f}".format(r["value"] or 0) }}</td>
-        <td>{{ r["end_date"] }}</td>
-        <td class="col-r">
+        <td class="cw-vendor"><a href="/vendor/{{ r["vendor"]|urlencode }}">{{ r["vendor"] }}</a></td>
+        <td class="cw-agency"><a href="/agency/{{ r["agency"]|urlencode }}">{{ r["agency"] }}</a></td>
+        <td class="cw-cat">{% if r.get("category") and r["category"] != "Other" %}<a href="/contracts?category={{ r['category'] }}" style="font-size:12px;color:var(--text-muted)">{{ r["category"] }}</a>{% endif %}</td>
+        <td class="cw-state">{% if r.get("place_of_performance_state") %}<a href="/contracts?state={{ r['place_of_performance_state'] }}" style="font-size:12px;color:var(--text-muted)">{% if r.get("place_of_performance_city") %}{{ r["place_of_performance_city"] }}, {% endif %}{{ r["place_of_performance_state"] }}{% if r.get("place_of_performance_zip") %} {{ r["place_of_performance_zip"] }}{% endif %}</a>{% endif %}</td>
+        <td class="cw-val col-r">${{ "{:,.0f}".format(r["value"] or 0) }}</td>
+        <td class="cw-date">{{ r["end_date"] }}</td>
+        <td class="cw-days col-r">
           {%- set days = r["days_remaining"] -%}
           {%- if days is none or days == "" -%}&mdash;
           {%- elif days|int <= 30 -%}<span class="days-critical">{{ days }}</span>
           {%- elif days|int <= 90 -%}<span class="days-warning">{{ days }}</span>
           {%- else -%}{{ days }}{%- endif -%}
         </td>
-        <td class="col-r">{{ r["recompete_score"] }}</td>
-        {% if for_my_business %}<td class="col-r" style="font-weight:600;color:var(--accent)">{% if r.get("match_score") is not none %}{{ r.get("match_score") }}%{% endif %}</td>{% endif %}
-        <td><a href="/contract/{{ r['internal_id'] }}" class="btn btn-ghost" style="padding:3px 10px;font-size:11.5px;white-space:nowrap">View details &rarr;</a></td>
+        <td class="cw-score col-r">{{ r["recompete_score"] }}</td>
+        {% if for_my_business %}<td class="cw-match col-r" style="font-weight:600;color:var(--accent)">{% if r.get("match_score") is not none %}{{ r.get("match_score") }}%{% endif %}</td>{% endif %}
+        <td class="cw-action"><a href="/contract/{{ r['internal_id'] }}" class="btn btn-ghost" style="padding:3px 10px;font-size:11.5px;white-space:nowrap">View details &rarr;</a></td>
       </tr>
       {% else %}
       <tr>

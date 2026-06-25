@@ -1540,6 +1540,42 @@ tbody tr:hover > th { background: var(--accent-light) !important; }
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ─────────────────────────────────────────────────
+   CONTRACTS LIST TABLE
+   Fixes horizontal overflow by constraining column
+   widths and truncating long vendor/agency names.
+───────────────────────────────────────────────── */
+.contracts-wrap {
+  overflow-x: auto;
+  overflow-y: visible;
+}
+.contracts-tbl {
+  table-layout: fixed;
+  min-width: 780px;
+}
+.contracts-tbl th,
+.contracts-tbl td { padding: 7px 10px; }
+/* Fixed-width narrow columns */
+.contracts-tbl .cw-watch  { width: 36px; }
+.contracts-tbl .cw-cmp    { width: 28px; }
+.contracts-tbl .cw-pri    { width: 88px; }
+.contracts-tbl .cw-val    { width: 88px; }
+.contracts-tbl .cw-date   { width: 90px; }
+.contracts-tbl .cw-days   { width: 48px; }
+.contracts-tbl .cw-score  { width: 78px; }
+.contracts-tbl .cw-action { width: 104px; }
+/* Percentage columns share remaining width */
+.contracts-tbl .cw-vendor { width: 16%; }
+.contracts-tbl .cw-agency { width: 16%; }
+.contracts-tbl .cw-cat    { width: 9%; }
+.contracts-tbl .cw-state  { width: 9%; }
+.contracts-tbl .cw-match  { width: 58px; }
+/* Truncate text that overflows its column */
+.contracts-tbl td.cw-vendor,
+.contracts-tbl td.cw-agency,
+.contracts-tbl td.cw-cat,
+.contracts-tbl td.cw-state { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ─────────────────────────────────────────────────
    RESPONSIVE
 ───────────────────────────────────────────────── */
 @media (max-width: 1024px) {
