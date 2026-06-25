@@ -184,6 +184,40 @@ def test_contracts_days_no_class_for_distant_expiry(test_db, client):
 
 
 # ---------------------------------------------------------------------------
+# /contracts category filter — no 500 regression tests
+# ---------------------------------------------------------------------------
+
+def test_contracts_category_administrative_returns_200(client):
+    """category=Administrative must render 200, even with zero matching rows."""
+    rv = client.get("/contracts?q=&agency=&category=Administrative")
+    assert rv.status_code == 200
+
+
+def test_contracts_category_cleaning_returns_200(client):
+    rv = client.get("/contracts?q=&agency=&category=Cleaning")
+    assert rv.status_code == 200
+
+
+def test_contracts_category_cleaning_janitorial_alias_returns_200(client):
+    """'Cleaning / Janitorial' alias must resolve and not crash."""
+    rv = client.get("/contracts?q=&agency=&category=Cleaning%20%2F%20Janitorial")
+    assert rv.status_code == 200
+
+
+def test_contracts_empty_filter_params_returns_200(client):
+    """All-empty query params must be silently ignored — no crash."""
+    rv = client.get("/contracts?q=&agency=&state=&category=")
+    assert rv.status_code == 200
+
+
+def test_contracts_category_no_matches_shows_empty_state(client):
+    """Zero-match category filter must render page, not 500."""
+    rv = client.get("/contracts?category=Administrative")
+    assert rv.status_code == 200
+    assert b"Internal Server Error" not in rv.data
+
+
+# ---------------------------------------------------------------------------
 # Railway ephemeral DB warning tests
 # ---------------------------------------------------------------------------
 

@@ -132,6 +132,10 @@ _MIGRATION_PROBES: dict = {
         "SELECT COUNT(*) FROM information_schema.columns "
         "WHERE table_name = 'contracts' AND column_name = 'sam_url'"
     ),
+    "016_backfill_psc_description.sql": (
+        "SELECT COUNT(*) FROM information_schema.columns "
+        "WHERE table_name = 'contracts' AND column_name = 'psc_description'"
+    ),
 }
 
 
@@ -2103,14 +2107,9 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
             params[key] = f"%{kw}%"
             # description column (populated for all rows)
             cat_clauses.append(f"c.description {like_op} :{key}")
-            # psc_description column (populated for newly ingested rows)
+            # psc_description column — backfilled from raw_json by migration 016
+            # for legacy rows; populated directly at ingest for new rows.
             cat_clauses.append(f"c.psc_description {like_op} :{key}")
-            # Fallback: extract psc_description from raw_json for legacy rows where
-            # the column is NULL but the value was stored in the JSON blob.
-            if is_pg:
-                cat_clauses.append(f"(c.raw_json::jsonb->>'psc_description') ILIKE :{key}")
-            else:
-                cat_clauses.append(f"json_extract(c.raw_json, '$.psc_description') LIKE :{key}")
         naics_prefixes = [prefix for prefix, cat in _NAICS_CATEGORY_MAP if cat == canonical]
         for i, prefix in enumerate(naics_prefixes):
             key = f"cat_naics_{i}"
