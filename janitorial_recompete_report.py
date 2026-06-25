@@ -26,6 +26,11 @@ CUTOFF = TODAY + timedelta(days=540)
 
 MAX_CONTRACT_VALUE = 10_000_000  # $10M ceiling — right-sized for 50-100 employee companies
 
+# USASpending award search can't filter by POP end date. Approximate "active/expiring
+# soon" by pulling awards with a recent action_date, then filter to the real expiry
+# window (today..cutoff) client-side as before.
+ACTION_DATE_LOOKBACK_DAYS = 365 * 5
+
 
 def _today() -> date:
     """Return today's date. Separate function so tests can monkeypatch it and
@@ -54,11 +59,12 @@ def fetch_contracts(today, cutoff):
                 "award_type_codes": ["A", "B", "C", "D"],
                 "time_period": [
                     {
-                        "start_date": today.isoformat(),
-                        "end_date": cutoff.isoformat(),
-                        "date_type": "end_date",
+                        "start_date": (today - timedelta(days=ACTION_DATE_LOOKBACK_DAYS)).isoformat(),
+                        "end_date": today.isoformat(),
+                        "date_type": "action_date",
                     }
                 ],
+                "award_amounts": [{"upper_bound": MAX_CONTRACT_VALUE}],
             },
             "fields": [
                 "Award ID",

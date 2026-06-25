@@ -186,8 +186,8 @@ class TestZeroResultsGuard:
 
 class TestFetchContractsDateParam:
     def test_fetch_contracts_uses_passed_today_in_api_payload(self, monkeypatch):
-        """fetch_contracts(today, cutoff) must embed the passed dates in the
-        API payload — not the module-level TODAY/CUTOFF frozen at import time."""
+        """fetch_contracts(today, cutoff) must use action_date lookback window derived
+        from the passed today — not module-level TODAY/CUTOFF frozen at import time."""
         fixed_today = date(2025, 6, 1)
         fixed_cutoff = fixed_today + timedelta(days=540)
         captured = {}
@@ -204,13 +204,42 @@ class TestFetchContractsDateParam:
         monkeypatch.setattr(jrr.requests.Session, "post", fake_post)
         jrr.fetch_contracts(fixed_today, fixed_cutoff)
 
-        period = captured["payload"]["filters"]["time_period"][0]
-        assert period["start_date"] == "2025-06-01", (
-            "fetch_contracts must use passed today, not module-level TODAY"
+        filters = captured["payload"]["filters"]
+        period = filters["time_period"][0]
+        expected_start = (fixed_today - timedelta(days=jrr.ACTION_DATE_LOOKBACK_DAYS)).isoformat()
+        assert period["date_type"] == "action_date", (
+            "fetch_contracts must use action_date, not end_date"
         )
-        assert period["end_date"] == fixed_cutoff.isoformat(), (
-            "fetch_contracts must use passed cutoff, not module-level CUTOFF"
+        assert period["start_date"] == expected_start, (
+            "fetch_contracts must use lookback start derived from passed today, not module-level TODAY"
         )
+        assert period["end_date"] == fixed_today.isoformat(), (
+            "fetch_contracts end_date must be passed today"
+        )
+        assert "award_amounts" in filters, "filters must include award_amounts upper_bound cap"
+        assert filters["award_amounts"][0]["upper_bound"] == jrr.MAX_CONTRACT_VALUE
+
+    def test_fetch_contracts_never_sends_end_date_date_type(self, monkeypatch):
+        """Regression: payload must never contain date_type 'end_date' (USASpending rejects it with 500)."""
+        fixed_today = date(2025, 6, 1)
+        captured = {}
+
+        def fake_post(self_or_url, url_or_none=None, json=None, timeout=None):
+            captured["payload"] = json
+            class FakeResp:
+                status_code = 200
+                def raise_for_status(self): pass
+                def json(self):
+                    return {"results": [], "page_metadata": {"hasNext": False}}
+            return FakeResp()
+
+        monkeypatch.setattr(jrr.requests.Session, "post", fake_post)
+        jrr.fetch_contracts(fixed_today, fixed_today + timedelta(days=540))
+
+        for period in captured["payload"]["filters"]["time_period"]:
+            assert period.get("date_type") != "end_date", (
+                "date_type 'end_date' is rejected by USASpending with HTTP 500 — must not appear in payload"
+            )
 
 
 # ---------------------------------------------------------------------------
