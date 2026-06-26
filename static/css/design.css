@@ -199,6 +199,9 @@ button { font-family: inherit; cursor: pointer; }
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sidebar-workspace {
@@ -1359,6 +1362,9 @@ tbody tr:hover > th { background: var(--accent-light) !important; }
 /* Compact sidebar table (no bottom mb on aside items) */
 .db-aside > .table-wrapper { margin-bottom: 14px; }
 .db-aside > .table-wrapper:last-child { margin-bottom: 0; }
+/* Prevent aside tables from overflowing the 292px rail */
+.db-aside table { table-layout: fixed; width: 100%; }
+.db-aside td:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 0; }
 
 /* Onboarding notice (compact version when below KPIs) */
 .onboarding-notice {
