@@ -403,3 +403,42 @@ class TestMainBlockLogging:
                     )
                     return
         raise AssertionError("No if __name__ == '__main__' block found in source")
+
+
+# ---------------------------------------------------------------------------
+# NAICS normalization — search endpoint returns {code, description} object
+# ---------------------------------------------------------------------------
+
+class TestNaicsCodeNormalization:
+    def test_dict_naics_returns_code(self):
+        assert jrr._naics_code({"code": "712120", "description": "HISTORICAL SITES"}) == "712120"
+
+    def test_dict_naics_missing_code_returns_empty(self):
+        assert jrr._naics_code({"description": "no code here"}) == ""
+
+    def test_string_naics_passthrough(self):
+        assert jrr._naics_code("561720") == "561720"
+
+    def test_none_naics_returns_empty(self):
+        assert jrr._naics_code(None) == ""
+
+    def test_dict_naics_is_persistable_as_text(self, tmp_path, monkeypatch):
+        """Regression: a dict NAICS must not reach the TEXT naics_code column
+        (sqlite ProgrammingError). upsert_contract must store a plain string."""
+        db_path = str(tmp_path / "test.db")
+        monkeypatch.setattr(db_module, "DB_PATH", db_path)
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        db_module._cached_engine.cache_clear()
+        db_module.init_db()
+        db_module.upsert_contract({
+            "internal_id": "NAICS_1",
+            "vendor": "Acme",
+            "naics_code": jrr._naics_code({"code": "712120", "description": "HISTORICAL SITES"}),
+        })
+        from sqlalchemy import text
+        with db_module.get_engine().connect() as conn:
+            val = conn.execute(text(
+                "SELECT naics_code FROM contracts WHERE internal_id = 'NAICS_1'"
+            )).scalar()
+        db_module._cached_engine.cache_clear()
+        assert val == "712120"

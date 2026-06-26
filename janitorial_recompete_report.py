@@ -248,6 +248,19 @@ def _write_ingest_log(run_date: str, record_count: int, status: str, error_messa
         logger.warning("could not write ingest_log: %s", log_exc)
 
 
+def _naics_code(naics):
+    """Normalize the USASpending search ``NAICS`` field to a code string.
+
+    The award search endpoint returns NAICS as a ``{"code", "description"}``
+    object, but the contracts.naics_code column is TEXT — binding the raw dict
+    raises a sqlite ProgrammingError. Extract the code; tolerate a plain string
+    or a missing value.
+    """
+    if isinstance(naics, dict):
+        return naics.get("code") or ""
+    return naics or ""
+
+
 def main():
     today = _today()  # fresh on every call — avoids stale-date bug in long-lived Celery workers
     cutoff = today + timedelta(days=540)
@@ -288,7 +301,7 @@ def main():
             "agency": c.get("Awarding Agency"),
             "sub_agency": c.get("Awarding Sub Agency"),
             "description": c.get("Description", ""),
-            "naics_code": c.get("NAICS", ""),
+            "naics_code": _naics_code(c.get("NAICS")),
             "generated_internal_id": c.get("generated_internal_id"),
             "internal_id": c.get("internal_id"),
             "solicitation_id": "",
