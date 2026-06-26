@@ -144,6 +144,10 @@ _MIGRATION_PROBES: dict = {
         "SELECT COUNT(*) FROM information_schema.columns "
         "WHERE table_name = 'contracts' AND column_name = 'recipient_uei'"
     ),
+    "018_contract_field_changes_change_kind.sql": (
+        "SELECT COUNT(*) FROM information_schema.columns "
+        "WHERE table_name = 'contract_field_changes' AND column_name = 'change_kind'"
+    ),
 }
 
 
@@ -1648,10 +1652,20 @@ def init_field_changes_table():
             UNIQUE(run_date, internal_id, field_name)
         )
         """))
-        # Migrate existing tables that may be missing internal_id (added later)
+        # Migrate pre-existing tables that may be missing columns added later.
+        # CREATE TABLE IF NOT EXISTS is a no-op on an existing table, so columns
+        # introduced after the table was first created must be added by ALTER.
+        # change_kind in particular is written by insert_field_changes(); a DB
+        # created before it existed fails with "no column named change_kind".
         existing_cols = {r[1] for r in conn.execute(text("PRAGMA table_info(contract_field_changes)")).fetchall()}
-        if "internal_id" not in existing_cols:
-            conn.execute(text("ALTER TABLE contract_field_changes ADD COLUMN internal_id TEXT NOT NULL DEFAULT ''"))
+        for col, coldef in [
+            ("internal_id", "TEXT NOT NULL DEFAULT ''"),
+            ("old_value", "TEXT"),
+            ("new_value", "TEXT"),
+            ("change_kind", "TEXT NOT NULL DEFAULT 'MODIFIED'"),
+        ]:
+            if col not in existing_cols:
+                conn.execute(text(f"ALTER TABLE contract_field_changes ADD COLUMN {col} {coldef}"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_field_changes_run_date ON contract_field_changes(run_date)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_field_changes_internal_id ON contract_field_changes(internal_id)"))
 
