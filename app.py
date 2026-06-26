@@ -1689,31 +1689,89 @@ def _require_lead_admin():
 
 @app.route("/lead-intelligence")
 def lead_intelligence():
-    """Sales-prospecting view: which companies are likely Recompete buyers and
-    which contracts to mention when reaching out.
+    """Internal sales workbench: company buy-likelihood, next action, and contract matches.
 
-    Admin/internal-only: lead_companies/lead_contract_matches are global (not
-    per-user/workspace scoped), so this must not be exposed to ordinary users.
-    Fail closed when no ADMIN_EMAILS is configured.
+    Admin/internal-only: fail closed when no ADMIN_EMAILS is configured.
     """
     guard = _require_lead_admin()
     if guard:
         return guard
+
+    filter_service = request.args.get("service", "")
+    filter_state = request.args.get("state", "")
+    filter_likelihood = request.args.get("likelihood", "")
+    filter_confidence = request.args.get("confidence", "")
+    sort_by = request.args.get("sort", "score")
+
     companies = get_lead_intelligence_overview(match_limit=3)
+
+    for c in companies:
+        c["next_action"] = _lead_next_action(c)
+        c["low_confidence"] = (
+            c["inferred_service_category"] == "unknown"
+            or (not c.get("matches") and c["likely_customer_score"] < 40)
+        )
+
+    if filter_service:
+        companies = [c for c in companies if c["inferred_service_category"] == filter_service]
+    if filter_state:
+        companies = [c for c in companies if (c.get("state") or "") == filter_state]
+    if filter_likelihood:
+        try:
+            min_score = int(filter_likelihood)
+            companies = [c for c in companies if c["likely_customer_score"] >= min_score]
+        except ValueError:
+            pass
+    if filter_confidence == "low":
+        companies = [c for c in companies if c["low_confidence"]]
+    elif filter_confidence == "high":
+        companies = [c for c in companies if not c["low_confidence"]]
+
+    if sort_by == "state":
+        companies.sort(key=lambda c: (c.get("state") or "ZZ", -(c["likely_customer_score"])))
+    elif sort_by == "service":
+        companies.sort(key=lambda c: (c["inferred_service_category"] or "zzz", -(c["likely_customer_score"])))
+    else:
+        companies.sort(key=lambda c: (c["low_confidence"], -(c["likely_customer_score"])))
+
+    all_companies = get_lead_intelligence_overview(match_limit=0)
+    service_options = sorted({c["inferred_service_category"] for c in all_companies if c["inferred_service_category"]})
+    state_options = sorted({c.get("state") or "" for c in all_companies if c.get("state")})
+
     return render_template(
         "lead_intelligence.html",
         companies=companies,
         category_labels=SERVICE_CATEGORY_LABELS,
         count=len(companies),
+        total_count=len(all_companies),
+        filter_service=filter_service,
+        filter_state=filter_state,
+        filter_likelihood=filter_likelihood,
+        filter_confidence=filter_confidence,
+        sort_by=sort_by,
+        service_options=service_options,
+        state_options=state_options,
     )
+
+
+def _lead_next_action(company) -> str:
+    """Return a deterministic next-action label for a lead company."""
+    score = company.get("likely_customer_score", 0)
+    category = company.get("inferred_service_category", "unknown")
+    has_contact = bool(company.get("email") or company.get("phone"))
+    has_matches = bool(company.get("matches"))
+    if category == "unknown" or score < 40:
+        return "Low confidence"
+    if not has_contact:
+        return "Research first"
+    if score >= 60 and has_matches:
+        return "Contact now"
+    return "Research first"
 
 
 @app.route("/lead-intelligence/import", methods=["POST"])
 def lead_intelligence_import():
     """Import prospects from pasted CSV text or an uploaded CSV file.
-
-    Accepts columns: Rank, Company, Name / Title, Phone, Email, Contact Type,
-    Notes. Parsing, inference and contract matching are deterministic.
 
     Admin/internal-only (see lead_intelligence()).
     """
@@ -1729,13 +1787,26 @@ def lead_intelligence_import():
             flash("Could not read the uploaded file — please upload a UTF-8 CSV.", "error")
             return redirect(url_for("lead_intelligence"))
 
+    # Count raw data rows before parsing so we can report skipped blanks.
+    import csv as _csv, io as _io
+    raw_rows = 0
+    try:
+        reader = _csv.DictReader(_io.StringIO(text_blob))
+        raw_rows = sum(1 for r in reader if any(v.strip() for v in r.values()))
+    except Exception:
+        pass
+
     leads = parse_leads_csv(text_blob)
     if not leads:
         flash("No companies found — check the CSV has a 'Company' column.", "error")
         return redirect(url_for("lead_intelligence"))
 
     imported = import_leads(leads)
-    flash(f"Imported {imported} compan{'y' if imported == 1 else 'ies'} and scored their contract matches.", "success")
+    skipped = max(0, raw_rows - len(leads))
+    msg = f"Imported {imported} prospect{'s' if imported != 1 else ''}."
+    if skipped:
+        msg += f" Skipped {skipped} row{'s' if skipped != 1 else ''} (no company name)."
+    flash(msg, "success")
     return redirect(url_for("lead_intelligence"))
 
 

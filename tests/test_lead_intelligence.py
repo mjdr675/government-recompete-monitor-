@@ -350,3 +350,134 @@ class TestRoute:
         }, follow_redirects=True)
         assert resp.status_code == 200
         assert b"Acme IT" in resp.data
+
+
+# ---------------------------------------------------------------------------
+# Workbench: filter / sort / next-action / skipped-count flash
+# ---------------------------------------------------------------------------
+
+class TestWorkbench:
+    """Tests for the compact workbench layout added on top of the base MVP."""
+
+    def test_compact_layout_has_no_table_element(self, client):
+        resp = client.get("/lead-intelligence")
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        # The new workbench uses card layout, not a wide <table>
+        assert "<table>" not in body
+
+    def test_filter_params_accepted_without_error(self, client):
+        resp = client.get("/lead-intelligence?service=it&state=VA&likelihood=40&confidence=high&sort=state")
+        assert resp.status_code == 200
+
+    def test_sort_params_accepted_without_error(self, client):
+        for sort in ("score", "service", "state"):
+            resp = client.get(f"/lead-intelligence?sort={sort}")
+            assert resp.status_code == 200
+
+    def test_clear_filters_link_present_when_filter_active(self, client):
+        resp = client.get("/lead-intelligence?service=it")
+        body = resp.data.decode()
+        assert "Clear filters" in body
+
+    def test_no_clear_filters_link_when_no_filter(self, client):
+        resp = client.get("/lead-intelligence")
+        body = resp.data.decode()
+        assert "Clear filters" not in body
+
+    def test_import_flash_shows_skipped_count(self, client, sqlite_db):
+        db_module.upsert_contract({
+            "internal_id": "WB1", "vendor": "Vendor", "agency": "DoD",
+            "category": "IT", "description": "cloud services",
+            "value": 500_000, "place_of_performance_state": "VA",
+            "days_remaining": 200, "recompete_score": 70, "naics_code": "541512",
+        })
+        csv = "Company,Email\nGood Corp,g@g.com\n,blank@x.com\n"
+        resp = client.post("/lead-intelligence/import", data={"csv_text": csv},
+                           follow_redirects=True)
+        body = resp.data.decode()
+        assert "Skipped 1 row" in body
+
+    def test_import_flash_imported_count(self, client, sqlite_db):
+        db_module.upsert_contract({
+            "internal_id": "WB2", "vendor": "Vendor", "agency": "DoD",
+            "category": "IT", "description": "cloud services",
+            "value": 500_000, "place_of_performance_state": "VA",
+            "days_remaining": 200, "recompete_score": 70, "naics_code": "541512",
+        })
+        csv = "Company,Email\nAlpha Corp,a@a.com\nBeta Corp,b@b.com\n"
+        resp = client.post("/lead-intelligence/import", data={"csv_text": csv},
+                           follow_redirects=True)
+        body = resp.data.decode()
+        assert "Imported 2 prospects" in body
+
+    def test_next_action_badge_present(self, client, sqlite_db):
+        db_module.upsert_contract({
+            "internal_id": "WB3", "vendor": "Vendor", "agency": "DoD",
+            "category": "IT", "description": "cloud network help desk services",
+            "value": 1_000_000, "place_of_performance_state": "VA",
+            "days_remaining": 200, "recompete_score": 80, "naics_code": "541512",
+        })
+        client.post("/lead-intelligence/import", data={
+            "csv_text": "Company,Email,State\nFedTech LLC,cto@fedtech.com,VA\n"
+        }, follow_redirects=True)
+        resp = client.get("/lead-intelligence")
+        body = resp.data.decode()
+        assert ("Contact now" in body or "Research first" in body or "Low confidence" in body)
+
+    def test_top_contract_preview_visible(self, client, sqlite_db):
+        db_module.upsert_contract({
+            "internal_id": "WB4", "vendor": "Incumbent Co", "agency": "Army",
+            "category": "IT", "description": "cloud network services",
+            "value": 800_000, "place_of_performance_state": "VA",
+            "days_remaining": 180, "recompete_score": 75, "naics_code": "541512",
+        })
+        client.post("/lead-intelligence/import", data={
+            "csv_text": "Company,Email,State\nCloud IT Corp,x@x.com,VA\n"
+        }, follow_redirects=True)
+        resp = client.get("/lead-intelligence")
+        body = resp.data.decode()
+        assert "Top contract" in body
+
+    def test_empty_state_shows_import_prompt(self, client):
+        resp = client.get("/lead-intelligence")
+        body = resp.data.decode()
+        # Either has prospects or shows the empty state / import accordion
+        assert "Import Prospects" in body or "No prospects yet" in body
+
+
+class TestLeadNextAction:
+    """Unit tests for _lead_next_action helper (imported from app module)."""
+
+    def _company(self, **kw):
+        base = {
+            "likely_customer_score": 70,
+            "inferred_service_category": "it",
+            "email": "x@x.com",
+            "phone": "555",
+            "matches": [{"match_score": 65}],
+        }
+        base.update(kw)
+        return base
+
+    def _action(self, **kw):
+        from app import _lead_next_action
+        return _lead_next_action(self._company(**kw))
+
+    def test_high_score_with_contact_and_matches_is_contact_now(self):
+        assert self._action() == "Contact now"
+
+    def test_unknown_category_is_low_confidence(self):
+        assert self._action(inferred_service_category="unknown") == "Low confidence"
+
+    def test_low_score_is_low_confidence(self):
+        assert self._action(likely_customer_score=30) == "Low confidence"
+
+    def test_no_contact_info_is_research_first(self):
+        assert self._action(email="", phone="") == "Research first"
+
+    def test_no_matches_with_ok_score_is_research_first(self):
+        assert self._action(matches=[]) == "Research first"
+
+    def test_score_40_to_60_without_matches_is_research_first(self):
+        assert self._action(likely_customer_score=50, matches=[]) == "Research first"

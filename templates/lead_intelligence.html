@@ -2,91 +2,298 @@
 {% block title %}Lead Intelligence{% endblock %}
 
 {% block content %}
-<div style="margin-bottom:16px">
+
+<style>
+.li-header { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:4px; }
+.li-header h1 { margin:0; }
+.li-meta { color:var(--text-muted); font-size:13px; }
+
+.li-filters {
+  display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+  background:var(--bg-card); border:1px solid var(--border); border-radius:6px;
+  padding:10px 14px; margin-bottom:16px;
+}
+.li-filters select, .li-filters input[type=number] {
+  font-size:13px; padding:4px 8px; border:1px solid var(--border);
+  border-radius:4px; background:var(--bg); color:var(--text-primary); min-width:120px;
+}
+.li-filters label { font-size:12px; color:var(--text-muted); margin-right:2px; }
+.li-filter-group { display:flex; align-items:center; gap:4px; }
+.li-filter-sep { color:var(--border-strong); font-size:18px; margin:0 2px; }
+
+.li-import-card {
+  background:var(--bg-card); border:1px solid var(--border); border-radius:8px;
+  padding:14px 18px; margin-bottom:18px;
+}
+.li-import-card summary {
+  cursor:pointer; font-size:14px; font-weight:600; color:var(--text-primary);
+  list-style:none; display:flex; align-items:center; gap:6px;
+}
+.li-import-card summary::-webkit-details-marker { display:none; }
+.li-import-card summary::before { content:"▶"; font-size:11px; color:var(--text-muted); transition:transform 0.15s; }
+.li-import-card[open] summary::before { transform:rotate(90deg); }
+.li-import-body { margin-top:12px; }
+.li-import-body textarea {
+  width:100%; font-family:monospace; font-size:12px;
+  border:1px solid var(--border); border-radius:4px;
+  background:var(--bg); color:var(--text-primary); padding:8px; resize:vertical;
+}
+
+.li-list { display:flex; flex-direction:column; gap:10px; }
+
+.li-card { border:1px solid var(--border); border-radius:8px; background:var(--bg-card); overflow:hidden; }
+.li-card-head {
+  display:flex; align-items:flex-start; gap:12px;
+  padding:12px 16px; cursor:pointer;
+}
+.li-card-head:hover { background:var(--bg); }
+
+.li-company-name { font-weight:600; font-size:15px; margin-bottom:2px; }
+.li-company-meta { font-size:12px; color:var(--text-muted); display:flex; flex-wrap:wrap; gap:8px; }
+
+.li-lowconf-flag { font-size:11px; color:#9ca3af; }
+
+.li-badges { display:flex; flex-wrap:wrap; gap:5px; margin-left:auto; flex-shrink:0; }
+
+.li-action-badge { font-size:11px; font-weight:600; padding:3px 8px; border-radius:4px; white-space:nowrap; }
+.li-action-contact  { background:#d1fae5; color:#065f46; border:1px solid #6ee7b7; }
+.li-action-research { background:#fef3c7; color:#92400e; border:1px solid #fcd34d; }
+.li-action-lowconf  { background:#f3f4f6; color:#6b7280; border:1px solid #d1d5db; }
+
+.li-score-pill { font-size:11px; padding:3px 8px; border-radius:4px; background:var(--bg); border:1px solid var(--border); color:var(--text-muted); }
+.li-score-high { background:#dbeafe; color:#1e40af; border-color:#93c5fd; }
+.li-score-mid  { background:#fef3c7; color:#92400e; border-color:#fcd34d; }
+
+.li-top-match {
+  padding:8px 16px; border-top:1px solid var(--border);
+  background:var(--bg); display:flex; align-items:center; gap:10px; font-size:13px;
+}
+.li-top-match-label { color:var(--text-muted); font-size:11px; white-space:nowrap; }
+.li-top-match-title { flex:1; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.li-top-match-score { font-size:11px; color:var(--text-muted); white-space:nowrap; }
+
+.li-details-toggle {
+  padding:6px 16px 10px; border-top:1px solid var(--border);
+  font-size:12px; color:var(--accent); cursor:pointer;
+  display:flex; align-items:center; gap:4px;
+}
+.li-details-toggle:hover { color:var(--accent-hover); }
+
+.li-expanded { display:none; }
+.li-card.is-open .li-expanded { display:block; }
+.li-card.is-open .li-expand-label::before { content:"▲ "; font-size:10px; }
+.li-card:not(.is-open) .li-expand-label::before { content:"▼ "; font-size:10px; }
+
+.li-matches-list { padding:0 16px 14px; display:flex; flex-direction:column; gap:8px; margin-top:4px; }
+.li-match-row { border:1px solid var(--border); border-radius:6px; padding:10px 12px; background:var(--bg); font-size:13px; }
+.li-match-row-title { font-weight:500; margin-bottom:3px; }
+.li-match-row-meta { font-size:12px; color:var(--text-muted); display:flex; flex-wrap:wrap; gap:8px; }
+
+.li-outreach {
+  margin:0 16px 14px; padding:10px 14px;
+  background:var(--bg); border:1px solid var(--border); border-radius:6px; font-size:13px; line-height:1.55;
+}
+.li-outreach-label { font-size:11px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px; }
+
+.li-no-matches { padding:10px 16px 14px; font-size:13px; color:var(--text-muted); }
+.li-empty { text-align:center; padding:48px 24px; color:var(--text-muted); }
+.li-empty h3 { margin-bottom:6px; }
+</style>
+
+<div class="li-header">
   <h1>Lead Intelligence</h1>
-  <p class="page-subtitle">Which companies are most likely to buy Recompete &mdash; and which contracts to mention when you contact them.</p>
-  <div class="page-meta" style="margin-top:4px">{{ count }} prospect{{ "s" if count != 1 else "" }} imported</div>
+  <span class="li-meta">
+    {{ count }} prospect{{ 's' if count != 1 else '' }}{% if count != total_count %} of {{ total_count }}{% endif %}
+    &mdash; internal workbench
+  </span>
 </div>
 
-<details style="margin-bottom:24px" {{ "open" if not companies else "" }}>
-  <summary style="cursor:pointer;font-weight:600;margin-bottom:8px">Import prospects (CSV)</summary>
-  <form method="post" action="/lead-intelligence/import" enctype="multipart/form-data" style="margin-top:12px">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <p class="page-subtitle" style="margin-bottom:8px">
-      Columns: <code>Rank, Company, Name / Title, Phone, Email, Contact Type, Notes</code>.
-      A company like <code>Acme Corp &mdash; Richmond, VA</code> has its state inferred automatically.
+<!-- Import accordion -->
+<details class="li-import-card" {{ "open" if not companies else "" }}>
+  <summary>Import Prospects (CSV)</summary>
+  <div class="li-import-body">
+    <p style="font-size:13px;color:var(--text-muted);margin:0 0 10px">
+      Required column: <code>Company</code>. Optional: <code>Name / Title</code>, <code>Email</code>, <code>Phone</code>,
+      <code>Contact Type</code>, <code>Notes</code>. State is inferred from company text like <em>Acme Corp — Arlington, VA</em>.
     </p>
-    <textarea name="csv_text" rows="6" placeholder="Rank,Company,Name / Title,Phone,Email,Contact Type,Notes&#10;1,Acme IT — Arlington, VA,Jane Doe / VP,555-1212,jane@acme.com,Prospect,Federal IT and cybersecurity services"
-              style="width:100%;font-family:monospace;font-size:13px;padding:8px;box-sizing:border-box"></textarea>
-    <div style="display:flex;gap:12px;align-items:center;margin-top:8px;flex-wrap:wrap">
-      <input type="file" name="csv_file" accept=".csv,text/csv">
-      <button type="submit" class="btn btn-primary">Import &amp; match</button>
-    </div>
-  </form>
+    <form method="post" action="/lead-intelligence/import" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px">
+        <div style="flex:1;min-width:220px">
+          <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Upload CSV file</label>
+          <input type="file" name="csv_file" accept=".csv,text/csv" style="font-size:13px">
+        </div>
+        <div style="flex:2;min-width:280px">
+          <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Or paste CSV text</label>
+          <textarea name="csv_text" rows="4"
+            placeholder="Rank,Company,Name / Title,Phone,Email,Contact Type,Notes&#10;1,Acme IT — Arlington, VA,Jane Doe / VP,555-1212,jane@acme.com,Prospect,Federal IT"></textarea>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary" style="font-size:13px">Import &amp; Score</button>
+    </form>
+  </div>
 </details>
 
+<!-- Filter / sort bar -->
+<form method="GET" action="/lead-intelligence">
+  <div class="li-filters">
+    <div class="li-filter-group">
+      <label>Service</label>
+      <select name="service" onchange="this.form.submit()">
+        <option value="">All categories</option>
+        {% for s in service_options %}
+          <option value="{{ s }}" {% if filter_service == s %}selected{% endif %}>
+            {{ category_labels.get(s, s) }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="li-filter-group">
+      <label>State</label>
+      <select name="state" onchange="this.form.submit()">
+        <option value="">All states</option>
+        {% for st in state_options %}
+          <option value="{{ st }}" {% if filter_state == st %}selected{% endif %}>{{ st }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="li-filter-group">
+      <label>Min score</label>
+      <input type="number" name="likelihood" min="0" max="100" step="10"
+             value="{{ filter_likelihood }}" placeholder="0–100"
+             onchange="this.form.submit()" style="width:80px">
+    </div>
+    <div class="li-filter-group">
+      <label>Confidence</label>
+      <select name="confidence" onchange="this.form.submit()">
+        <option value="">All</option>
+        <option value="high" {% if filter_confidence == 'high' %}selected{% endif %}>High confidence</option>
+        <option value="low"  {% if filter_confidence == 'low'  %}selected{% endif %}>Low confidence</option>
+      </select>
+    </div>
+    <span class="li-filter-sep">|</span>
+    <div class="li-filter-group">
+      <label>Sort</label>
+      <select name="sort" onchange="this.form.submit()">
+        <option value="score"   {% if sort_by == 'score'   %}selected{% endif %}>Buy likelihood</option>
+        <option value="service" {% if sort_by == 'service' %}selected{% endif %}>Service focus</option>
+        <option value="state"   {% if sort_by == 'state'   %}selected{% endif %}>State</option>
+      </select>
+    </div>
+    {% if filter_service or filter_state or filter_likelihood or filter_confidence %}
+      <a href="/lead-intelligence" class="btn btn-ghost" style="font-size:12px;padding:4px 10px">Clear filters</a>
+    {% endif %}
+  </div>
+</form>
+
 {% if companies %}
-<div class="table-wrapper">
-  <table>
-    <thead>
-      <tr>
-        <th>Company</th>
-        <th>Contact</th>
-        <th>State</th>
-        <th>Service Focus</th>
-        <th>Buy&nbsp;Likelihood</th>
-        <th>Top Contract Matches</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for c in companies %}
-      <tr>
-        <td>
-          <strong>{{ c["company_name"] }}</strong>
-          {% if c["company_location"] and c["company_location"] != c["company_name"] %}
-            <div class="page-subtitle" style="font-size:12px">{{ c["company_location"] }}</div>
+<div class="li-list">
+  {% for c in companies %}
+  {% set cid = loop.index %}
+  <div class="li-card" id="li-card-{{ cid }}">
+
+    <div class="li-card-head" onclick="liToggle('li-card-{{ cid }}')">
+      <div style="flex:1;min-width:0">
+        <div class="li-company-name">
+          {{ c["company_name"] }}
+          {% if c["low_confidence"] %}
+            <span class="li-lowconf-flag" title="Low confidence — service category unknown or score under 40">◌ low confidence</span>
           {% endif %}
-          {% if c["contact_type"] %}<div class="page-meta" style="font-size:11px">{{ c["contact_type"] }}</div>{% endif %}
-        </td>
-        <td>
-          {{ c["contact_name"] or "&mdash;"|safe }}
-          {% if c["contact_title"] %}<div class="page-subtitle" style="font-size:12px">{{ c["contact_title"] }}</div>{% endif %}
-          {% if c["email"] %}<div style="font-size:12px"><a href="mailto:{{ c['email'] }}">{{ c["email"] }}</a></div>{% endif %}
-          {% if c["phone"] %}<div class="page-subtitle" style="font-size:12px">{{ c["phone"] }}</div>{% endif %}
-        </td>
-        <td>{{ c["state"] or "&mdash;"|safe }}</td>
-        <td>{{ category_labels.get(c["inferred_service_category"], c["inferred_service_category"]) }}</td>
-        <td><strong>{{ c["likely_customer_score"] }}</strong>/100</td>
-        <td>
-          {% if c["matches"] %}
-            <ol style="margin:0;padding-left:18px">
-              {% for m in c["matches"] %}
-              <li style="margin-bottom:6px">
-                <a href="/contract/{{ m['internal_id'] }}">{{ m["vendor"] or m["award_id"] or m["internal_id"] }}</a>
-                <span class="page-meta" style="font-size:11px">({{ m["agency"] }}{% if m["place_of_performance_state"] %}, {{ m["place_of_performance_state"] }}{% endif %})</span>
-                &mdash; match <strong>{{ m["match_score"] }}</strong>
-                <div class="page-subtitle" style="font-size:12px">{{ m["match_reason"] }}</div>
-              </li>
-              {% endfor %}
-            </ol>
-            {% if c["outreach_angle"] %}
-            <div style="margin-top:6px;font-size:12px;background:#eff6ff;border-left:3px solid #3b82f6;padding:6px 8px">
-              <strong>Outreach:</strong> {{ c["outreach_angle"] }}
+        </div>
+        <div class="li-company-meta">
+          {% if c.get("state") %}<span>{{ c["state"] }}</span>{% endif %}
+          <span>{{ category_labels.get(c["inferred_service_category"], c["inferred_service_category"]) }}</span>
+          {% if c.get("contact_name") %}
+            <span>{{ c["contact_name"] }}{% if c.get("contact_title") %}, {{ c["contact_title"] }}{% endif %}</span>
+          {% endif %}
+          {% if c.get("email") %}<span>{{ c["email"] }}</span>{% endif %}
+          {% if c.get("phone") %}<span>{{ c["phone"] }}</span>{% endif %}
+        </div>
+      </div>
+      <div class="li-badges">
+        {% set score = c["likely_customer_score"] %}
+        <span class="li-score-pill {% if score >= 60 %}li-score-high{% elif score >= 40 %}li-score-mid{% endif %}">
+          {{ score }}/100
+        </span>
+        {% set action = c["next_action"] %}
+        {% if action == "Contact now" %}
+          <span class="li-action-badge li-action-contact">Contact now</span>
+        {% elif action == "Research first" %}
+          <span class="li-action-badge li-action-research">Research first</span>
+        {% else %}
+          <span class="li-action-badge li-action-lowconf">Low confidence</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Top match preview (always visible) -->
+    {% if c["matches"] %}
+      {% set top = c["matches"][0] %}
+      <div class="li-top-match">
+        <span class="li-top-match-label">Top contract</span>
+        <a href="/contract/{{ top['internal_id'] }}" class="li-top-match-title" onclick="event.stopPropagation()">
+          {% if top.get("vendor") %}{{ top["vendor"] }} &mdash; {% endif %}{{ top.get("agency", "—") }}
+          {% if top.get("value") %}&nbsp;&middot; ${{ "{:,.0f}".format(top["value"]) }}{% endif %}
+        </a>
+        <span class="li-top-match-score">fit {{ top["match_score"] }}/100</span>
+      </div>
+    {% else %}
+      <div class="li-top-match">
+        <span class="li-top-match-label">Top contract</span>
+        <span style="color:var(--text-muted);font-size:13px">No matches scored yet</span>
+      </div>
+    {% endif %}
+
+    <div class="li-details-toggle" onclick="liToggle('li-card-{{ cid }}')">
+      <span class="li-expand-label">Details</span>
+    </div>
+
+    <div class="li-expanded">
+      {% if c["matches"] %}
+        <div class="li-matches-list">
+          {% for m in c["matches"][:3] %}
+          <div class="li-match-row">
+            <div class="li-match-row-title">
+              <a href="/contract/{{ m['internal_id'] }}">{{ m.get("vendor") or m.get("award_id") or m["internal_id"] }}</a>
+              <span style="font-size:11px;color:var(--text-muted);font-weight:normal"> &mdash; fit {{ m["match_score"] }}/100</span>
             </div>
-            {% endif %}
-          {% else %}
-            <span class="page-subtitle">No live contract matches yet.</span>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+            <div class="li-match-row-meta">
+              <span>{{ m.get("agency", "—") }}</span>
+              {% if m.get("value") %}<span>${{ "{:,.0f}".format(m["value"]) }}</span>{% endif %}
+              {% if m.get("days_remaining") is not none %}<span>{{ m["days_remaining"] }}d remaining</span>{% endif %}
+              {% if m.get("match_reason") %}<span>{{ m["match_reason"] }}</span>{% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% if c.get("outreach_angle") %}
+        <div class="li-outreach">
+          <div class="li-outreach-label">Outreach angle</div>
+          {{ c["outreach_angle"] }}
+        </div>
+        {% endif %}
+      {% else %}
+        <p class="li-no-matches">No contract matches scored. Re-import to trigger scoring.</p>
+      {% endif %}
+    </div>
+
+  </div>
+  {% endfor %}
 </div>
+
 {% else %}
-<div class="empty-state-rich">
-  <p class="empty-title">No prospects imported yet</p>
-  <p class="empty-desc">Paste or upload a CSV of companies above to score how likely they are to buy Recompete and surface the contracts worth mentioning.</p>
+<div class="li-empty">
+  <h3>No prospects yet</h3>
+  <p>Import a CSV of company leads above to get started.<br>
+  Recompete will score each company against the contract database and suggest outreach angles.</p>
 </div>
 {% endif %}
+
+<script>
+function liToggle(id) {
+  var card = document.getElementById(id);
+  if (card) card.classList.toggle('is-open');
+}
+</script>
+
 {% endblock %}
