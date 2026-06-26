@@ -98,6 +98,32 @@
 .li-no-matches { padding:10px 16px 14px; font-size:13px; color:var(--text-muted); }
 .li-empty { text-align:center; padding:48px 24px; color:var(--text-muted); }
 .li-empty h3 { margin-bottom:6px; }
+
+/* Outreach status + notes controls */
+.li-status-badge { font-size:11px; font-weight:600; padding:3px 8px; border-radius:4px; white-space:nowrap; }
+.li-status-not { background:#f3f4f6; color:#6b7280; border:1px solid #d1d5db; }
+.li-status-done { background:#dbeafe; color:#1e40af; border:1px solid #93c5fd; }
+
+.li-outreach-controls {
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  padding:8px 16px; border-top:1px solid var(--border); background:var(--bg);
+}
+.li-outreach-controls label { font-size:11px; color:var(--text-muted); }
+.li-outreach-controls select {
+  font-size:12px; padding:3px 8px; border:1px solid var(--border);
+  border-radius:4px; background:var(--bg-card); color:var(--text-primary);
+}
+.li-notes-form { margin:0 16px 14px; }
+.li-notes-form label {
+  display:block; font-size:11px; font-weight:600; color:var(--text-muted);
+  text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px;
+}
+.li-notes-form textarea {
+  width:100%; box-sizing:border-box; font-size:13px; resize:vertical;
+  border:1px solid var(--border); border-radius:6px; padding:8px;
+  background:var(--bg); color:var(--text-primary); font-family:inherit;
+}
+.li-notes-form .btn { margin-top:6px; font-size:12px; padding:4px 12px; }
 </style>
 
 <div class="li-header">
@@ -171,6 +197,14 @@
         <option value="low"  {% if filter_confidence == 'low'  %}selected{% endif %}>Low confidence</option>
       </select>
     </div>
+    <div class="li-filter-group">
+      <label>Outreach</label>
+      <select name="contacted" onchange="this.form.submit()">
+        <option value="">All</option>
+        <option value="not_contacted" {% if filter_contacted == 'not_contacted' %}selected{% endif %}>Not contacted</option>
+        <option value="contacted"     {% if filter_contacted == 'contacted'     %}selected{% endif %}>Contacted</option>
+      </select>
+    </div>
     <span class="li-filter-sep">|</span>
     <div class="li-filter-group">
       <label>Sort</label>
@@ -180,7 +214,7 @@
         <option value="state"   {% if sort_by == 'state'   %}selected{% endif %}>State</option>
       </select>
     </div>
-    {% if filter_service or filter_state or filter_likelihood or filter_confidence %}
+    {% if filter_service or filter_state or filter_likelihood or filter_confidence or filter_contacted %}
       <a href="/lead-intelligence" class="btn btn-ghost" style="font-size:12px;padding:4px 10px">Clear filters</a>
     {% endif %}
   </div>
@@ -223,6 +257,12 @@
         {% else %}
           <span class="li-action-badge li-action-lowconf">Low confidence</span>
         {% endif %}
+        {% set cstatus = c.get("contacted_status") or "not_contacted" %}
+        {% if cstatus == "contacted" %}
+          <span class="li-status-badge li-status-done">✓ Contacted</span>
+        {% else %}
+          <span class="li-status-badge li-status-not">Not contacted</span>
+        {% endif %}
       </div>
     </div>
 
@@ -244,8 +284,22 @@
       </div>
     {% endif %}
 
+    <!-- Outreach status selector (always visible; not part of the toggle) -->
+    {% set cstatus = c.get("contacted_status") or "not_contacted" %}
+    <div class="li-outreach-controls">
+      <form method="post" action="/lead-intelligence/{{ c['id'] }}/status" style="display:flex;align-items:center;gap:6px;margin:0">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="next" value="{{ current_query }}">
+        <label for="status-{{ c['id'] }}">Outreach status</label>
+        <select id="status-{{ c['id'] }}" name="contacted_status" onchange="this.form.submit()">
+          <option value="not_contacted" {% if cstatus == 'not_contacted' %}selected{% endif %}>Not contacted</option>
+          <option value="contacted"     {% if cstatus == 'contacted'     %}selected{% endif %}>Contacted</option>
+        </select>
+      </form>
+    </div>
+
     <div class="li-details-toggle" onclick="liToggle('li-card-{{ cid }}')">
-      <span class="li-expand-label">Details</span>
+      <span class="li-expand-label">Details &amp; notes</span>
     </div>
 
     <div class="li-expanded">
@@ -275,6 +329,16 @@
       {% else %}
         <p class="li-no-matches">No contract matches scored. Re-import to trigger scoring.</p>
       {% endif %}
+
+      <!-- Free-text outreach notes (persist across reloads and re-imports) -->
+      <form class="li-notes-form" method="post" action="/lead-intelligence/{{ c['id'] }}/notes">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="next" value="{{ current_query }}">
+        <label for="notes-{{ c['id'] }}">Outreach notes</label>
+        <textarea id="notes-{{ c['id'] }}" name="outreach_notes" rows="3"
+          placeholder="Log calls, emails, next steps…">{{ c.get("outreach_notes") or "" }}</textarea>
+        <button type="submit" class="btn btn-primary">Save notes</button>
+      </form>
     </div>
 
   </div>

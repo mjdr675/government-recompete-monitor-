@@ -160,6 +160,10 @@ _MIGRATION_PROBES: dict = {
         "SELECT COUNT(*) FROM information_schema.tables "
         "WHERE table_schema = 'public' AND table_name = 'lead_companies'"
     ),
+    "021_lead_outreach_tracking.sql": (
+        "SELECT COUNT(*) FROM information_schema.columns "
+        "WHERE table_name = 'lead_companies' AND column_name = 'contacted_status'"
+    ),
 }
 
 
@@ -2364,7 +2368,7 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
 def init_lead_intelligence_tables():
     engine = get_engine()
     if engine.dialect.name == "postgresql":
-        return  # created by migration 019 on Railway
+        return  # created by migrations 020/021 on Railway
     with engine.begin() as conn:
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS lead_companies (
@@ -2383,13 +2387,31 @@ def init_lead_intelligence_tables():
             inferred_service_category TEXT,
             federal_experience_signal INTEGER NOT NULL DEFAULT 0,
             likely_customer_score     INTEGER NOT NULL DEFAULT 0,
+            contacted_status          TEXT NOT NULL DEFAULT 'not_contacted',
+            outreach_notes            TEXT,
+            normalized_name           TEXT,
             created_at                TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at                TEXT DEFAULT CURRENT_TIMESTAMP
         )
         """))
+        # Self-heal pre-existing SQLite tables that predate the outreach-tracking
+        # columns (migration 021). CREATE TABLE IF NOT EXISTS is a no-op on an
+        # existing table, so add the columns idempotently here.
+        existing_cols = {r[1] for r in conn.execute(text("PRAGMA table_info(lead_companies)")).fetchall()}
+        for col_def in (
+            "contacted_status TEXT NOT NULL DEFAULT 'not_contacted'",
+            "outreach_notes TEXT",
+            "normalized_name TEXT",
+        ):
+            if col_def.split()[0] not in existing_cols:
+                conn.execute(text(f"ALTER TABLE lead_companies ADD COLUMN {col_def}"))
         conn.execute(text(
             "CREATE INDEX IF NOT EXISTS idx_lead_companies_score "
             "ON lead_companies(likely_customer_score DESC)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_lead_companies_normalized "
+            "ON lead_companies(normalized_name)"
         ))
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS lead_contract_matches (
@@ -2421,31 +2443,140 @@ _LEAD_COMPANY_COLS = (
     "likely_customer_score",
 )
 
+# Free-text prospect fields refreshed on re-import, but only when the incoming
+# value is non-empty (so a sparse re-import never wipes existing data).
+_LEAD_TEXT_SAFE_COLS = (
+    "contact_name", "contact_title", "phone", "email", "company_location",
+    "state", "website", "service_notes", "contact_type", "source_notes",
+)
 
-def upsert_lead_company(lead) -> int:
-    """Insert or update a lead by company_name; return its id."""
-    init_lead_intelligence_tables()
-    params = {col: lead.get(col) for col in _LEAD_COMPANY_COLS}
-    params["company_name"] = (params.get("company_name") or "").strip()
-    params["federal_experience_signal"] = int(params.get("federal_experience_signal") or 0)
-    params["likely_customer_score"] = int(params.get("likely_customer_score") or 0)
-    params["now"] = datetime.now(timezone.utc).isoformat()
-    cols = ", ".join(_LEAD_COMPANY_COLS)
-    placeholders = ", ".join(f":{c}" for c in _LEAD_COMPANY_COLS)
-    updates = ", ".join(
-        f"{c}=excluded.{c}" for c in _LEAD_COMPANY_COLS if c != "company_name"
+LEAD_CONTACTED_STATUSES = ("not_contacted", "contacted")
+
+
+def _merge_safe_lead_fields(existing: dict, lead: dict) -> dict:
+    """Merge an incoming lead onto an existing row, preserving useful data.
+
+    - Free-text contact/location fields are overwritten only when the incoming
+      value is non-empty.
+    - Service category is updated only when the new inference is concrete
+      (not empty / not "unknown").
+    - Derived signals/scores move monotonically upward (max), so a sparse
+      re-import never lowers a previously computed score.
+    - contacted_status and outreach_notes are NOT touched here (preserved).
+    """
+    merged = dict(existing)
+    for col in _LEAD_TEXT_SAFE_COLS:
+        val = lead.get(col)
+        if isinstance(val, str):
+            val = val.strip()
+        if val:
+            merged[col] = val
+    new_cat = (lead.get("inferred_service_category") or "").strip()
+    if new_cat and new_cat != "unknown":
+        merged["inferred_service_category"] = new_cat
+    merged["federal_experience_signal"] = max(
+        int(existing.get("federal_experience_signal") or 0),
+        int(lead.get("federal_experience_signal") or 0),
     )
+    merged["likely_customer_score"] = max(
+        int(existing.get("likely_customer_score") or 0),
+        int(lead.get("likely_customer_score") or 0),
+    )
+    return merged
+
+
+def upsert_lead_company(lead) -> tuple[int, str]:
+    """Insert or update a lead, deduping by normalized company name.
+
+    Returns (id, action) where action is "new", "updated", or "skipped".
+    A duplicate is matched case-insensitively, ignoring punctuation and common
+    legal suffixes (Inc/LLC/Corp/...). On a match, only safe prospect fields are
+    refreshed (see _merge_safe_lead_fields); contacted status and notes are
+    preserved.
+    """
+    import lead_intelligence as li
+
+    init_lead_intelligence_tables()
+    name = (lead.get("company_name") or "").strip()
+    if not name:
+        return (0, "skipped")
+    norm = li.normalize_company_name(name)
+    now = datetime.now(timezone.utc).isoformat()
     engine = get_engine()
     with engine.begin() as conn:
+        candidates = conn.execute(text(
+            "SELECT id, company_name, normalized_name FROM lead_companies"
+        )).mappings().fetchall()
+        match_id = None
+        for row in candidates:
+            existing_norm = row["normalized_name"] or li.normalize_company_name(row["company_name"] or "")
+            if existing_norm and existing_norm == norm:
+                match_id = int(row["id"])
+                break
+
+        if match_id is not None:
+            existing = conn.execute(
+                text("SELECT * FROM lead_companies WHERE id = :id"),
+                {"id": match_id},
+            ).mappings().fetchone()
+            merged = _merge_safe_lead_fields(dict(existing), lead)
+            update_cols = _LEAD_TEXT_SAFE_COLS + (
+                "inferred_service_category", "federal_experience_signal",
+                "likely_customer_score",
+            )
+            set_clause = ", ".join(f"{c} = :{c}" for c in update_cols)
+            params = {c: merged.get(c) for c in update_cols}
+            params.update({"id": match_id, "norm": norm, "now": now})
+            conn.execute(text(
+                f"UPDATE lead_companies SET {set_clause}, "
+                f"normalized_name = :norm, updated_at = :now WHERE id = :id"
+            ), params)
+            return (match_id, "updated")
+
+        insert_cols = _LEAD_COMPANY_COLS + (
+            "normalized_name", "contacted_status", "outreach_notes",
+            "created_at", "updated_at",
+        )
+        params = {col: lead.get(col) for col in _LEAD_COMPANY_COLS}
+        params["company_name"] = name
+        params["federal_experience_signal"] = int(lead.get("federal_experience_signal") or 0)
+        params["likely_customer_score"] = int(lead.get("likely_customer_score") or 0)
+        params["normalized_name"] = norm
+        params["contacted_status"] = "not_contacted"
+        params["outreach_notes"] = None
+        params["created_at"] = now
+        params["updated_at"] = now
+        placeholders = ", ".join(f":{c}" for c in insert_cols)
         conn.execute(text(
-            f"INSERT INTO lead_companies ({cols}) VALUES ({placeholders}) "
-            f"ON CONFLICT(company_name) DO UPDATE SET {updates}, updated_at=:now"
+            f"INSERT INTO lead_companies ({', '.join(insert_cols)}) VALUES ({placeholders})"
         ), params)
-        row = conn.execute(
-            text("SELECT id FROM lead_companies WHERE company_name = :company_name"),
-            {"company_name": params["company_name"]},
+        new_row = conn.execute(
+            text("SELECT id FROM lead_companies WHERE normalized_name = :norm ORDER BY id DESC"),
+            {"norm": norm},
         ).fetchone()
-    return int(row[0]) if row else 0
+    return (int(new_row[0]), "new") if new_row else (0, "skipped")
+
+
+def set_lead_contacted_status(lead_id, status) -> None:
+    """Set a lead's outreach status (validated against LEAD_CONTACTED_STATUSES)."""
+    init_lead_intelligence_tables()
+    if status not in LEAD_CONTACTED_STATUSES:
+        status = "not_contacted"
+    now = datetime.now(timezone.utc).isoformat()
+    with get_engine().begin() as conn:
+        conn.execute(text(
+            "UPDATE lead_companies SET contacted_status = :s, updated_at = :now WHERE id = :id"
+        ), {"s": status, "now": now, "id": int(lead_id)})
+
+
+def set_lead_notes(lead_id, notes) -> None:
+    """Set a lead's free-text outreach notes."""
+    init_lead_intelligence_tables()
+    now = datetime.now(timezone.utc).isoformat()
+    with get_engine().begin() as conn:
+        conn.execute(text(
+            "UPDATE lead_companies SET outreach_notes = :n, updated_at = :now WHERE id = :id"
+        ), {"n": (notes or ""), "now": now, "id": int(lead_id)})
 
 
 def replace_lead_matches(lead_company_id, scored_matches, outreach_angle="") -> int:
@@ -2520,27 +2651,37 @@ def get_matches_for_company(lead_company_id, limit=3):
     return [dict(r) for r in rows]
 
 
-def import_leads(leads) -> int:
+def import_leads(leads) -> dict:
     """Upsert a batch of normalized leads and (re)compute their matches.
 
-    Returns the number of companies imported. Contracts are fetched once and
-    scored against every lead via the pure lead_intelligence module.
+    Dedupe-safe: an incoming company that matches an existing lead (by
+    normalized name) updates safe fields instead of creating a duplicate, and
+    preserves its contacted status, notes, and (re-scored) matches.
+
+    Returns a summary dict {"new", "updated", "total"}. Contracts are fetched
+    once and scored against every lead via the pure lead_intelligence module.
     """
     import lead_intelligence as li
 
+    summary = {"new": 0, "updated": 0, "total": 0}
     leads = [l for l in leads if (l.get("company_name") or "").strip()]
     if not leads:
-        return 0
+        return summary
     init_lead_intelligence_tables()
     contracts = [dict(r) for r in get_contracts(all_rows=True)["contracts"]]
     for lead in leads:
-        company_id = upsert_lead_company(lead)
+        company_id, action = upsert_lead_company(lead)
         if not company_id:
             continue
         matches = li.find_matching_contracts(lead, contracts, limit=5)
         angle = li.generate_outreach_angle(lead, matches)
         replace_lead_matches(company_id, matches, outreach_angle=angle)
-    return len(leads)
+        if action == "new":
+            summary["new"] += 1
+        elif action == "updated":
+            summary["updated"] += 1
+        summary["total"] += 1
+    return summary
 
 
 def get_lead_intelligence_overview(match_limit=3):

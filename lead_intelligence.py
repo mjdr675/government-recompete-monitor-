@@ -222,6 +222,39 @@ def _lower(*parts) -> str:
     return " ".join(_norm(p) for p in parts).lower()
 
 
+# Common legal-entity suffix tokens stripped when normalizing a company name
+# for dedupe. Kept conservative so genuinely distinct names don't collapse.
+_COMPANY_SUFFIX_TOKENS = {
+    "inc", "incorporated", "llc", "corp", "corporation", "co", "company",
+    "ltd", "limited", "lp", "llp", "plc", "pllc", "pc",
+}
+
+
+def normalize_company_name(name) -> str:
+    """Return a normalized key for dedupe-matching company names.
+
+    Case-insensitive, trims whitespace, drops punctuation, collapses internal
+    spaces, strips a leading "the", and removes trailing legal-entity suffixes
+    (Inc, Inc., LLC, L.L.C., Corp, Corporation, Co, Company, ...). So
+    "Acme Inc", "ACME, Inc.", "Acme L.L.C." and "The Acme Co" all normalize to
+    "acme". Falls back to the punctuation-stripped form if stripping suffixes
+    would leave nothing.
+    """
+    s = (name or "").lower()
+    # Drop dots/apostrophes with no gap so "L.L.C." -> "llc", "O'Brien" -> "obrien".
+    s = re.sub(r"[.'’]", "", s)
+    # Any other punctuation becomes a separator.
+    s = re.sub(r"[^a-z0-9\s]", " ", s)
+    tokens = s.split()
+    if tokens and tokens[0] == "the":
+        tokens = tokens[1:]
+    stripped = list(tokens)
+    while stripped and stripped[-1] in _COMPANY_SUFFIX_TOKENS:
+        stripped.pop()
+    chosen = stripped or tokens
+    return " ".join(chosen)
+
+
 def infer_company_state(company_text="", notes="") -> str | None:
     """Extract a 2-letter US state code from company/location text.
 

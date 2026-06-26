@@ -252,6 +252,39 @@ class TestMigrationAndSelfHeal:
         db_module.init_lead_intelligence_tables()
         db_module.init_lead_intelligence_tables()  # must not raise
 
+    def test_021_probe_registered(self):
+        assert "021_lead_outreach_tracking.sql" in db_module._MIGRATION_PROBES
+        assert "contacted_status" in db_module._MIGRATION_PROBES["021_lead_outreach_tracking.sql"]
+
+    def test_legacy_table_gets_new_columns_and_preserves_rows(self, sqlite_db):
+        """A pre-021 lead_companies table self-heals without losing prospects."""
+        engine = db_module.get_engine()
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE lead_companies (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    company_name TEXT NOT NULL UNIQUE,
+                    likely_customer_score INTEGER NOT NULL DEFAULT 0
+                )
+            """))
+            conn.execute(text(
+                "INSERT INTO lead_companies (company_name, likely_customer_score) "
+                "VALUES ('Legacy Co', 55)"
+            ))
+        cols = {r[1] for r in engine.connect().execute(text("PRAGMA table_info(lead_companies)"))}
+        assert "contacted_status" not in cols
+
+        db_module.init_lead_intelligence_tables()
+
+        cols = {r[1] for r in engine.connect().execute(text("PRAGMA table_info(lead_companies)"))}
+        assert {"contacted_status", "outreach_notes", "normalized_name"} <= cols
+        # Existing prospect row preserved, defaulting to not_contacted.
+        row = engine.connect().execute(text(
+            "SELECT company_name, contacted_status FROM lead_companies WHERE company_name='Legacy Co'"
+        )).fetchone()
+        assert row[0] == "Legacy Co"
+        assert row[1] == "not_contacted"
+
 
 class TestImportAndMatch:
     def test_import_upserts_and_matches(self, sqlite_db):
@@ -263,8 +296,9 @@ class TestImportAndMatch:
             "days_remaining": 180, "recompete_score": 70, "naics_code": "541512",
         })
         leads = li.parse_leads_csv(TestCsvParsing.CSV)
-        count = db_module.import_leads(leads)
-        assert count == 2
+        result = db_module.import_leads(leads)
+        assert result["new"] == 2
+        assert result["updated"] == 0
 
         overview = db_module.get_lead_intelligence_overview()
         names = {c["company_name"] for c in overview}
@@ -444,6 +478,207 @@ class TestWorkbench:
         body = resp.data.decode()
         # Either has prospects or shows the empty state / import accordion
         assert "Import Prospects" in body or "No prospects yet" in body
+
+
+class TestNormalizeCompanyName:
+    """Unit tests for the dedupe normalization key."""
+
+    def test_strips_case_and_whitespace(self):
+        assert li.normalize_company_name("  Acme  ") == li.normalize_company_name("acme")
+
+    def test_strips_legal_suffixes(self):
+        base = li.normalize_company_name("Acme")
+        assert li.normalize_company_name("Acme Inc") == base
+        assert li.normalize_company_name("Acme, Inc.") == base
+        assert li.normalize_company_name("Acme LLC") == base
+        assert li.normalize_company_name("Acme L.L.C.") == base
+        assert li.normalize_company_name("ACME CORP") == base
+        assert li.normalize_company_name("Acme Corporation") == base
+
+    def test_strips_leading_the(self):
+        assert li.normalize_company_name("The Acme Co") == li.normalize_company_name("Acme")
+
+    def test_distinct_names_stay_distinct(self):
+        assert li.normalize_company_name("Acme IT") != li.normalize_company_name("Acme Health")
+
+    def test_suffix_only_name_not_empty(self):
+        assert li.normalize_company_name("LLC") != ""
+
+
+class TestDedupeAndPersistence:
+    """Dedupe-safe imports + status/notes persistence (DB layer)."""
+
+    def _import_one(self, company, **extra):
+        import csv as _csv
+        import io as _io
+        buf = _io.StringIO()
+        cols = ["Company"] + list(extra.keys())
+        writer = _csv.writer(buf)
+        writer.writerow(cols)
+        writer.writerow([company] + list(extra.values()))
+        return db_module.import_leads(li.parse_leads_csv(buf.getvalue()))
+
+    def test_same_company_twice_no_duplicate(self, sqlite_db):
+        db_module.init_db()
+        self._import_one("Acme Federal IT")
+        self._import_one("Acme Federal IT")
+        overview = db_module.get_lead_intelligence_overview()
+        assert len(overview) == 1
+
+    def test_suffix_variants_dedupe(self, sqlite_db):
+        db_module.init_db()
+        self._import_one("Acme Federal IT Inc")
+        self._import_one("Acme Federal IT, LLC")
+        self._import_one("acme federal it")
+        overview = db_module.get_lead_intelligence_overview()
+        assert len(overview) == 1
+
+    def test_import_summary_new_then_updated(self, sqlite_db):
+        db_module.init_db()
+        first = self._import_one("Acme Federal IT")
+        assert first["new"] == 1 and first["updated"] == 0
+        second = self._import_one("Acme Federal IT")
+        assert second["new"] == 0 and second["updated"] == 1
+
+    def test_reimport_updates_safe_fields(self, sqlite_db):
+        db_module.init_db()
+        self._import_one("Acme Federal IT")
+        self._import_one("Acme Federal IT", Email="new@acme.com", Phone="555-9000")
+        company = db_module.get_lead_companies()[0]
+        assert company["email"] == "new@acme.com"
+        assert company["phone"] == "555-9000"
+
+    def test_reimport_does_not_blank_existing_fields(self, sqlite_db):
+        db_module.init_db()
+        self._import_one("Acme Federal IT", Email="keep@acme.com")
+        # Re-import the same company with NO email — must not wipe it.
+        self._import_one("Acme Federal IT")
+        company = db_module.get_lead_companies()[0]
+        assert company["email"] == "keep@acme.com"
+
+    def test_contacted_status_persists(self, sqlite_db):
+        db_module.init_db()
+        self._import_one("Acme Federal IT")
+        cid = db_module.get_lead_companies()[0]["id"]
+        db_module.set_lead_contacted_status(cid, "contacted")
+        # Reload from DB
+        company = db_module.get_lead_companies()[0]
+        assert company["contacted_status"] == "contacted"
+
+    def test_invalid_status_falls_back(self, sqlite_db):
+        db_module.init_db()
+        self._import_one("Acme Federal IT")
+        cid = db_module.get_lead_companies()[0]["id"]
+        db_module.set_lead_contacted_status(cid, "bogus")
+        assert db_module.get_lead_companies()[0]["contacted_status"] == "not_contacted"
+
+    def test_notes_persist(self, sqlite_db):
+        db_module.init_db()
+        self._import_one("Acme Federal IT")
+        cid = db_module.get_lead_companies()[0]["id"]
+        db_module.set_lead_notes(cid, "Called 6/26, follow up next week")
+        company = db_module.get_lead_companies()[0]
+        assert "follow up next week" in company["outreach_notes"]
+
+    def test_status_and_notes_survive_reimport(self, sqlite_db):
+        db_module.init_db()
+        self._import_one("Acme Federal IT")
+        cid = db_module.get_lead_companies()[0]["id"]
+        db_module.set_lead_contacted_status(cid, "contacted")
+        db_module.set_lead_notes(cid, "important note")
+        # Re-import the same company (with new contact info) — must preserve both.
+        self._import_one("Acme Federal IT, Inc.", Email="fresh@acme.com")
+        company = db_module.get_lead_companies()[0]
+        assert len(db_module.get_lead_companies()) == 1
+        assert company["contacted_status"] == "contacted"
+        assert company["outreach_notes"] == "important note"
+        assert company["email"] == "fresh@acme.com"
+
+    def test_matches_preserved_after_status_change(self, sqlite_db):
+        db_module.init_db()
+        db_module.upsert_contract({
+            "internal_id": "MX1", "vendor": "Inc Co", "agency": "Army",
+            "category": "IT", "description": "cloud network help desk services",
+            "value": 1_000_000, "place_of_performance_state": "VA",
+            "days_remaining": 180, "recompete_score": 70, "naics_code": "541512",
+        })
+        db_module.import_leads(li.parse_leads_csv(
+            "Company,Email,State\nAcme IT,it@acme.com,VA\n"))
+        cid = db_module.get_lead_companies()[0]["id"]
+        db_module.set_lead_contacted_status(cid, "contacted")
+        matches = db_module.get_matches_for_company(cid)
+        assert matches  # status change does not delete match records
+
+
+class TestOutreachUI:
+    """Route-level tests for status/notes endpoints and the outreach filter."""
+
+    def _setup_company(self, client):
+        client.post("/lead-intelligence/import", data={
+            "csv_text": "Company,Email,State\nAcme Federal IT,it@acme.com,VA\n"
+        }, follow_redirects=True)
+        return db_module.get_lead_companies()[0]["id"]
+
+    def test_status_selector_rendered(self, client):
+        self._setup_company(client)
+        body = client.get("/lead-intelligence").data.decode()
+        assert "Not contacted" in body and "Outreach status" in body
+
+    def test_notes_textarea_rendered(self, client):
+        self._setup_company(client)
+        body = client.get("/lead-intelligence").data.decode()
+        assert "Outreach notes" in body
+        assert 'name="outreach_notes"' in body
+
+    def test_set_status_via_route_persists(self, client):
+        cid = self._setup_company(client)
+        client.post(f"/lead-intelligence/{cid}/status",
+                    data={"contacted_status": "contacted"}, follow_redirects=True)
+        body = client.get("/lead-intelligence").data.decode()
+        assert "✓ Contacted" in body
+
+    def test_set_notes_via_route_persists(self, client):
+        cid = self._setup_company(client)
+        client.post(f"/lead-intelligence/{cid}/notes",
+                    data={"outreach_notes": "ring back Tuesday"}, follow_redirects=True)
+        body = client.get("/lead-intelligence").data.decode()
+        assert "ring back Tuesday" in body
+
+    def test_outreach_filter_works(self, client):
+        cid = self._setup_company(client)
+        # Add a second company that stays not-contacted.
+        client.post("/lead-intelligence/import", data={
+            "csv_text": "Company,Email\nBeta Cleaning,b@beta.com\n"
+        }, follow_redirects=True)
+        client.post(f"/lead-intelligence/{cid}/status",
+                    data={"contacted_status": "contacted"}, follow_redirects=True)
+
+        contacted = client.get("/lead-intelligence?contacted=contacted").data.decode()
+        assert "Acme Federal IT" in contacted
+        assert "Beta Cleaning" not in contacted
+
+        not_contacted = client.get("/lead-intelligence?contacted=not_contacted").data.decode()
+        assert "Beta Cleaning" in not_contacted
+        assert "Acme Federal IT" not in not_contacted
+
+    def test_status_endpoint_admin_only(self, sqlite_db, monkeypatch):
+        db_module.init_db()
+        flask_app.config["TESTING"] = True
+        flask_app.config["WTF_CSRF_ENABLED"] = False
+        flask_app.secret_key = "test-secret-key"
+        monkeypatch.setenv("ADMIN_EMAILS", "admin-only@example.com")
+        with flask_app.test_client() as c:
+            c.post("/register", data={
+                "email": "intruder@example.com",
+                "password": "testpass123",
+                "confirm": "testpass123",
+            })
+            with c.session_transaction() as sess:
+                sess["onboarding_skipped"] = "1"
+            assert c.post("/lead-intelligence/1/status",
+                          data={"contacted_status": "contacted"}).status_code == 403
+            assert c.post("/lead-intelligence/1/notes",
+                          data={"outreach_notes": "x"}).status_code == 403
 
 
 class TestLeadNextAction:

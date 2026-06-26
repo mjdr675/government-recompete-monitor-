@@ -73,6 +73,9 @@ from db import (
     get_feedback_submissions,
     import_leads,
     get_lead_intelligence_overview,
+    set_lead_contacted_status,
+    set_lead_notes,
+    LEAD_CONTACTED_STATUSES,
 )
 from lead_intelligence import parse_leads_csv, SERVICE_CATEGORY_LABELS
 from analytics import vendor_profile_analytics as vendor_profile_query
@@ -1701,6 +1704,7 @@ def lead_intelligence():
     filter_state = request.args.get("state", "")
     filter_likelihood = request.args.get("likelihood", "")
     filter_confidence = request.args.get("confidence", "")
+    filter_contacted = request.args.get("contacted", "")
     sort_by = request.args.get("sort", "score")
 
     companies = get_lead_intelligence_overview(match_limit=3)
@@ -1726,6 +1730,11 @@ def lead_intelligence():
         companies = [c for c in companies if c["low_confidence"]]
     elif filter_confidence == "high":
         companies = [c for c in companies if not c["low_confidence"]]
+    if filter_contacted in LEAD_CONTACTED_STATUSES:
+        companies = [
+            c for c in companies
+            if (c.get("contacted_status") or "not_contacted") == filter_contacted
+        ]
 
     if sort_by == "state":
         companies.sort(key=lambda c: (c.get("state") or "ZZ", -(c["likely_customer_score"])))
@@ -1748,9 +1757,11 @@ def lead_intelligence():
         filter_state=filter_state,
         filter_likelihood=filter_likelihood,
         filter_confidence=filter_confidence,
+        filter_contacted=filter_contacted,
         sort_by=sort_by,
         service_options=service_options,
         state_options=state_options,
+        current_query=request.query_string.decode(),
     )
 
 
@@ -1801,13 +1812,51 @@ def lead_intelligence_import():
         flash("No companies found — check the CSV has a 'Company' column.", "error")
         return redirect(url_for("lead_intelligence"))
 
-    imported = import_leads(leads)
+    result = import_leads(leads)
+    new = result["new"]
+    updated = result["updated"]
     skipped = max(0, raw_rows - len(leads))
-    msg = f"Imported {imported} prospect{'s' if imported != 1 else ''}."
+    parts = [f"Imported {new} prospect{'s' if new != 1 else ''}."]
+    if updated:
+        parts.append(f"Updated {updated} existing.")
     if skipped:
-        msg += f" Skipped {skipped} row{'s' if skipped != 1 else ''} (no company name)."
-    flash(msg, "success")
+        parts.append(f"Skipped {skipped} row{'s' if skipped != 1 else ''} (no company name).")
+    flash(" ".join(parts), "success")
     return redirect(url_for("lead_intelligence"))
+
+
+def _lead_redirect_back():
+    """Redirect back to the workbench, preserving the active filters/sort.
+
+    `next` carries only the query string and is always re-anchored to the
+    Lead Intelligence path, so it cannot be used as an open redirect.
+    """
+    next_query = request.form.get("next", "").lstrip("?")
+    target = url_for("lead_intelligence")
+    if next_query:
+        target = f"{target}?{next_query}"
+    return redirect(target)
+
+
+@app.route("/lead-intelligence/<int:lead_id>/status", methods=["POST"])
+def lead_intelligence_set_status(lead_id):
+    """Update a lead's contacted/not-contacted status. Admin/internal-only."""
+    guard = _require_lead_admin()
+    if guard:
+        return guard
+    set_lead_contacted_status(lead_id, request.form.get("contacted_status", ""))
+    return _lead_redirect_back()
+
+
+@app.route("/lead-intelligence/<int:lead_id>/notes", methods=["POST"])
+def lead_intelligence_set_notes(lead_id):
+    """Save a lead's free-text outreach notes. Admin/internal-only."""
+    guard = _require_lead_admin()
+    if guard:
+        return guard
+    set_lead_notes(lead_id, request.form.get("outreach_notes", ""))
+    flash("Notes saved.", "success")
+    return _lead_redirect_back()
 
 
 @app.route("/watchlist/add-by-award-id", methods=["POST"])
