@@ -10,6 +10,12 @@
   {% endfor %}
 {% endwith %}
 
+{% if not email_configured %}
+<div style="background:#fef9c3;border:1px solid #ca8a04;border-radius:6px;padding:12px 16px;margin-bottom:16px;color:#713f12;font-size:13.5px">
+  <strong>Email delivery is not configured.</strong> Alert settings will save, but no emails will be sent until <code>EMAIL_API_KEY</code> is set in the environment.
+</div>
+{% endif %}
+
 <div class="settings-page">
   <div class="settings-card">
     <h2>Watchlist Expiry Alerts</h2>

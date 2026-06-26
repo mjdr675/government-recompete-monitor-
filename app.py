@@ -2476,7 +2476,8 @@ def settings_alerts():
         ), {"uid": user["id"]}).mappings().fetchone()
     defaults = {"expiry_days": 30, "enabled": 1}
     prefs = dict(prefs) if prefs else defaults
-    return render_template("settings_alerts.html", prefs=prefs)
+    email_configured = bool(os.environ.get("EMAIL_API_KEY"))
+    return render_template("settings_alerts.html", prefs=prefs, email_configured=email_configured)
 
 
 @app.route("/settings/notifications", methods=["GET", "POST"])

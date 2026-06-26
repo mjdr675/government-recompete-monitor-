@@ -181,3 +181,40 @@ class TestAlertsRoute:
     def test_alerts_nav_link_present(self, client):
         resp = client.get("/settings/alerts")
         assert b'href="/settings/alerts"' in resp.data
+
+    def test_prefs_save_and_reload(self, client):
+        """POST saves expiry_days and enabled; GET reflects updated values."""
+        client.post(
+            "/settings/alerts",
+            data={"expiry_days": "14", "enabled": "1"},
+            follow_redirects=True,
+        )
+        resp = client.get("/settings/alerts")
+        body = resp.data.decode()
+        assert 'value="14"' in body
+        assert 'selected' in body
+
+    def test_disabled_alert_saves(self, client):
+        """Unchecked enabled checkbox saves enabled=0."""
+        client.post(
+            "/settings/alerts",
+            data={"expiry_days": "30"},  # no 'enabled' key → disabled
+            follow_redirects=True,
+        )
+        resp = client.get("/settings/alerts")
+        body = resp.data.decode()
+        # enabled checkbox must NOT be checked
+        assert 'name="enabled"' in body
+        assert 'checked' not in body
+
+    def test_email_not_configured_warning_shown(self, client, monkeypatch):
+        """When EMAIL_API_KEY is absent the page shows a config warning."""
+        monkeypatch.delenv("EMAIL_API_KEY", raising=False)
+        resp = client.get("/settings/alerts")
+        assert b"EMAIL_API_KEY" in resp.data
+
+    def test_email_configured_no_warning(self, client, monkeypatch):
+        """When EMAIL_API_KEY is set the config warning is absent."""
+        monkeypatch.setenv("EMAIL_API_KEY", "re_test_key")
+        resp = client.get("/settings/alerts")
+        assert b"EMAIL_API_KEY" not in resp.data
