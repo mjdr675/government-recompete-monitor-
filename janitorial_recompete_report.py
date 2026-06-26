@@ -181,16 +181,58 @@ def enrichment_award_id(row):
 def should_enrich(row):
     return row["value"] >= 500_000 and row["days_remaining"] <= 180 and bool(enrichment_award_id(row))
 
-def fetch_award_detail(internal_id):
-    try:
-        url = AWARD_DETAIL_URL.format(award_id=internal_id)
-        r = requests.get(url, timeout=30)
-        logger.info("award detail award_id=%s status=%d", internal_id, r.status_code)
-        r.raise_for_status()
-        return r.json()
-    except Exception as e:
-        logger.error("award detail failed award_id=%s: %s", internal_id, e)
-        return {}
+AWARD_DETAIL_RETRIES = int(os.getenv("AWARD_DETAIL_RETRIES", "3"))
+
+
+def fetch_award_detail(internal_id, retries=None):
+    """Fetch a single award's detail, retrying transient failures.
+
+    USASpending intermittently drops connections (RemoteDisconnected) or returns
+    5xx under load; a single attempt loses that award's enrichment entirely
+    (notably its solicitation_identifier, which SAM enrichment depends on).
+    Retry connection errors, timeouts and 5xx with a short bounded backoff so a
+    transient drop doesn't permanently blank the row. A genuine 4xx (e.g. 404)
+    is not retried.
+    """
+    if retries is None:
+        retries = AWARD_DETAIL_RETRIES
+    url = AWARD_DETAIL_URL.format(award_id=internal_id)
+    for attempt in range(1, retries + 1):
+        try:
+            r = requests.get(url, timeout=30)
+            if r.status_code >= 500:
+                logger.warning(
+                    "award detail award_id=%s attempt=%d status=%d — retrying",
+                    internal_id, attempt, r.status_code,
+                )
+                if attempt < retries:
+                    time.sleep(min(attempt, 3))
+                    continue
+                logger.error(
+                    "award detail failed award_id=%s: status=%d after %d attempts",
+                    internal_id, r.status_code, retries,
+                )
+                return {}
+            r.raise_for_status()
+            logger.info("award detail award_id=%s status=%d", internal_id, r.status_code)
+            return r.json()
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            logger.warning(
+                "award detail award_id=%s attempt=%d connection error: %s — retrying",
+                internal_id, attempt, e,
+            )
+            if attempt < retries:
+                time.sleep(min(attempt, 3))
+                continue
+            logger.error(
+                "award detail failed award_id=%s: %s after %d attempts",
+                internal_id, e, retries,
+            )
+            return {}
+        except Exception as e:
+            logger.error("award detail failed award_id=%s: %s", internal_id, e)
+            return {}
+    return {}
 
 def enrichment_from_detail(data):
     latest = data.get("latest_transaction_contract_data") or {}

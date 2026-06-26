@@ -442,3 +442,79 @@ class TestNaicsCodeNormalization:
             )).scalar()
         db_module._cached_engine.cache_clear()
         assert val == "712120"
+
+
+# ---------------------------------------------------------------------------
+# Award-detail fetch resilience (retry on RemoteDisconnected / 5xx)
+# ---------------------------------------------------------------------------
+
+class TestAwardDetailRetry:
+    def test_retries_then_succeeds_after_connection_error(self, monkeypatch):
+        """A transient RemoteDisconnected must be retried, not blank the row."""
+        import requests as req_lib
+        calls = {"n": 0}
+
+        def flaky_get(url, timeout=None):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise req_lib.exceptions.ConnectionError("Remote end closed connection")
+
+            class Ok:
+                status_code = 200
+                def raise_for_status(self): pass
+                def json(self): return {"latest_transaction_contract_data": {"solicitation_identifier": "SOL-9"}}
+            return Ok()
+
+        monkeypatch.setattr(jrr.time, "sleep", lambda *a, **k: None)
+        monkeypatch.setattr(jrr.requests, "get", flaky_get)
+        out = jrr.fetch_award_detail("AWD-1", retries=3)
+        assert calls["n"] == 2
+        assert out["latest_transaction_contract_data"]["solicitation_identifier"] == "SOL-9"
+
+    def test_gives_up_after_retries_returns_empty(self, monkeypatch):
+        import requests as req_lib
+        calls = {"n": 0}
+
+        def always_fail(url, timeout=None):
+            calls["n"] += 1
+            raise req_lib.exceptions.ConnectionError("Remote end closed connection")
+
+        monkeypatch.setattr(jrr.time, "sleep", lambda *a, **k: None)
+        monkeypatch.setattr(jrr.requests, "get", always_fail)
+        out = jrr.fetch_award_detail("AWD-1", retries=3)
+        assert out == {}
+        assert calls["n"] == 3
+
+    def test_5xx_is_retried(self, monkeypatch):
+        calls = {"n": 0}
+
+        def server_error_then_ok(url, timeout=None):
+            calls["n"] += 1
+            class Resp:
+                status_code = 500 if calls["n"] == 1 else 200
+                def raise_for_status(self): pass
+                def json(self): return {"ok": True}
+            return Resp()
+
+        monkeypatch.setattr(jrr.time, "sleep", lambda *a, **k: None)
+        monkeypatch.setattr(jrr.requests, "get", server_error_then_ok)
+        out = jrr.fetch_award_detail("AWD-1", retries=3)
+        assert out == {"ok": True}
+        assert calls["n"] == 2
+
+    def test_4xx_not_retried(self, monkeypatch):
+        calls = {"n": 0}
+
+        def not_found(url, timeout=None):
+            calls["n"] += 1
+            class Resp:
+                status_code = 404
+                def raise_for_status(self): raise Exception("404")
+                def json(self): return {}
+            return Resp()
+
+        monkeypatch.setattr(jrr.time, "sleep", lambda *a, **k: None)
+        monkeypatch.setattr(jrr.requests, "get", not_found)
+        out = jrr.fetch_award_detail("AWD-1", retries=3)
+        assert out == {}
+        assert calls["n"] == 1  # 404 is not retried
