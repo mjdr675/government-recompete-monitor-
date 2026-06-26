@@ -2195,7 +2195,7 @@ def parse_nl_query(q: str) -> dict:
 def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort="recompete_score",
                   direction="desc", page=1, limit=25, status="", profile_filter=None,
                   internal_ids=None, state="", category="", exclude_ids=None, all_rows=False,
-                  applyable=False):
+                  applyable=False, min_days_left=None):
     engine = get_engine()
     is_pg = engine.dialect.name == "postgresql"
     params: dict = {}
@@ -2239,6 +2239,10 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
     if applyable:
         base += " AND c.days_remaining <= :apply_max"
         params["apply_max"] = APPLY_MAX_DAYS
+
+    if min_days_left is not None:
+        base += " AND c.days_remaining >= :min_days_left"
+        params["min_days_left"] = int(min_days_left)
 
     if min_value is not None:
         base += " AND c.value >= :min_value"

@@ -2,6 +2,7 @@ from urllib.parse import urlencode
 
 _FILTER_LABELS = {
     "days": "Expiring within",
+    "min_days_left": "Min days left",
     "priority": "Priority",
     "min_value": "Min value",
     "naics_code": "NAICS",
@@ -13,6 +14,8 @@ _FILTER_LABELS = {
 def format_filter_value(key: str, value) -> str:
     if key == "days":
         return f"{value} days"
+    if key == "min_days_left":
+        return f"{value}+ days"
     if key == "priority":
         return str(value).title()
     if key == "min_value":
@@ -43,6 +46,7 @@ _CHIP_LABELS = {
     "state": "State",
     "priority": "Priority",
     "days": "Expiring within",
+    "min_days_left": "Min days left",
     "min_value": "Min value",
     "status": "Status",
 }
@@ -59,6 +63,8 @@ def _format_chip_value(key, value):
     """Human-readable value for a filter chip (shorter than the views summary)."""
     if key == "days":
         return f"{value} days"
+    if key == "min_days_left":
+        return f"{value}+ days"
     if key == "priority":
         return str(value).title()
     if key == "status":

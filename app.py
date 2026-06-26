@@ -980,6 +980,7 @@ def contracts():
     # Pass applyable=0 in the query string to see everything. The filtering is
     # done in SQL (get_contracts applyable=...) so pagination stays cheap.
     applyable = request.args.get("applyable", "1") != "0"
+    min_days_left = request.args.get("min_days_left", type=int)
 
     if status not in ("", "open", "expired"):
         status = ""
@@ -1002,6 +1003,9 @@ def contracts():
 
     if min_value is not None and min_value < 0:
         return "min_value must be a non-negative number", 400
+
+    if min_days_left is not None and min_days_left < 0:
+        return "min_days_left must be a non-negative integer", 400
 
     for_my_business = request.args.get("for_my_business", "")
     in_pipeline = request.args.get("in_pipeline", "")
@@ -1052,6 +1056,7 @@ def contracts():
             category=category,
             exclude_ids=discover_exclude_ids,
             applyable=applyable,
+            min_days_left=min_days_left,
         )
 
     _total = result["total"]
@@ -1105,6 +1110,7 @@ def contracts():
         priority=priority,
         days=days or "",
         min_value=min_value or "",
+        min_days_left=min_days_left or "",
         status=status,
         sort=sort,
         direction=direction,
@@ -1130,11 +1136,14 @@ def contracts_export():
     priority = request.args.get("priority", "")
     days = request.args.get("days", None)
     min_value = request.args.get("min_value", type=float)
+    min_days_left = request.args.get("min_days_left", type=int)
     status = request.args.get("status", "")
     if status not in ("", "open", "expired"):
         status = ""
     sort = request.args.get("sort", "recompete_score")
     direction = request.args.get("dir", "desc")
+    state = request.args.get("state", "")
+    category = request.args.get("category", "")
 
     days_int = int(days) if days else None
     result = get_contracts(
@@ -1142,6 +1151,8 @@ def contracts_export():
         days=days_int, min_value=min_value, status=status,
         sort=sort, direction=direction,
         page=1, limit=10000,
+        state=state, category=category,
+        min_days_left=min_days_left,
     )
 
     fields = ["internal_id", "award_id", "vendor", "agency", "value",

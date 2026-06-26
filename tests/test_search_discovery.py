@@ -893,3 +893,102 @@ class TestPscDescriptionFilter:
                 db.text("SELECT category FROM contracts WHERE internal_id = 'P5'")
             ).fetchone()
         assert row[0] == "Cleaning", "infer_category must use psc_description to classify as Cleaning"
+
+
+# ---------------------------------------------------------------------------
+# TestMinDaysLeftFilter
+# ---------------------------------------------------------------------------
+
+class TestMinDaysLeftFilter:
+    """get_contracts(min_days_left=N) filters to contracts with days_remaining >= N.
+
+    Combines cleanly with the existing ``days`` (expiring_within) parameter so
+    callers can express a range: 90 <= days_remaining <= 365.
+    """
+
+    @pytest.fixture()
+    def db(self, tmp_path):
+        db = _fresh_db(tmp_path)
+        _insert(db, internal_id="C10", days_remaining=20)
+        _insert(db, internal_id="C60", days_remaining=60)
+        _insert(db, internal_id="C90", days_remaining=90)
+        _insert(db, internal_id="C180", days_remaining=180)
+        _insert(db, internal_id="C365", days_remaining=365)
+        return db
+
+    def _ids(self, result):
+        return {r["internal_id"] for r in result["contracts"]}
+
+    def test_no_filter_returns_all(self, db):
+        result = db.get_contracts(min_days_left=None)
+        assert self._ids(result) == {"C10", "C60", "C90", "C180", "C365"}
+
+    def test_min_30_excludes_short_runway(self, db):
+        result = db.get_contracts(min_days_left=30)
+        ids = self._ids(result)
+        assert "C10" not in ids
+        assert {"C60", "C90", "C180", "C365"}.issubset(ids)
+
+    def test_min_90_exact_boundary_included(self, db):
+        result = db.get_contracts(min_days_left=90)
+        ids = self._ids(result)
+        assert "C10" not in ids
+        assert "C60" not in ids
+        assert "C90" in ids
+        assert "C180" in ids
+        assert "C365" in ids
+
+    def test_min_365_returns_only_longest(self, db):
+        result = db.get_contracts(min_days_left=365)
+        assert self._ids(result) == {"C365"}
+
+    def test_min_days_combined_with_expiring_within(self, db):
+        # min_days_left=90 + days=365 → contracts with 90 <= days_remaining <= 365
+        result = db.get_contracts(min_days_left=90, days=365)
+        ids = self._ids(result)
+        assert "C10" not in ids
+        assert "C60" not in ids
+        assert "C90" in ids
+        assert "C180" in ids
+        assert "C365" in ids
+
+    def test_impossible_range_returns_empty(self, db):
+        # min=365 and expiring_within=90 → no contract can have 365 <= d <= 90
+        result = db.get_contracts(min_days_left=365, days=90)
+        assert result["total"] == 0
+
+    def test_min_zero_returns_all(self, db):
+        result = db.get_contracts(min_days_left=0)
+        assert self._ids(result) == {"C10", "C60", "C90", "C180", "C365"}
+
+
+class TestMinDaysLeftRoute:
+    """Route-level tests for the min_days_left query parameter."""
+
+    def test_min_days_left_param_accepted(self, _route_client):
+        rv = _route_client.get("/contracts?min_days_left=90")
+        assert rv.status_code == 200
+
+    def test_min_days_left_zero_accepted(self, _route_client):
+        rv = _route_client.get("/contracts?min_days_left=0")
+        assert rv.status_code == 200
+
+    def test_min_days_left_negative_returns_400(self, _route_client):
+        rv = _route_client.get("/contracts?min_days_left=-1")
+        assert rv.status_code == 400
+
+    def test_min_days_left_combined_with_days(self, _route_client):
+        rv = _route_client.get("/contracts?min_days_left=90&days=365")
+        assert rv.status_code == 200
+
+    def test_min_days_left_in_page_html(self, _route_client):
+        rv = _route_client.get("/contracts?min_days_left=90")
+        assert b"min_days_left" in rv.data
+
+    def test_state_dropdown_renders(self, _route_client):
+        rv = _route_client.get("/contracts")
+        assert b"All states" in rv.data
+
+    def test_state_filter_param_preserved_in_response(self, _route_client):
+        rv = _route_client.get("/contracts?state=TX")
+        assert rv.status_code == 200
