@@ -17,7 +17,7 @@
           {{ today_items | length }} work item{{ 's' if today_items | length != 1 }} for today.
         {%- endif -%}
       {%- elif contract_summary and contract_summary.count -%}
-        {{ contract_summary.count }} current contract{{ 's' if contract_summary.count != 1 }} matched to {{ contract_summary.match_term }}
+        {{ contract_summary.count }} federal award{{ 's' if contract_summary.count != 1 }} matched to {{ contract_summary.match_term }}
         {%- if contract_summary.expiring_90 %}, {{ contract_summary.expiring_90 }} expiring soon{%- endif -%}.
       {%- elif analytics.platform.critical_contracts -%}
         {{ analytics.platform.critical_contracts }} critical contract{{ 's' if analytics.platform.critical_contracts != 1 }} need attention.
@@ -131,7 +131,7 @@
   {# ── Company-specific KPIs (only when we have actual matched contracts) ── #}
   <a href="/contracts?q={{ (contract_summary.match_term or '') | urlencode }}" class="kpi-card">
     <div class="kpi-header">
-      <span class="kpi-label">My Current Contracts</span>
+      <span class="kpi-label">Current Awards</span>
       <svg class="kpi-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
         <polyline points="14 2 14 8 20 8"/>
@@ -154,7 +154,7 @@
   </a>
   <a href="/contracts?q={{ (contract_summary.match_term or '') | urlencode }}&days=90" class="kpi-card high">
     <div class="kpi-header">
-      <span class="kpi-label">My Contracts Expiring</span>
+      <span class="kpi-label">Awards Expiring</span>
       <svg class="kpi-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
         <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
         <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
@@ -165,7 +165,7 @@
   </a>
   <a href="/contracts?q={{ (contract_summary.match_term or '') | urlencode }}" class="kpi-card">
     <div class="kpi-header">
-      <span class="kpi-label">My Contract Value</span>
+      <span class="kpi-label">Award Value</span>
       <svg class="kpi-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
         <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
       </svg>
@@ -532,7 +532,7 @@
         {% if contract_summary and contract_summary.contracts %}
         <div class="table-wrapper" style="margin-bottom:12px">
           <div class="table-header">
-            <h2>My Current Contracts</h2>
+            <h2>Current Awards</h2>
             <span style="font-size:12px;color:var(--text-muted);font-weight:400">
               {{ contract_summary.count }} federal award{{ 's' if contract_summary.count != 1 }} matched by
               {% if contract_summary.match_method == 'uei' %}UEI: <strong>{{ contract_summary.match_term }}</strong>
@@ -794,30 +794,28 @@
             <thead>
               <tr>
                 <th>Contract</th>
-                <th>Vendor</th>
                 <th>Agency</th>
                 <th class="col-r">Value</th>
-                <th class="col-r">Days</th>
-                <th class="col-r" title="Business Match score based on your Company Profile">Match</th>
-                <th>Why it matches</th>
+                <th class="col-r">Days Left</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {% for r in biz_opps %}
               <tr>
-                <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
-                <td>{{ r.vendor or '&mdash;' }}</td>
+                <td>{{ r.award_id or r.internal_id }}</td>
                 <td>{{ r.agency or '&mdash;' }}</td>
                 <td class="col-r">${{ "{:,.0f}".format(r.value or 0) }}</td>
-                <td class="col-r">{{ r.days_remaining if r.days_remaining is not none else '&mdash;' }}</td>
-                <td class="col-r" style="font-weight:600;color:var(--accent)">{{ r.match_score }}%</td>
-                <td style="font-size:12px;color:var(--text-muted)">{{ r.match_reasons | join(' · ') if r.match_reasons else '&mdash;' }}</td>
+                <td class="col-r {% if r.days_remaining is not none and r.days_remaining <= 30 %}days-critical{% elif r.days_remaining is not none and r.days_remaining <= 90 %}days-warning{% endif %}">
+                  {{ r.days_remaining if r.days_remaining is not none else '&mdash;' }}
+                </td>
+                <td style="white-space:nowrap"><a href="/contract/{{ r.internal_id }}" class="btn btn-ghost" style="font-size:12px;padding:2px 8px">View &rarr;</a></td>
               </tr>
               {% endfor %}
             </tbody>
           </table>
           <div style="padding:8px 12px;font-size:12px;color:var(--text-muted)">
-            <a href="/contracts?for_my_business=1">See all matching contracts →</a>
+            <a href="/contracts?for_my_business=1">See all matching contracts &rarr;</a>
           </div>
         </div>
         {% elif g.user and not has_profile %}
