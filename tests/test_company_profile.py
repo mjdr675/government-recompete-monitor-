@@ -528,9 +528,11 @@ def _uid(db_path):
 
 
 class TestMyCurrentContractsUeiOnly:
-    """UEI is the only identity key for current-contract matching.
+    """Current-contract matching prefers UEI, then falls back to vendor/company name.
 
-    Company name, vendor name, and CAGE are never used for matching.
+    UEI (exact, on recipient_uei) is preferred when set; otherwise vendor_name,
+    then company_name, match by substring on the contract vendor. CAGE is not
+    used for matching. (Updated from the earlier UEI-only behavior.)
     """
 
     def test_returns_empty_when_no_profile(self, matching_db):
@@ -557,7 +559,7 @@ class TestMyCurrentContractsUeiOnly:
         _insert_contract(matching_db, "C003", "Acme Corp", recipient_uei="UUUU11223344")
         save_company_profile(uid, {"uei": "UUUU11223344"})
         results = my_current_contracts(uid)
-        assert results[0]["match_method"] == "UEI"
+        assert results[0]["match_method"] == "uei"
 
     def test_cage_alone_does_not_match(self, matching_db):
         """CAGE-only profile must not match any contracts — UEI required."""
@@ -566,19 +568,23 @@ class TestMyCurrentContractsUeiOnly:
         save_company_profile(uid, {"cage_code": "5AB12"})
         assert my_current_contracts(uid) == []
 
-    def test_vendor_name_alone_does_not_match(self, matching_db):
-        """Vendor name on the profile must not match by name — UEI required."""
+    def test_vendor_name_alone_matches_by_name(self, matching_db):
+        """Vendor name on the profile (no UEI) matches by vendor-name substring."""
         uid = _uid(matching_db)
         _insert_contract(matching_db, "C005", "Delta Services Inc")
         save_company_profile(uid, {"vendor_name": "Delta Services"})
-        assert my_current_contracts(uid) == []
+        results = my_current_contracts(uid)
+        assert "C005" in [r["internal_id"] for r in results]
+        assert results[0]["match_method"] == "vendor_name"
 
-    def test_company_name_alone_does_not_match(self, matching_db):
-        """Company name on the profile must not match by name — UEI required."""
+    def test_company_name_alone_matches_by_name(self, matching_db):
+        """Company name on the profile (no UEI/vendor_name) matches by name substring."""
         uid = _uid(matching_db)
         _insert_contract(matching_db, "C006", "Foxtrot Systems LLC")
         save_company_profile(uid, {"company_name": "Foxtrot Systems LLC"})
-        assert my_current_contracts(uid) == []
+        results = my_current_contracts(uid)
+        assert "C006" in [r["internal_id"] for r in results]
+        assert results[0]["match_method"] == "company_name"
 
     # --- Regression: UEI is the key; name divergence must not prevent a match ---
 
@@ -605,13 +611,15 @@ class TestMyCurrentContractsUeiOnly:
         })
         assert my_current_contracts(uid) == []
 
-    def test_correct_name_no_uei_does_not_match(self, matching_db):
-        """Correct company name with no UEI at all must produce zero matches."""
+    def test_correct_name_no_uei_matches_by_name(self, matching_db):
+        """Correct company name with no UEI now matches by name (vendor substring)."""
         uid = _uid(matching_db)
         _insert_contract(matching_db, "C009", "Foxtrot Systems LLC",
                          recipient_uei="REALUEI12345")
         save_company_profile(uid, {"company_name": "Foxtrot Systems LLC"})
-        assert my_current_contracts(uid) == []
+        results = my_current_contracts(uid)
+        assert "C009" in [r["internal_id"] for r in results]
+        assert results[0]["match_method"] == "company_name"
 
     # --- Normalization ---
 
@@ -625,11 +633,16 @@ class TestMyCurrentContractsUeiOnly:
 
     # --- Summary ---
 
-    def test_summary_returns_none_when_no_uei(self, matching_db):
-        """Summary must be None when the profile has no UEI — triggers 'Add your UEI' state."""
+    def test_summary_truthy_with_company_name_no_uei(self, matching_db):
+        """Summary is truthy when only company_name is set (vendor-name fallback),
+        so the dashboard renders the empty state + recommendations rather than the
+        old 'Add your UEI' prompt."""
         uid = _uid(matching_db)
         save_company_profile(uid, {"company_name": "Acme Corp"})
-        assert my_current_contract_summary(uid) is None
+        summary = my_current_contract_summary(uid)
+        assert summary is not None
+        assert summary["match_method"] == "company_name"
+        assert summary["match_term"] == "Acme Corp"
 
     def test_summary_returns_dict_with_count_zero_when_uei_set_but_no_matches(self, matching_db):
         """Summary must be a dict (not None) when UEI is set but no contracts match.
