@@ -379,6 +379,7 @@ def _ensure_ci_columns():
         for col, coltype in [
             ("place_of_performance_state", "TEXT"),
             ("vendor_website", "TEXT"),
+            ("recipient_uei", "TEXT NOT NULL DEFAULT ''"),
         ]:
             if col not in existing:
                 conn.execute(text(f"ALTER TABLE contracts ADD COLUMN {col} {coltype}"))
@@ -1513,7 +1514,9 @@ def upsert_contract(row):
             "sam_url": row.get("sam_url") or "",
             "sam_type": row.get("sam_type") or "",
             "sam_due_date": row.get("sam_due_date") or "",
-            "recipient_uei": row.get("recipient_uei") or "",
+            # normalize_uei() in analytics.py does the same strip/uppercase; not
+            # imported here to avoid a circular import (analytics.py imports db.py).
+            "recipient_uei": "".join((row.get("recipient_uei") or "").split()).upper(),
             "cage_code": row.get("cage_code") or "",
         })
 
