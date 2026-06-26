@@ -277,3 +277,39 @@ def test_ingest_run_still_accepts_bearer_secret(csrf_client):
         mock_threading.Thread.return_value = MagicMock()
         rv = csrf_client.post("/ingest/run", headers={"Authorization": "Bearer correct-secret"})
     assert rv.status_code in (200, 202)
+
+
+# ---------------------------------------------------------------------------
+# CRON_SECRET fail-closed in production (Railway)
+# ---------------------------------------------------------------------------
+
+def test_ingest_run_fail_closed_on_railway_without_secret(client):
+    """On Railway with no CRON_SECRET, /ingest/run must NOT be open — return 503."""
+    import app as flask_app
+    with patch.object(flask_app, "_CRON_SECRET", ""), \
+         patch.object(flask_app, "_ON_RAILWAY", True), \
+         patch("app.threading") as mock_threading:
+        mock_threading.Thread.return_value = MagicMock()
+        rv = client.post("/ingest/run")
+    assert rv.status_code == 503
+    assert b"CRON_SECRET" in rv.data
+
+
+def test_ingest_run_open_in_dev_without_secret(client):
+    """Locally (not Railway) with no secret, the route stays open for testing."""
+    import app as flask_app
+    with patch.object(flask_app, "_CRON_SECRET", ""), \
+         patch.object(flask_app, "_ON_RAILWAY", False), \
+         patch("app.threading") as mock_threading:
+        mock_threading.Thread.return_value = MagicMock()
+        rv = client.post("/ingest/run")
+    assert rv.status_code in (200, 202)
+
+
+def test_ingest_run_secret_set_still_enforced_on_railway(client):
+    """With a secret set on Railway, a wrong secret is still rejected (401)."""
+    import app as flask_app
+    with patch.object(flask_app, "_CRON_SECRET", "correct"), \
+         patch.object(flask_app, "_ON_RAILWAY", True):
+        rv = client.post("/ingest/run", headers={"Authorization": "Bearer wrong"})
+    assert rv.status_code == 401

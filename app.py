@@ -643,6 +643,15 @@ def ingest_run():
         bearer_ok = auth_header == f"Bearer {_CRON_SECRET}"
         if header_secret != _CRON_SECRET and not bearer_ok:
             return {"error": "unauthorized"}, 401
+    elif _ON_RAILWAY:
+        # Fail closed in production: never leave the ingest trigger open to the
+        # public on Railway when no CRON_SECRET is configured. (A startup warning
+        # is already emitted; this stops anonymous triggers at request time.)
+        logging.getLogger("ingest").error(
+            "/ingest/run blocked: CRON_SECRET is not set in production (fail-closed)"
+        )
+        return {"error": "ingest disabled: CRON_SECRET not configured"}, 503
+    # else: local/dev with no secret — route stays open for testing.
 
     # Overlap prevention: reject if another ingest is already in progress.
     with _ingest_lock:
