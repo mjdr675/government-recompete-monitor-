@@ -684,11 +684,50 @@ def ingest_run():
         global _ingest_running
         with _ingest_lock:
             _ingest_running = True
+        _log = logging.getLogger("ingest")
+        start = time.monotonic()
         try:
             from janitorial_recompete_report import main
             main()
+            duration = time.monotonic() - start
+            finished_at = datetime.now(timezone.utc).isoformat()
+            engine = get_engine()
+            with engine.connect() as conn:
+                record_count = conn.execute(text("SELECT COUNT(*) FROM contracts")).scalar() or 0
+            with engine.begin() as conn:
+                conn.execute(text(
+                    "INSERT INTO ingest_log"
+                    " (run_date, source, record_count, duration_seconds, status, error_message, created_at)"
+                    " VALUES (:run_date, :source, :record_count, :duration_seconds, :status, NULL, :created_at)"
+                ), {
+                    "run_date": finished_at[:10],
+                    "source": "usaspending",
+                    "record_count": record_count,
+                    "duration_seconds": duration,
+                    "status": "success",
+                    "created_at": finished_at,
+                })
         except Exception as exc:
-            logging.getLogger("ingest").exception("Manual ingest failed: %s", exc)
+            _log.exception("Manual ingest failed: %s", exc)
+            duration = time.monotonic() - start
+            finished_at = datetime.now(timezone.utc).isoformat()
+            try:
+                engine = get_engine()
+                with engine.begin() as conn:
+                    conn.execute(text(
+                        "INSERT INTO ingest_log"
+                        " (run_date, source, record_count, duration_seconds, status, error_message, created_at)"
+                        " VALUES (:run_date, :source, 0, :duration_seconds, :status, :error_message, :created_at)"
+                    ), {
+                        "run_date": finished_at[:10],
+                        "source": "usaspending",
+                        "duration_seconds": duration,
+                        "status": "failure",
+                        "error_message": str(exc),
+                        "created_at": finished_at,
+                    })
+            except Exception as log_exc:
+                _log.warning("Failed to write ingest_log on cron failure: %s", log_exc)
         finally:
             with _ingest_lock:
                 _ingest_running = False
