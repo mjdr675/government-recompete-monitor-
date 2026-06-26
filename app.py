@@ -1515,8 +1515,10 @@ def contract_detail(internal_id):
         or extract_raw_field(row, "recipient_state")
         or ""
     )
-    performance_city = extract_raw_field(row, "performance_city") or ""
-    psc_description = extract_raw_field(row, "psc_description") or ""
+    performance_city = row.get("place_of_performance_city") or extract_raw_field(row, "performance_city") or ""
+    performance_country = row.get("place_of_performance_country") or extract_raw_field(row, "performance_country") or ""
+    psc_description = row.get("psc_description") or extract_raw_field(row, "psc_description") or ""
+    psc_code = row.get("psc_code") or extract_raw_field(row, "psc_code") or ""
 
     return render_template("contract_detail.html", row=row, is_bookmarked=is_bookmarked,
                            notes=notes, next_step=guidance, action=action,
@@ -1528,7 +1530,9 @@ def contract_detail(internal_id):
                            category=category,
                            performance_state=performance_state,
                            performance_city=performance_city,
+                           performance_country=performance_country,
                            psc_description=psc_description,
+                           psc_code=psc_code,
                            stage_key=stage_key,
                            stage_label=stage_label,
                            stage_detail=stage_detail,

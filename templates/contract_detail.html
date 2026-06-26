@@ -238,11 +238,17 @@
         {% if performance_city and performance_state %}<a href="/contracts?state={{ performance_state|urlencode }}">{{ performance_city }}, {{ performance_state }}</a>
         {% elif performance_state %}<a href="/contracts?state={{ performance_state|urlencode }}">{{ performance_state }}</a>
         {% else %}<span class="muted">Not recorded</span>{% endif %}
+        {% if performance_country and performance_country not in ("UNITED STATES", "USA", "US") %}
+        <span class="muted" style="font-size:12px">&middot; {{ performance_country }}</span>
+        {% endif %}
       </td></tr>
       {% if category and category != "Other" %}
       <tr><th>Category</th><td data-testid="category-field"><a href="/contracts?category={{ category|urlencode }}"><span style="font-size:12px;padding:2px 8px;border-radius:9999px;background:var(--surface);border:1px solid var(--border)">{{ category }}</span></a></td></tr>
       {% endif %}
       {% if row.get("naics_code") %}<tr><th>NAICS Code</th><td>{{ row["naics_code"] }}</td></tr>{% endif %}
+      {% if psc_description or psc_code %}
+      <tr><th>PSC</th><td data-testid="psc-field">{% if psc_code %}<span style="font-family:monospace;font-size:12px;padding:1px 5px;background:var(--surface);border:1px solid var(--border);border-radius:4px">{{ psc_code }}</span> {% endif %}{{ psc_description or "—" }}</td></tr>
+      {% endif %}
       <tr><th>Award ID</th><td>{{ row["award_id"] or "—" }}</td></tr>
       <tr><th>Solicitation ID</th><td>{{ row["solicitation_id"] or "—" }}</td></tr>
       <tr><th>Competition Type</th><td>{{ row["competition_type"] or "—" }}</td></tr>

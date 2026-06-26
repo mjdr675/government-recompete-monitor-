@@ -415,14 +415,7 @@ def _ensure_discovery_columns():
 
 
 def _ensure_psc_description_column():
-    """Add contracts.psc_description to pre-existing SQLite databases.
-
-    The column is present in the CREATE TABLE definition, so brand-new DBs get
-    it for free. But databases created before psc_description was added are never
-    altered (CREATE TABLE IF NOT EXISTS is a no-op on an existing table), so
-    save_snapshot's INSERT fails with "no column named psc_description".
-    Add it idempotently. Not part of the FTS index, so no FTS rebuild needed.
-    """
+    """Add contracts.psc_description to pre-existing SQLite databases."""
     engine = get_engine()
     with engine.begin() as conn:
         rows = conn.execute(text("PRAGMA table_info(contracts)")).fetchall()
@@ -431,6 +424,23 @@ def _ensure_psc_description_column():
         existing = {r[1] for r in rows}
         if "psc_description" not in existing:
             conn.execute(text("ALTER TABLE contracts ADD COLUMN psc_description TEXT"))
+
+
+def _ensure_richer_location_columns():
+    """Add psc_code and place_of_performance_country to pre-existing SQLite DBs.
+
+    Safe to call on new DBs (no-op when columns already exist).
+    """
+    engine = get_engine()
+    with engine.begin() as conn:
+        rows = conn.execute(text("PRAGMA table_info(contracts)")).fetchall()
+        if not rows:
+            return
+        existing = {r[1] for r in rows}
+        for col in ("psc_code TEXT", "place_of_performance_country TEXT"):
+            col_name = col.split()[0]
+            if col_name not in existing:
+                conn.execute(text(f"ALTER TABLE contracts ADD COLUMN {col}"))
 
 
 def init_db():
@@ -443,6 +453,7 @@ def init_db():
     _ensure_ci_columns()
     needs_fts_rebuild = _ensure_discovery_columns() or needs_fts_rebuild
     _ensure_psc_description_column()
+    _ensure_richer_location_columns()
 
     engine = get_engine()
     with engine.begin() as conn:
@@ -468,6 +479,8 @@ def init_db():
             recompete_score INTEGER,
             priority TEXT,
             psc_description TEXT,
+            psc_code TEXT,
+            place_of_performance_country TEXT,
             raw_json TEXT,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
             vendor_website TEXT,
@@ -1351,14 +1364,16 @@ def upsert_contract(row):
         INSERT INTO contracts (
             internal_id, award_id, vendor, agency, sub_agency, description,
             naics_code, place_of_performance_state, place_of_performance_city,
-            place_of_performance_zip, category, psc_description,
+            place_of_performance_zip, place_of_performance_country,
+            category, psc_description, psc_code,
             value, start_date, end_date, days_remaining, competition_type,
             solicitation_id, recompete_score, priority, raw_json, updated_at, sam_url,
             recipient_uei, cage_code
         )
         VALUES (:internal_id, :award_id, :vendor, :agency, :sub_agency, :description,
                 :naics_code, :place_of_performance_state, :place_of_performance_city,
-                :place_of_performance_zip, :category, :psc_description,
+                :place_of_performance_zip, :place_of_performance_country,
+                :category, :psc_description, :psc_code,
                 :value, :start_date, :end_date, :days_remaining, :competition_type,
                 :solicitation_id, :recompete_score, :priority, :raw_json, :updated_at, :sam_url,
                 :recipient_uei, :cage_code)
@@ -1372,8 +1387,10 @@ def upsert_contract(row):
             place_of_performance_state=excluded.place_of_performance_state,
             place_of_performance_city=excluded.place_of_performance_city,
             place_of_performance_zip=excluded.place_of_performance_zip,
+            place_of_performance_country=excluded.place_of_performance_country,
             category=excluded.category,
             psc_description=excluded.psc_description,
+            psc_code=excluded.psc_code,
             value=excluded.value,
             start_date=excluded.start_date,
             end_date=excluded.end_date,
@@ -1398,8 +1415,10 @@ def upsert_contract(row):
             "place_of_performance_state": pop_state,
             "place_of_performance_city": pop_city or None,
             "place_of_performance_zip": pop_zip or None,
+            "place_of_performance_country": row.get("performance_country") or row.get("place_of_performance_country") or None,
             "category": category,
             "psc_description": psc_description or None,
+            "psc_code": row.get("psc_code") or None,
             "value": float(row.get("value") or 0),
             "start_date": row.get("start_date"),
             "end_date": row.get("end_date"),
@@ -1515,14 +1534,16 @@ def save_snapshot(run_date, rows):
             INSERT INTO contracts (
                 internal_id, award_id, vendor, agency, sub_agency, description,
                 naics_code, place_of_performance_state, place_of_performance_city,
-                place_of_performance_zip, category, psc_description,
+                place_of_performance_zip, place_of_performance_country,
+                category, psc_description, psc_code,
                 value, start_date, end_date, days_remaining, competition_type,
                 solicitation_id, recompete_score, priority, raw_json, updated_at, sam_url,
                 recipient_uei, cage_code
             )
             VALUES (:internal_id, :award_id, :vendor, :agency, :sub_agency, :description,
                     :naics_code, :place_of_performance_state, :place_of_performance_city,
-                    :place_of_performance_zip, :category, :psc_description,
+                    :place_of_performance_zip, :place_of_performance_country,
+                    :category, :psc_description, :psc_code,
                     :value, :start_date, :end_date, :days_remaining, :competition_type,
                     :solicitation_id, :recompete_score, :priority, :raw_json, CURRENT_TIMESTAMP,
                     :sam_url, :recipient_uei, :cage_code)
@@ -1536,8 +1557,10 @@ def save_snapshot(run_date, rows):
                 place_of_performance_state=excluded.place_of_performance_state,
                 place_of_performance_city=excluded.place_of_performance_city,
                 place_of_performance_zip=excluded.place_of_performance_zip,
+                place_of_performance_country=excluded.place_of_performance_country,
                 category=excluded.category,
                 psc_description=excluded.psc_description,
+                psc_code=excluded.psc_code,
                 value=excluded.value,
                 start_date=excluded.start_date,
                 end_date=excluded.end_date,
@@ -1562,8 +1585,10 @@ def save_snapshot(run_date, rows):
                 "place_of_performance_state": pop_state,
                 "place_of_performance_city": pop_city or None,
                 "place_of_performance_zip": pop_zip or None,
+                "place_of_performance_country": row.get("performance_country") or row.get("place_of_performance_country") or None,
                 "category": category,
                 "psc_description": psc_description or None,
+                "psc_code": row.get("psc_code") or None,
                 "value": float(row.get("value") or 0),
                 "start_date": row.get("start_date"),
                 "end_date": row.get("end_date"),
