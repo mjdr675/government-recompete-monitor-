@@ -56,6 +56,11 @@ def _value_component(value) -> dict:
 
 
 def _timing_component(days_remaining) -> dict:
+    """Mirror the _days_score thresholds from recompete_report for the explainer.
+
+    Maximum points (25) are earned at 365–540 days — the best pursuit window.
+    Imminent expiry earns 0 because a new challenger cannot realistically bid.
+    """
     try:
         d = int(days_remaining) if days_remaining is not None else None
     except (TypeError, ValueError):
@@ -64,16 +69,20 @@ def _timing_component(days_remaining) -> dict:
     if d is None:
         return {"name": "Time remaining", "earned": 0, "max": 25, "detail": "End date not recorded"}
     if d <= 0:
-        return {"name": "Time remaining", "earned": 25, "max": 25, "detail": "Expired — follow-on may already be posted"}
-    if d <= 30:
-        return {"name": "Time remaining", "earned": 25, "max": 25, "detail": f"{d} days — solicitation likely imminent"}
-    if d <= 60:
-        return {"name": "Time remaining", "earned": 20, "max": 25, "detail": f"{d} days — recompete window opening"}
-    if d <= 90:
-        return {"name": "Time remaining", "earned": 15, "max": 25, "detail": f"{d} days — begin positioning now"}
-    if d <= 180:
-        return {"name": "Time remaining", "earned": 10, "max": 25, "detail": f"{d} days — within 6-month window"}
-    return {"name": "Time remaining", "earned": 0, "max": 25, "detail": f"{d} days — more than 6 months out"}
+        return {"name": "Time remaining", "earned": 0, "max": 25, "detail": "Expired — follow-on may already be posted"}
+    if d < 30:
+        return {"name": "Time remaining", "earned": 0, "max": 25, "detail": f"{d} days — too late for new challengers (solicitation likely closed)"}
+    if d < 90:
+        return {"name": "Time remaining", "earned": 5, "max": 25, "detail": f"{d} days — urgent/late-stage; limited time to engage"}
+    if d < 180:
+        return {"name": "Time remaining", "earned": 10, "max": 25, "detail": f"{d} days — active pursuit window"}
+    if d < 270:
+        return {"name": "Time remaining", "earned": 15, "max": 25, "detail": f"{d} days — proposal and team preparation window"}
+    if d < 365:
+        return {"name": "Time remaining", "earned": 20, "max": 25, "detail": f"{d} days — opportunity shaping window"}
+    if d <= 540:
+        return {"name": "Time remaining", "earned": 25, "max": 25, "detail": f"{d} days — best pursuit window (maximum points)"}
+    return {"name": "Time remaining", "earned": 5, "max": 25, "detail": f"{d} days — early monitoring stage; revisit as it approaches"}
 
 
 def _bonus_components(row) -> list[dict]:
@@ -282,55 +291,6 @@ def match_summary(row, reasons: list[str]) -> str:
     return reason_text
 
 
-def format_contract_update(row):
-    """Format a field-change row for compact dashboard display."""
-    field = row.get("field_name", "")
-    kind = (row.get("change_kind") or "MODIFIED").upper()
-    old = row.get("old_value")
-    new = row.get("new_value")
-    award_id = row.get("award_id")
-    internal_id = row.get("internal_id", "")
-
-    _labels = {
-        "value": "Value",
-        "end_date": "Recompete date",
-        "days_remaining": "Days remaining",
-        "vendor": "Vendor",
-        "competition_type": "Competition type",
-        "recompete_score": "Recompete score",
-        "priority": "Priority",
-    }
-    label = _labels.get(field, field.replace("_", " ").title())
-
-    if kind == "INCREASE":
-        verb = "increased"
-    elif kind == "DECREASE":
-        verb = "decreased"
-    elif kind == "SET":
-        verb = "set"
-    else:
-        verb = "changed"
-
-    def _fmt(v):
-        if v is None:
-            return "—"
-        if field == "value":
-            try:
-                return f"${int(float(v)):,}"
-            except (ValueError, TypeError):
-                return str(v)
-        return str(v)
-
-    return {
-        "headline": f"{label} {verb}",
-        "field": field,
-        "old_value": _fmt(old),
-        "new_value": _fmt(new),
-        "contract": award_id or internal_id,
-        "run_date": row.get("run_date", ""),
-        "change_kind": kind,
-    }
-
 def _safe_int(v):
     try:
         return int(v) if v is not None else None
@@ -338,45 +298,146 @@ def _safe_int(v):
         return None
 
 
+def pursuit_stage(days_remaining) -> dict:
+    """Classify a contract's actionability stage for a new challenger.
+
+    Returns a dict with keys: stage_key (str), label (str), description (str),
+    actionable (bool — True when there is realistic time to pursue).
+
+    Stages mirror the _days_score thresholds so that score and stage labels are
+    always consistent. Maximum scoring window (365–540 days) maps to "best_window".
+    """
+    try:
+        d = int(days_remaining) if days_remaining is not None else None
+    except (TypeError, ValueError):
+        d = None
+
+    if d is None:
+        return {
+            "stage_key": "unknown",
+            "label": "Timing Unknown",
+            "description": "No expiration date on file. Confirm on SAM.gov before pursuing.",
+            "actionable": False,
+        }
+    if d <= 0:
+        return {
+            "stage_key": "expired",
+            "label": "Expired",
+            "description": "This contract has ended. Research whether the follow-on has been awarded or solicited.",
+            "actionable": False,
+        }
+    if d < 30:
+        return {
+            "stage_key": "too_late",
+            "label": "Too Late / Monitor Only",
+            "description": (
+                "Under 30 days remaining — the solicitation has almost certainly closed "
+                "for new challengers. Track the follow-on award instead."
+            ),
+            "actionable": False,
+        }
+    if d < 90:
+        return {
+            "stage_key": "urgent",
+            "label": "Urgent / Late Stage",
+            "description": (
+                "Under 90 days remaining — too late to start a new pursuit unless you are "
+                "already engaged. Begin researching the follow-on solicitation."
+            ),
+            "actionable": False,
+        }
+    if d < 180:
+        return {
+            "stage_key": "active_pursuit",
+            "label": "Active Pursuit",
+            "description": (
+                "90–180 days remaining — proposal preparation should be underway. "
+                "Confirm solicitation status on SAM.gov and begin writing."
+            ),
+            "actionable": True,
+        }
+    if d < 270:
+        return {
+            "stage_key": "prepare",
+            "label": "Prepare Proposal & Team",
+            "description": (
+                "180–270 days remaining — proposal and teaming window. "
+                "Line up partners, finalize past performance, and get pricing ready."
+            ),
+            "actionable": True,
+        }
+    if d < 365:
+        return {
+            "stage_key": "shape",
+            "label": "Shape Opportunity",
+            "description": (
+                "270–365 days remaining — engage the agency now to help shape requirements "
+                "before the solicitation drops. Attend industry days."
+            ),
+            "actionable": True,
+        }
+    if d <= 540:
+        return {
+            "stage_key": "best_window",
+            "label": "Best Pursuit Window",
+            "description": (
+                "365–540 days remaining — ideal capture window. Enough runway to build "
+                "relationships, position your capabilities, and prepare a strong proposal."
+            ),
+            "actionable": True,
+        }
+    return {
+        "stage_key": "watch",
+        "label": "Watch / Early Stage",
+        "description": (
+            "More than 18 months out — keep an eye on this one. "
+            "Revisit when it enters the best pursuit window (under 540 days)."
+        ),
+        "actionable": False,
+    }
+
+
 def next_step(days_remaining, priority=None):
     """Plain-English recompete timing + recommended next action.
 
-    Pure function using existing fields only (no DB, no external/AI calls). Turns
-    ``days_remaining`` into actionable guidance for a contractor; ``priority`` (the
-    CRITICAL/HIGH/… tier) adds a short urgency nudge. Returns a dict with keys
-    ``timing``, ``detail`` and ``action``.
+    Uses the pursuit_stage framework so timing labels are consistent across the
+    app. Returns a dict with keys ``timing``, ``detail`` and ``action``.
     """
+    stage = pursuit_stage(days_remaining)
+
+    timing_map = {
+        "unknown":      "Timing unknown",
+        "expired":      "Expired",
+        "too_late":     "Too Late / Monitor Only",
+        "urgent":       "Urgent / Late Stage",
+        "active_pursuit": "Expiring within ~6 months",
+        "prepare":      "Prepare Proposal & Team",
+        "shape":        "Shape Opportunity",
+        "best_window":  "Best Pursuit Window",
+        "watch":        "More than a year out",
+    }
+    action_map = {
+        "unknown":      "Confirm the contract's end date on SAM.gov, then set a reminder to track the recompete.",
+        "expired":      "Search SAM.gov for the recompete/follow-on and confirm whether it is still open.",
+        "too_late":     "Monitor SAM.gov for the follow-on award. Do not invest pursuit resources in this cycle.",
+        "urgent":       "Check SAM.gov for the active solicitation immediately. Only proceed if already engaged.",
+        "active_pursuit": "Confirm the active solicitation now and prepare your proposal — this is a near-term bid.",
+        "prepare":      "Begin writing your proposal, finalize teaming partners, and watch for the solicitation drop.",
+        "shape":        "Engage the agency, line up teaming/past-performance, and watch for the draft RFP.",
+        "best_window":  "This is the ideal time to start capture — engage the agency and position your capabilities.",
+        "watch":        "Track it and build relevant past performance; revisit when it enters the best pursuit window.",
+    }
+
+    timing = timing_map.get(stage["stage_key"], stage["label"])
+    detail = stage["description"]
+    action = action_map.get(stage["stage_key"], stage["description"])
+
     try:
         d = int(days_remaining) if days_remaining is not None else None
     except (ValueError, TypeError):
         d = None
 
-    if d is None:
-        timing = "Timing unknown"
-        detail = ("No period-of-performance end date is on file for this contract, so the "
-                  "recompete window can't be estimated.")
-        action = "Confirm the contract's end date on SAM.gov, then set a reminder to track the recompete."
-    elif d <= 0:
-        timing = "Expired"
-        detail = ("This contract's period of performance has ended — the follow-on may already "
-                  "be solicited or awarded.")
-        action = "Search SAM.gov for the recompete/follow-on and confirm whether it is still open."
-    elif d <= 180:
-        timing = "Expiring within ~6 months"
-        detail = ("Recompete solicitations usually post before the incumbent contract ends, so "
-                  "the RFP is likely imminent or already out.")
-        action = "Confirm the active solicitation now and prepare your proposal — this is a near-term bid."
-    elif d <= 365:
-        timing = "Expiring within a year"
-        detail = ("This is the positioning window: agencies shape requirements months before "
-                  "the solicitation is released.")
-        action = "Engage the agency, line up teaming/past-performance, and watch for the draft RFP."
-    else:
-        timing = "More than a year out"
-        detail = "Early stage — there is plenty of runway before this contract is recompeted."
-        action = "Track it and build relevant past performance; revisit as the end date approaches."
-
-    if d is not None and 0 < d and (priority or "").upper() in ("CRITICAL", "HIGH"):
+    if d is not None and d > 0 and (priority or "").upper() in ("CRITICAL", "HIGH"):
         action = "High-priority opportunity — " + action
 
     return {"timing": timing, "detail": detail, "action": action}
@@ -385,8 +446,13 @@ def next_step(days_remaining, priority=None):
 def recommended_action(row):
     """Deterministic next-best-action for a contract row dict.
 
-    Returns {"action": short imperative, "explanation": 1-2 sentence rationale}.
+    Returns {"action": short imperative, "explanation": 1-2 sentence rationale,
+             "too_late": bool}.
     Uses only already-stored fields — no DB, no external/AI calls.
+
+    Actions are stage-aware: near-expiry alone is not treated as the most urgent
+    signal — a contract expiring in 10 days is less actionable for a new challenger
+    than one expiring in 400 days.
     """
     days = _safe_int(row.get("days_remaining"))
     score = _safe_int(row.get("recompete_score"))
@@ -395,63 +461,98 @@ def recommended_action(row):
     value = float(row.get("value") or 0)
     comp_type = (row.get("competition_type") or "").upper()
 
-    if days is not None and days <= 0:
+    stage = pursuit_stage(days)
+    stage_key = stage["stage_key"]
+
+    if stage_key == "expired":
         return {
             "action": "Search for the follow-on award",
             "explanation": "This contract's period of performance has ended. The follow-on procurement may already be posted on SAM.gov.",
+            "too_late": True,
+        }
+
+    if stage_key == "too_late":
+        return {
+            "action": "Monitor for the follow-on solicitation",
+            "explanation": (
+                "With under 30 days remaining the solicitation window has almost certainly "
+                "closed for new challengers. Track SAM.gov for the follow-on award."
+            ),
+            "too_late": True,
+        }
+
+    if stage_key == "urgent":
+        if sol_id:
+            return {
+                "action": "Review the active solicitation immediately",
+                "explanation": "A solicitation is on file and the contract expires within 90 days — confirm the deadline on SAM.gov and submit now.",
+                "too_late": False,
+            }
+        return {
+            "action": "Check SAM.gov for the active solicitation",
+            "explanation": (
+                "This contract expires within 90 days. Only proceed if you are already "
+                "engaged — starting a new pursuit at this stage is very late."
+            ),
+            "too_late": False,
         }
 
     if sol_id:
         return {
             "action": "Review the active solicitation and prepare your proposal",
             "explanation": "A solicitation is already on file for this contract. Confirm the due date on SAM.gov and begin your response.",
+            "too_late": False,
         }
 
-    if days is not None and days <= 30:
+    if stage_key == "active_pursuit":
         return {
-            "action": "Begin capture planning immediately",
-            "explanation": "This contract expires within 30 days. A solicitation is likely imminent — check SAM.gov now for the active posting.",
+            "action": "Begin proposal preparation",
+            "explanation": "The recompete window is open (90–180 days remaining). Draft your proposal, line up past performance, and watch for the solicitation.",
+            "too_late": False,
         }
 
-    if days is not None and days <= 90:
+    if stage_key == "prepare":
         return {
-            "action": "Contact the contracting office",
-            "explanation": "The recompete window is opening. Reaching out now lets you shape requirements before the solicitation is released.",
+            "action": "Build your proposal and teaming strategy",
+            "explanation": "You are in the proposal preparation window (180–270 days). Identify teaming partners and begin pricing.",
+            "too_late": False,
         }
 
-    if days is not None and days <= 180 and score is not None and score >= 75:
+    if stage_key == "shape":
         return {
-            "action": "Begin capture planning",
-            "explanation": "This high-scoring opportunity expires within 6 months. Start positioning now — solicitations often post before contract end.",
+            "action": "Engage the agency to shape requirements",
+            "explanation": "With 270–365 days remaining you can still influence the solicitation. Attend industry days and introduce your capabilities.",
+            "too_late": False,
         }
 
-    if days is not None and days <= 365:
+    if stage_key == "best_window":
         return {
-            "action": "Build a teaming strategy",
-            "explanation": "The recompete is within 12 months. Identify teaming partners, build past performance, and begin engaging the agency.",
-        }
-
-    if priority in ("CRITICAL", "HIGH"):
-        return {
-            "action": "Monitor for solicitation release",
-            "explanation": "This is a high-priority contract. Set up SAM.gov alerts and check regularly for the recompete solicitation.",
+            "action": "Start capture planning now",
+            "explanation": (
+                "This contract is in the best pursuit window (365–540 days remaining) — "
+                "ideal timing to build relationships, develop win themes, and position your team."
+            ),
+            "too_late": False,
         }
 
     if "FULL AND OPEN" in comp_type:
         return {
             "action": "Research the incumbent contractor",
-            "explanation": "This contract was awarded under full and open competition, making it a strong recompete target. Studying the incumbent strengthens your bid.",
+            "explanation": "This contract was awarded under full and open competition, making it a strong recompete target. Studying the incumbent strengthens your long-range bid strategy.",
+            "too_late": False,
         }
 
     if value >= 1_000_000:
         return {
             "action": "Review similar historical awards",
-            "explanation": "This is a significant-value contract. Research how similar awards were structured to inform your long-range bid strategy.",
+            "explanation": "This is a significant-value contract more than 18 months out. Research how similar awards were structured to inform your bid strategy.",
+            "too_late": False,
         }
 
     return {
         "action": "Continue monitoring",
-        "explanation": "This opportunity is not yet actionable. Set a reminder to revisit as the contract expiration approaches.",
+        "explanation": "This opportunity is not yet actionable. Set a reminder to revisit when it approaches the best pursuit window.",
+        "too_late": False,
     }
 
 
@@ -459,7 +560,8 @@ def why_it_matters(row):
     """Return a list of concise bullet strings explaining why this contract is valuable.
 
     Uses only already-stored fields — no DB, no external/AI calls. Always returns
-    at least one bullet.
+    at least one bullet. Timing bullets reflect pursuit quality, not urgency:
+    being in the best pursuit window is a positive signal; imminent expiry is not.
     """
     bullets = []
     value = float(row.get("value") or 0)
@@ -481,14 +583,25 @@ def why_it_matters(row):
         bullets.append(f"High opportunity score ({score}/100)")
 
     if priority == "CRITICAL":
-        bullets.append("Critical priority — immediate action required")
+        bullets.append("Critical priority — high-fit opportunity with actionable timing")
     elif priority == "HIGH":
         bullets.append("High priority opportunity")
 
-    if days is not None and 0 < days <= 90:
-        bullets.append(f"Recompete expected very soon ({days} days remaining)")
-    elif days is not None and 0 < days <= 365:
-        bullets.append(f"Recompete expected within the year ({days} days remaining)")
+    stage = pursuit_stage(days)
+    stage_key = stage["stage_key"]
+
+    if stage_key == "best_window":
+        bullets.append(f"Best pursuit window — {days} days remaining, ideal time to engage")
+    elif stage_key == "shape":
+        bullets.append(f"Opportunity shaping window — {days} days to position before solicitation")
+    elif stage_key == "prepare":
+        bullets.append(f"Proposal preparation window — {days} days remaining")
+    elif stage_key == "active_pursuit":
+        bullets.append(f"Active pursuit window — {days} days remaining, proposal should be underway")
+    elif stage_key in ("too_late", "urgent"):
+        bullets.append(f"Late stage — {days} days remaining; limited runway for new challengers")
+    elif stage_key == "expired":
+        bullets.append("Expired — research the follow-on award on SAM.gov")
 
     if sol_id:
         bullets.append("Solicitation information already on file")

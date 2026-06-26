@@ -143,7 +143,7 @@ def dashboard_recommended_actions(user_id):
     Watched contracts for the user come first; high-priority active contracts fill
     remaining slots up to 5 total. Deduped by internal_id.
     """
-    from contract_summary import recommended_action as _rec
+    from contract_summary import recommended_action as _rec, pursuit_stage as _ps
 
     engine = get_engine()
     results = []
@@ -158,7 +158,11 @@ def dashboard_recommended_actions(user_id):
             seen.add(iid)
             act = _rec(r)
             r["next_action"] = act["action"]
+            r["too_late"] = act.get("too_late", False)
             r["action_source"] = source
+            _stage = _ps(r.get("days_remaining"))
+            r["pursuit_stage_key"] = _stage["stage_key"]
+            r["pursuit_stage_label"] = _stage["label"]
             results.append(r)
 
     with engine.connect() as conn:
@@ -170,7 +174,7 @@ def dashboard_recommended_actions(user_id):
                 FROM contracts c
                 JOIN user_watchlist w ON w.internal_id = c.internal_id
                 WHERE w.user_id = :uid AND COALESCE(c.days_remaining, 0) > 0
-                ORDER BY c.days_remaining ASC
+                ORDER BY c.recompete_score DESC, c.value DESC
                 LIMIT 5
             """), {"uid": user_id}).mappings().fetchall()
             _add(watched, "watched")
@@ -415,12 +419,16 @@ def personalized_for_business(user_id, profile, limit=10):
             contract_length_label as _cll,
             action_signal as _as,
             match_summary as _ms,
+            pursuit_stage as _ps,
         )
         r["work_label"] = _wl(r)
         r["location_label"] = _ll(r)
         r["length_label"] = _cll(r)
         r["action_signal"] = _as(r)
         r["match_summary"] = _ms(r, reasons)
+        _stage = _ps(r.get("days_remaining"))
+        r["pursuit_stage_key"] = _stage["stage_key"]
+        r["pursuit_stage_label"] = _stage["label"]
 
         results.append(r)
         if len(results) >= limit:

@@ -23,21 +23,30 @@ class TestNextStep:
             assert "sam.gov" in r["action"].lower()
 
     def test_within_six_months(self):
+        # 120 days = active pursuit window
         r = next_step(120)
-        assert "6 months" in r["timing"]
-        assert "near-term" in r["action"].lower()
+        assert r["timing"] == "Expiring within ~6 months"
+        assert "proposal" in r["action"].lower() or "solicitation" in r["action"].lower()
 
-    def test_within_a_year(self):
+    def test_shape_opportunity_window(self):
+        # 300 days = shape opportunity
         r = next_step(300)
-        assert r["timing"] == "Expiring within a year"
-        assert "positioning window" in r["detail"].lower()
+        assert r["timing"] == "Shape Opportunity"
+        assert "agency" in r["action"].lower() or "shape" in r["action"].lower()
 
-    def test_more_than_a_year(self):
+    def test_best_pursuit_window(self):
+        # 400 days = best pursuit window
+        r = next_step(400)
+        assert r["timing"] == "Best Pursuit Window"
+
+    def test_more_than_a_year_watch_stage(self):
+        # > 540 days = watch/early stage
         r = next_step(800)
         assert r["timing"] == "More than a year out"
 
     def test_string_days_are_coerced(self):
-        assert next_step("450")["timing"] == "More than a year out"
+        # 450 days = best pursuit window
+        assert next_step("450")["timing"] == "Best Pursuit Window"
 
     def test_garbage_days_treated_as_unknown(self):
         assert next_step("soon")["timing"] == "Timing unknown"

@@ -122,39 +122,61 @@ class TestValueComponent:
         assert c["earned"] == 35
 
 
-# ── Timing component ──────────────────────────────────────────────────────────
+# ── Timing component — new pursuit-window model ───────────────────────────────
+# Max points (25) go to the 365-540 day best pursuit window.
+# Imminent expiry earns 0 — there is no realistic runway for a new challenger.
 
 class TestTimingComponent:
-    def test_30_days_or_less_earns_25(self):
-        for d in [0, 1, 30]:
+    def test_expired_earns_0(self):
+        for d in (-5, -1, 0):
+            r = recompete_score_breakdown(_row(days_remaining=d))
+            c = _component(r, "Time remaining")
+            assert c["earned"] == 0, f"failed for days={d}"
+
+    def test_too_late_earns_0(self):
+        # < 30 days: too late for new challengers
+        for d in [1, 15, 29]:
+            r = recompete_score_breakdown(_row(days_remaining=d))
+            c = _component(r, "Time remaining")
+            assert c["earned"] == 0, f"failed for days={d}"
+
+    def test_urgent_earns_5(self):
+        # 30-89 days: urgent / late stage
+        for d in [30, 60, 89]:
+            r = recompete_score_breakdown(_row(days_remaining=d))
+            c = _component(r, "Time remaining")
+            assert c["earned"] == 5, f"failed for days={d}"
+
+    def test_active_pursuit_earns_10(self):
+        # 90-179 days: active pursuit
+        r = recompete_score_breakdown(_row(days_remaining=120))
+        c = _component(r, "Time remaining")
+        assert c["earned"] == 10
+
+    def test_prepare_earns_15(self):
+        # 180-269 days: prepare proposal/team
+        r = recompete_score_breakdown(_row(days_remaining=220))
+        c = _component(r, "Time remaining")
+        assert c["earned"] == 15
+
+    def test_shape_earns_20(self):
+        # 270-364 days: shape opportunity
+        r = recompete_score_breakdown(_row(days_remaining=300))
+        c = _component(r, "Time remaining")
+        assert c["earned"] == 20
+
+    def test_best_window_earns_25(self):
+        # 365-540 days: best pursuit window — maximum points
+        for d in [365, 400, 450, 540]:
             r = recompete_score_breakdown(_row(days_remaining=d))
             c = _component(r, "Time remaining")
             assert c["earned"] == 25, f"failed for days={d}"
 
-    def test_expired_earns_25(self):
-        r = recompete_score_breakdown(_row(days_remaining=-5))
+    def test_watch_earns_5(self):
+        # > 540 days: too early
+        r = recompete_score_breakdown(_row(days_remaining=600))
         c = _component(r, "Time remaining")
-        assert c["earned"] == 25
-
-    def test_60_days_earns_20(self):
-        r = recompete_score_breakdown(_row(days_remaining=60))
-        c = _component(r, "Time remaining")
-        assert c["earned"] == 20
-
-    def test_90_days_earns_15(self):
-        r = recompete_score_breakdown(_row(days_remaining=90))
-        c = _component(r, "Time remaining")
-        assert c["earned"] == 15
-
-    def test_180_days_earns_10(self):
-        r = recompete_score_breakdown(_row(days_remaining=180))
-        c = _component(r, "Time remaining")
-        assert c["earned"] == 10
-
-    def test_181_days_earns_0(self):
-        r = recompete_score_breakdown(_row(days_remaining=181))
-        c = _component(r, "Time remaining")
-        assert c["earned"] == 0
+        assert c["earned"] == 5
 
     def test_none_days_earns_0(self):
         r = recompete_score_breakdown(_row(days_remaining=None))
@@ -238,14 +260,15 @@ class TestOfficeBonus:
 
 class TestTotalAndStructure:
     def test_total_is_sum_of_earned(self):
+        # 400 days = best window (25 pts); full/open + $10M + DoD + solicitation
         r = recompete_score_breakdown(_row(
             competition_type="FULL AND OPEN COMPETITION",
             value=10_000_000,
-            days_remaining=30,
+            days_remaining=400,
             agency="DEPARTMENT OF DEFENSE",
             solicitation_id="SOL-123",
         ))
-        expected = 40 + 35 + 25 + 5 + 5 + 0
+        expected = 40 + 35 + 25 + 5 + 5 + 0  # competition + value + timing + agency + sol + office
         assert r["total"] == expected
 
     def test_all_zero_total(self):

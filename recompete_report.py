@@ -160,16 +160,29 @@ def _value_score(value):
 
 
 def _days_score(days):
-    days = int(days or 9999)
-    if days <= 30:
-        return 25
-    if days <= 60:
-        return 20
-    if days <= 90:
-        return 15
-    if days <= 180:
-        return 10
-    return 0
+    """Timing score rewards realistic pursuit windows, not imminent expiry.
+
+    Contracts expiring in < 30 days are essentially un-winnable for a new
+    challenger (solicitation already closed). The best pursuit window is
+    365-540 days out — enough runway to engage the agency, build a team,
+    and prepare a competitive proposal.
+    """
+    days = int(days) if days is not None else 9999
+    if days <= 0:
+        return 0   # expired or too late
+    if days < 30:
+        return 0   # too late for new challengers
+    if days < 90:
+        return 5   # urgent / late-stage
+    if days < 180:
+        return 10  # active pursuit window
+    if days < 270:
+        return 15  # prepare proposal and team
+    if days < 365:
+        return 20  # shape opportunity
+    if days <= 540:
+        return 25  # best pursuit window — maximum points
+    return 5       # too early; watch only
 
 
 def _agency_bonus(row):
@@ -204,7 +217,24 @@ def recompete_score(row):
     )
 
 
-def _priority(score):
+def _priority(score, days=None):
+    """Assign pursuit priority.
+
+    CRITICAL requires meaningful runway: a contract expiring in < 30 days
+    cannot be CRITICAL because there is no realistic time to prepare a bid.
+    High score with very short runway is HIGH at best.
+    """
+    if days is not None:
+        try:
+            days = int(days)
+        except (TypeError, ValueError):
+            days = None
+    if days is not None and days < 30:
+        if score >= 75:
+            return "HIGH"
+        if score >= 60:
+            return "MEDIUM"
+        return "LOW"
     if score >= 90:
         return "CRITICAL"
     if score >= 75:
@@ -219,9 +249,12 @@ def enrichment_award_id(row):
 
 
 def should_enrich(row):
+    # Enrich contracts within the best pursuit window (up to 540 days out).
+    days = row.get("days_remaining")
+    in_window = days is None or (0 < days <= 540)
     return (
         row["value"] >= 1_000_000
-        and row["days_remaining"] <= 180
+        and in_window
         and bool(enrichment_award_id(row))
     )
 
@@ -363,7 +396,7 @@ def main(naics_codes: list | None = None) -> int:
     for row in rows:
         rs = recompete_score(row)
         row["recompete_score"] = rs
-        row["priority"] = _priority(rs)
+        row["priority"] = _priority(rs, row.get("days_remaining"))
 
     rows.sort(key=lambda r: (-int(r["recompete_score"]), -float(r["value"]), int(r["days_remaining"])))
 

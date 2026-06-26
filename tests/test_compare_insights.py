@@ -81,14 +81,15 @@ def test_insights_recommended_by_score():
     assert "highest recompete score" in ins["recommended"]["reason"]
 
 
-def test_insights_recommended_tiebreak_urgency():
-    # Equal scores → soonest active recompete wins.
+def test_insights_recommended_tiebreak_value():
+    # Equal scores → higher value wins (urgency is no longer a tiebreaker;
+    # the score already encodes timing quality).
     rows = [
-        {"internal_id": "A", "award_id": "AW-A", "recompete_score": 80, "days_remaining": 200},
-        {"internal_id": "B", "award_id": "AW-B", "recompete_score": 80, "days_remaining": 45},
+        {"internal_id": "A", "award_id": "AW-A", "recompete_score": 80, "value": 3_000_000, "days_remaining": 200},
+        {"internal_id": "B", "award_id": "AW-B", "recompete_score": 80, "value": 1_000_000, "days_remaining": 45},
     ]
     ins = compare_insights(rows)
-    assert ins["recommended"]["internal_id"] == "B"
+    assert ins["recommended"]["internal_id"] == "A"
 
 
 def test_insights_handles_missing_fields():

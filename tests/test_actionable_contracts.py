@@ -54,34 +54,42 @@ class TestRecommendedAction:
         result = recommended_action(_row(days_remaining=45, solicitation_id="SOL-123"))
         assert "solicitation" in result["action"].lower()
 
-    def test_very_imminent_30_days(self):
+    def test_too_late_under_30_days(self):
+        # Under 30 days: too late for a new challenger — action is to monitor follow-on
         result = recommended_action(_row(days_remaining=20))
-        assert "immediately" in result["action"].lower()
+        assert result["too_late"] is True
+        assert "follow-on" in result["action"].lower() or "monitor" in result["action"].lower()
 
-    def test_within_90_days_contact_office(self):
+    def test_urgent_stage_60_days(self):
+        # 30-89 days: urgent/late stage — check SAM.gov
         result = recommended_action(_row(days_remaining=60))
-        assert "contracting office" in result["action"].lower()
+        assert "sam.gov" in result["action"].lower() or "solicitation" in result["action"].lower()
 
-    def test_within_180_days_high_score_capture(self):
+    def test_active_pursuit_proposal_preparation(self):
+        # 90-179 days: active pursuit — proposal prep is the action
         result = recommended_action(_row(days_remaining=150, recompete_score=80))
-        assert "capture planning" in result["action"].lower()
+        assert "proposal" in result["action"].lower()
 
-    def test_within_180_days_low_score_not_capture(self):
+    def test_within_180_days_low_score_not_too_late(self):
         result = recommended_action(_row(days_remaining=150, recompete_score=50))
-        # Falls through to teaming (365-day band) or lower — not capture
-        assert "capture planning" not in result["action"].lower()
+        # active_pursuit stage — still actionable
+        assert result["too_late"] is False
 
-    def test_within_365_days_teaming(self):
+    def test_shape_stage_300_days(self):
+        # 270-365 days: shape opportunity — engage agency
         result = recommended_action(_row(days_remaining=300))
-        assert "teaming" in result["action"].lower()
+        assert "agency" in result["action"].lower() or "shape" in result["action"].lower()
 
-    def test_critical_priority_far_out(self):
-        result = recommended_action(_row(days_remaining=600, priority="CRITICAL"))
-        assert "solicitation" in result["action"].lower()
+    def test_watch_stage_far_out_falls_through(self):
+        # > 540 days with low value and no signals → "Continue monitoring"
+        result = recommended_action(_row(days_remaining=600, priority="CRITICAL",
+                                         value=500_000, competition_type=""))
+        assert "monitoring" in result["action"].lower() or "monitor" in result["action"].lower()
 
-    def test_high_priority_far_out(self):
-        result = recommended_action(_row(days_remaining=600, priority="HIGH"))
-        assert "solicitation" in result["action"].lower()
+    def test_best_window_far_out_high_priority(self):
+        # 365-540 days: best pursuit window → capture planning
+        result = recommended_action(_row(days_remaining=400, priority="CRITICAL"))
+        assert "capture" in result["action"].lower()
 
     def test_full_and_open_research_incumbent(self):
         result = recommended_action(_row(
@@ -118,8 +126,9 @@ class TestRecommendedAction:
         assert "action" in result
 
     def test_string_days_coerced(self):
+        # "45" days → urgent stage → check solicitation on SAM.gov
         result = recommended_action(_row(days_remaining="45"))
-        assert result["action"] == "Contact the contracting office"
+        assert "sam.gov" in result["action"].lower() or "solicitation" in result["action"].lower()
 
 
 # ---------------------------------------------------------------------------
@@ -155,17 +164,22 @@ class TestWhyItMatters:
         bullets = why_it_matters(_row(priority="HIGH"))
         assert any("High priority" in b for b in bullets)
 
-    def test_very_soon_days(self):
+    def test_late_stage_days_bullet(self):
+        # Under 90 days: should mention late stage / limited runway
         bullets = why_it_matters(_row(days_remaining=45))
-        assert any("very soon" in b for b in bullets)
+        assert any("late stage" in b.lower() or "limited runway" in b.lower() for b in bullets)
 
-    def test_within_year_days(self):
+    def test_prepare_window_days_bullet(self):
+        # 180-269 days: proposal preparation window
         bullets = why_it_matters(_row(days_remaining=200))
-        assert any("within the year" in b for b in bullets)
+        combined = " ".join(bullets).lower()
+        assert "proposal" in combined or "preparation" in combined or "window" in combined
 
-    def test_no_days_bullet_when_far_out(self):
+    def test_best_window_bullet_when_at_best_timing(self):
+        # 365-540 days: best pursuit window should appear as a positive signal
         bullets = why_it_matters(_row(days_remaining=500))
-        assert not any("days remaining" in b for b in bullets)
+        combined = " ".join(bullets).lower()
+        assert "best pursuit" in combined or "ideal" in combined
 
     def test_solicitation_on_file(self):
         bullets = why_it_matters(_row(solicitation_id="SOL-999"))
