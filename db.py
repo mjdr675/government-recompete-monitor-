@@ -132,6 +132,10 @@ _MIGRATION_PROBES: dict = {
         "SELECT COUNT(*) FROM information_schema.columns "
         "WHERE table_name = 'contracts' AND column_name = 'sam_url'"
     ),
+    "016_add_psc_description_column.sql": (
+        "SELECT COUNT(*) FROM information_schema.columns "
+        "WHERE table_name = 'contracts' AND column_name = 'psc_description'"
+    ),
     "016_backfill_psc_description.sql": (
         "SELECT COUNT(*) FROM information_schema.columns "
         "WHERE table_name = 'contracts' AND column_name = 'psc_description'"
@@ -406,6 +410,25 @@ def _ensure_discovery_columns():
     return added
 
 
+def _ensure_psc_description_column():
+    """Add contracts.psc_description to pre-existing SQLite databases.
+
+    The column is present in the CREATE TABLE definition, so brand-new DBs get
+    it for free. But databases created before psc_description was added are never
+    altered (CREATE TABLE IF NOT EXISTS is a no-op on an existing table), so
+    save_snapshot's INSERT fails with "no column named psc_description".
+    Add it idempotently. Not part of the FTS index, so no FTS rebuild needed.
+    """
+    engine = get_engine()
+    with engine.begin() as conn:
+        rows = conn.execute(text("PRAGMA table_info(contracts)")).fetchall()
+        if not rows:
+            return
+        existing = {r[1] for r in rows}
+        if "psc_description" not in existing:
+            conn.execute(text("ALTER TABLE contracts ADD COLUMN psc_description TEXT"))
+
+
 def init_db():
     database_url = os.environ.get("DATABASE_URL", "")
     if database_url:
@@ -415,6 +438,7 @@ def init_db():
     needs_fts_rebuild = _ensure_description_column()
     _ensure_ci_columns()
     needs_fts_rebuild = _ensure_discovery_columns() or needs_fts_rebuild
+    _ensure_psc_description_column()
 
     engine = get_engine()
     with engine.begin() as conn:
