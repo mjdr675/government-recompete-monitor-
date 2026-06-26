@@ -489,11 +489,15 @@ def normalize_uei(value: str) -> str:
 
 
 def my_current_contracts(user_id, limit=20):
-    """Return contracts whose recipient_uei matches the user's profile UEI.
+    """Return contracts matching the user's company identity.
 
-    UEI is the only identity key — company name and CAGE are not used for matching.
-    Each result dict includes a 'match_method' key ('UEI').
-    Returns [] if the user has no profile or no UEI.
+    Priority order:
+      1. recipient_uei — exact match when UEI is set on the profile
+      2. vendor_name   — LIKE substring when no UEI
+      3. company_name  — LIKE substring when neither UEI nor vendor_name
+
+    Each result dict includes a 'match_method' key: 'uei', 'vendor_name', or 'company_name'.
+    Returns [] if the user has no profile or no usable identifier.
     """
     if not user_id:
         return []
@@ -503,33 +507,50 @@ def my_current_contracts(user_id, limit=20):
         return []
 
     uei = normalize_uei(profile.get("uei") or "")
-    if not uei:
-        return []
+    vendor_name = (profile.get("vendor_name") or "").strip()
+    company_name = (profile.get("company_name") or "").strip()
 
     engine = get_engine()
     with engine.connect() as conn:
-        rows = conn.execute(text(
-            "SELECT internal_id, award_id, vendor, agency, value,"
-            " end_date, days_remaining, priority, recompete_score, category"
-            " FROM contracts WHERE recipient_uei = :uei"
-            " ORDER BY days_remaining ASC NULLS LAST LIMIT :lim"
-        ), {"uei": uei, "lim": limit}).mappings().fetchall()
-    return [{**dict(r), "match_method": "UEI"} for r in rows]
+        if uei:
+            rows = conn.execute(text(
+                "SELECT internal_id, award_id, vendor, agency, value,"
+                " end_date, days_remaining, priority, recompete_score, category"
+                " FROM contracts WHERE recipient_uei = :uei"
+                " ORDER BY days_remaining ASC NULLS LAST LIMIT :lim"
+            ), {"uei": uei, "lim": limit}).mappings().fetchall()
+            return [{**dict(r), "match_method": "uei"} for r in rows]
+
+        name = vendor_name or company_name
+        if not name:
+            return []
+        method = "vendor_name" if vendor_name else "company_name"
+        rows = conn.execute(text("""
+            SELECT internal_id, award_id, vendor, agency, value,
+                   end_date, days_remaining, priority, recompete_score, category
+            FROM contracts
+            WHERE LOWER(vendor) LIKE LOWER(:pattern)
+            ORDER BY days_remaining ASC NULLS LAST, end_date ASC NULLS LAST
+            LIMIT :limit
+        """), {"pattern": f"%{name}%", "limit": limit}).mappings().fetchall()
+        return [{**dict(r), "match_method": method} for r in rows]
 
 
 def my_current_contract_summary(user_id):
     """Aggregate summary of contracts matched to the user's UEI.
 
     Returns a dict with:
-      match_term   — the normalized UEI that was searched
+      match_term   — the identifier used (normalized UEI or name)
+      match_method — 'uei', 'vendor_name', or 'company_name'
       count        — total matched contracts
       active_count — matched contracts with days_remaining > 0
       expiring_90  — matched contracts expiring within 90 days
       total_value  — sum of matched contract values
       contracts    — list of matched contracts (up to 20), ordered by days_remaining
 
-    Returns None when no UEI is set (lets the dashboard show the "Add your UEI" prompt).
-    Returns a dict with count=0 when UEI is set but no contracts matched yet.
+    Returns None only when no usable identifier exists on the profile.
+    Returns a truthy dict with count=0 when an identifier exists but no awards matched,
+    so the dashboard can render the empty state and Browse Recommended CTA.
     """
     if not user_id:
         return None
@@ -539,7 +560,19 @@ def my_current_contract_summary(user_id):
         return None
 
     uei = normalize_uei(profile.get("uei") or "")
-    if not uei:
+    vendor_name = (profile.get("vendor_name") or "").strip()
+    company_name = (profile.get("company_name") or "").strip()
+
+    if uei:
+        match_term = uei
+        match_method = "uei"
+    elif vendor_name:
+        match_term = vendor_name
+        match_method = "vendor_name"
+    elif company_name:
+        match_term = company_name
+        match_method = "company_name"
+    else:
         return None
 
     all_contracts = my_current_contracts(user_id, limit=500)
@@ -549,7 +582,8 @@ def my_current_contract_summary(user_id):
     total_value = sum(float(r.get("value") or 0) for r in all_contracts)
 
     return {
-        "match_term": uei,
+        "match_term": match_term,
+        "match_method": match_method,
         "count": count,
         "active_count": active_count,
         "expiring_90": expiring_90,

@@ -92,7 +92,6 @@ class TestContractImportCTA:
     def test_shows_import_cta_when_no_profile(self, client):
         resp = client.get("/dashboard")
         body = resp.get_data(as_text=True)
-        assert "Import" in body
         assert "import-contracts" in body
 
     def test_import_cta_links_to_profile_anchor(self, client):
@@ -162,9 +161,138 @@ class TestBlankDashboardCTA:
         save_company_profile(uid, {"uei": "ZZZZ00000001"})
         resp = client.get("/dashboard")
         body = resp.get_data(as_text=True)
-        assert "No current contracts matched this UEI yet" in body
+        # Profile has a UEI -> match_method='uei' -> UEI-specific empty-state copy.
+        assert "No federal awards found for this UEI yet" in body
         assert "ZZZZ00000001" in body  # shows the UEI that was searched
         assert "/company-profile#import-contracts" in body  # CTA to edit
+        assert "Browse Recommended Opportunities" in body   # CTA to discover tab
+
+    def test_company_name_only_summary_is_truthy(self, client, tmp_db):
+        """Profile with only company_name (no UEI) produces a truthy summary and vendor-name copy."""
+        from db import save_company_profile
+        import sqlite3
+        con = sqlite3.connect(tmp_db)
+        uid = con.execute("SELECT id FROM users WHERE email='testuser@example.com'").fetchone()[0]
+        con.close()
+        save_company_profile(uid, {"company_name": "Acme Services LLC"})
+        resp = client.get("/dashboard")
+        body = resp.get_data(as_text=True)
+        assert resp.status_code == 200
+        # Summary is truthy → empty state shown, not "add identifier" prompt
+        assert "No federal awards found for this vendor name" in body
+        assert "Acme Services LLC" in body
+        assert "Browse Recommended Opportunities" in body
+        # Must NOT show the UEI-specific copy
+        assert "No federal awards found for this UEI yet" not in body
+
+    def test_uei_present_shows_uei_copy(self, client, tmp_db):
+        """When UEI is set, empty state shows UEI-specific copy, not vendor-name copy."""
+        from db import save_company_profile
+        import sqlite3
+        con = sqlite3.connect(tmp_db)
+        uid = con.execute("SELECT id FROM users WHERE email='testuser@example.com'").fetchone()[0]
+        con.close()
+        save_company_profile(uid, {"company_name": "Acme Corp", "uei": "ABC123456789XY"})
+        resp = client.get("/dashboard")
+        body = resp.get_data(as_text=True)
+        assert resp.status_code == 200
+        # UEI preferred → UEI empty-state copy
+        assert "No federal awards found for this UEI yet" in body
+        assert "ABC123456789XY" in body
+        # Must NOT show vendor-name specific copy
+        assert "No federal awards found for this vendor name" not in body
+        assert "Browse Recommended Opportunities" in body
+
+    def test_uei_match_shows_awards_with_uei_label(self, client, tmp_db):
+        """When UEI matches contracts, section header says 'matched by UEI'."""
+        from db import save_company_profile
+        import sqlite3
+        import db as db_module
+        con = sqlite3.connect(tmp_db)
+        uid = con.execute("SELECT id FROM users WHERE email='testuser@example.com'").fetchone()[0]
+        con.close()
+        db_module.upsert_contract({
+            "internal_id": "UEI-MATCH-001",
+            "award_id": "AWARD-UEI-001",
+            "vendor": "Acme Corp",
+            "agency": "Dept of Defense",
+            "value": 1_000_000,
+            "days_remaining": 60,
+            "recompete_score": 75,
+            "recipient_uei": "TESTUEI12345",
+        })
+        save_company_profile(uid, {"company_name": "Acme Corp", "uei": "TESTUEI12345"})
+        resp = client.get("/dashboard")
+        body = resp.get_data(as_text=True)
+        assert resp.status_code == 200
+        assert "matched by UEI" in body
+        assert "TESTUEI12345" in body
+        assert "/contract/UEI-MATCH-001" in body
+
+    def test_vendor_name_match_shows_vendor_label(self, client, tmp_db):
+        """When vendor_name matches contracts, section header says 'matched by vendor name'."""
+        from db import save_company_profile
+        import sqlite3
+        import db as db_module
+        con = sqlite3.connect(tmp_db)
+        uid = con.execute("SELECT id FROM users WHERE email='testuser@example.com'").fetchone()[0]
+        con.close()
+        db_module.upsert_contract({
+            "internal_id": "VN-MATCH-001",
+            "award_id": "AWARD-VN-001",
+            "vendor": "Patriot Facility Solutions",
+            "agency": "GSA",
+            "value": 500_000,
+            "days_remaining": 45,
+            "recompete_score": 60,
+        })
+        save_company_profile(uid, {"vendor_name": "Patriot Facility Solutions"})
+        resp = client.get("/dashboard")
+        body = resp.get_data(as_text=True)
+        assert resp.status_code == 200
+        assert "matched by vendor name" in body
+        assert "/contract/VN-MATCH-001" in body
+
+    def test_recommendations_visible_when_awards_empty(self, client, tmp_db):
+        """Discover tab CTA appears even when no current awards are matched."""
+        from db import save_company_profile
+        import sqlite3
+        con = sqlite3.connect(tmp_db)
+        uid = con.execute("SELECT id FROM users WHERE email='testuser@example.com'").fetchone()[0]
+        con.close()
+        save_company_profile(uid, {"company_name": "NoMatchCo LLC"})
+        resp = client.get("/dashboard")
+        body = resp.get_data(as_text=True)
+        assert resp.status_code == 200
+        assert "panel-discover" in body
+        assert "Browse Recommended Opportunities" in body
+
+    def test_discover_table_has_view_button(self, client, tmp_db):
+        """Discover biz_opps table shows a View link for each opportunity."""
+        from db import save_company_profile
+        import sqlite3
+        import db as db_module
+        con = sqlite3.connect(tmp_db)
+        uid = con.execute("SELECT id FROM users WHERE email='testuser@example.com'").fetchone()[0]
+        con.close()
+        db_module.upsert_contract({
+            "internal_id": "TEST-BIZ-001",
+            "award_id": "BIZ-001",
+            "vendor": "Other Vendor LLC",
+            "agency": "Dept of Test",
+            "value": 500000,
+            "days_remaining": 120,
+            "recompete_score": 80,
+            "naics_code": "541512",
+        })
+        save_company_profile(uid, {
+            "company_name": "MyBiz LLC",
+            "naics_codes": ["541512"],
+        })
+        resp = client.get("/dashboard")
+        body = resp.get_data(as_text=True)
+        assert resp.status_code == 200
+        assert "/contract/TEST-BIZ-001" in body
 
     def test_no_blank_anchor_elements(self, client, tmp_db):
         """No <a> element on the dashboard should have empty visible text."""

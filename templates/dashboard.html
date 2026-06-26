@@ -141,7 +141,7 @@
       </svg>
     </div>
     <div class="kpi-value">{{ contract_summary.count or 0 }}</div>
-    <div class="kpi-sub">{{ contract_summary.active_count or 0 }} active &middot; UEI: {{ contract_summary.match_term }}</div>
+    <div class="kpi-sub">{{ contract_summary.active_count or 0 }} active &middot; matched by {{ 'UEI' if contract_summary.match_method == 'uei' else 'vendor name' }}</div>
   </a>
   <a href="/contracts?priority=CRITICAL" class="kpi-card critical">
     <div class="kpi-header">
@@ -264,14 +264,16 @@
       {# My Contracts panel #}
       <div id="panel-my-contracts">
 
-        {# Current Contracts: auto-matched by UEI only #}
+        {# Current Awards: matched by UEI > vendor_name > company_name #}
         {% if contract_summary and contract_summary.contracts %}
         <div class="table-wrapper" style="margin-bottom:12px">
           <div class="table-header">
             <h2>My Current Contracts</h2>
             <span style="font-size:12px;color:var(--text-muted);font-weight:400">
-              {{ contract_summary.count }} matched by UEI: <strong>{{ contract_summary.match_term }}</strong>
-              &middot; <a href="/company-profile" style="font-size:12px">Edit</a>
+              {{ contract_summary.count }} federal award{{ 's' if contract_summary.count != 1 }} matched by
+              {% if contract_summary.match_method == 'uei' %}UEI: <strong>{{ contract_summary.match_term }}</strong>
+              {% else %}vendor name: <strong>{{ contract_summary.match_term }}</strong>{% endif %}
+              &middot; <a href="/company-profile#import-contracts" style="font-size:12px">Edit</a>
             </span>
           </div>
           <table>
@@ -302,32 +304,49 @@
           </div>
         </div>
         {% elif contract_summary %}
-        {# We have a match term but found 0 contracts #}
+        {# Identifier set but no awards found in dataset #}
         <div style="padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:12px">
-          <div style="font-weight:500;margin-bottom:4px">No current contracts matched this UEI yet.</div>
-          <div class="muted" style="font-size:13px;margin-bottom:10px">
-            Matched using UEI: <strong>{{ contract_summary.match_term }}</strong>.
-            No contracts in our data have a matching UEI yet. Contracts are matched as ingest runs.
+          {% if contract_summary.match_method == 'uei' %}
+          <div style="font-weight:500;margin-bottom:6px">No federal awards found for this UEI yet</div>
+          <div class="muted" style="font-size:13px;margin-bottom:12px">
+            We searched for UEI <strong>{{ contract_summary.match_term }}</strong>.
+            Awards are matched as ingest data arrives &mdash; check back after the next data refresh.
+            If your company is new to federal contracting, that&rsquo;s normal.
           </div>
-          <a href="/company-profile#import-contracts" class="btn btn-primary" style="font-size:13px">Edit import details</a>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <a href="#" onclick="switchTab('discover');return false;" class="btn btn-primary" style="font-size:13px">Browse Recommended Opportunities</a>
+            <a href="/company-profile#import-contracts" class="btn btn-ghost" style="font-size:13px">Edit UEI</a>
+          </div>
+          {% else %}
+          <div style="font-weight:500;margin-bottom:6px">No federal awards found for this vendor name</div>
+          <div class="muted" style="font-size:13px;margin-bottom:12px">
+            We searched the federal awards dataset for <strong>&ldquo;{{ contract_summary.match_term }}&rdquo;</strong>.
+            If your company hasn&rsquo;t held one of these contracts before, that&rsquo;s completely normal &mdash;
+            this section shows <em>existing</em> federal awards, not new opportunities.
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <a href="#" onclick="switchTab('discover');return false;" class="btn btn-primary" style="font-size:13px">Browse Recommended Opportunities</a>
+            <a href="/company-profile#import-contracts" class="btn btn-ghost" style="font-size:13px">Edit vendor name</a>
+          </div>
+          {% endif %}
         </div>
         {% elif has_profile %}
-        {# Profile exists but no identifier set #}
+        {# Profile exists but no identifier set at all #}
         <div style="padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:12px">
-          <div style="font-weight:500;margin-bottom:4px">Import your current contracts</div>
+          <div style="font-weight:500;margin-bottom:4px">Match your current contracts</div>
           <div class="muted" style="font-size:13px;margin-bottom:10px">
-            Add your UEI to match current contracts. Your UEI is the stable federal identifier for your business.
+            Add your UEI or exact vendor name to auto-match the federal awards your business holds.
           </div>
-          <a href="/company-profile#import-contracts" class="btn btn-primary" style="font-size:13px">Import My Current Contracts</a>
+          <a href="/company-profile#import-contracts" class="btn btn-primary" style="font-size:13px">Add Identifiers</a>
         </div>
         {% else %}
         {# No profile yet #}
         <div style="padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:12px">
-          <div style="font-weight:500;margin-bottom:4px">Import your current contracts</div>
+          <div style="font-weight:500;margin-bottom:4px">Match your current contracts</div>
           <div class="muted" style="font-size:13px;margin-bottom:10px">
-            Add your UEI to match current contracts. Your UEI is the stable federal identifier for your business.
+            Set up your company profile to auto-match the federal awards your business holds.
           </div>
-          <a href="/company-profile#import-contracts" class="btn btn-primary" style="font-size:13px">Import My Current Contracts</a>
+          <a href="/company-profile#import-contracts" class="btn btn-primary" style="font-size:13px">Set Up Profile</a>
         </div>
         {% endif %}
 

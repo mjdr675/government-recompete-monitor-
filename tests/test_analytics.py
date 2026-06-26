@@ -3,7 +3,11 @@
 import sqlite3
 import pytest
 import db as db_module
-from analytics import opportunity_recommendations, dashboard_analytics, vendor_profile_analytics, agency_profile
+from analytics import (
+    opportunity_recommendations, dashboard_analytics,
+    vendor_profile_analytics, agency_profile,
+    normalize_uei, my_current_contract_summary,
+)
 
 
 @pytest.fixture()
@@ -219,3 +223,143 @@ def test_agency_profile_unknown_agency_returns_empty(con):
     assert result["vendors"] == []
     assert result["upcoming"] == []
     assert result["active"] == []
+
+
+# ---------------------------------------------------------------------------
+# normalize_uei
+# ---------------------------------------------------------------------------
+
+def test_normalize_uei_strips_spaces_and_uppercases():
+    assert normalize_uei("  abc 123  ") == "ABC123"
+
+
+def test_normalize_uei_empty():
+    assert normalize_uei("") == ""
+    assert normalize_uei(None) == ""
+
+
+# ---------------------------------------------------------------------------
+# my_current_contract_summary — match_method priority and truthy guarantee
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def summary_db(tmp_path, monkeypatch):
+    db_path = str(tmp_path / "summary.db")
+    monkeypatch.setattr(db_module, "DB_PATH", db_path)
+    db_module.init_db()
+    db_module.init_watchlist_table()
+    db_module.init_saved_searches_table()
+    # create a user
+    con = db_module.connect()
+    con.execute(
+        "INSERT INTO users (email, password_hash, created_at) VALUES (?,?,?)",
+        ("summarytest@example.com", "x", "2024-01-01"),
+    )
+    con.commit()
+    uid = con.execute("SELECT id FROM users WHERE email='summarytest@example.com'").fetchone()[0]
+    con.close()
+    return db_path, uid
+
+
+def test_summary_none_when_no_identifiers(summary_db):
+    """Profile with no UEI, vendor_name, or company_name → None."""
+    db_path, uid = summary_db
+    db_module.save_company_profile(uid, {})
+    result = my_current_contract_summary(uid)
+    assert result is None
+
+
+def test_summary_truthy_with_company_name_only(summary_db):
+    """company_name only → truthy summary, match_method='company_name'."""
+    db_path, uid = summary_db
+    db_module.save_company_profile(uid, {"company_name": "Acme LLC"})
+    result = my_current_contract_summary(uid)
+    assert result is not None
+    assert result["match_method"] == "company_name"
+    assert result["match_term"] == "Acme LLC"
+    assert result["count"] == 0
+    assert result["contracts"] == []
+
+
+def test_summary_truthy_with_vendor_name_only(summary_db):
+    """vendor_name only → truthy summary, match_method='vendor_name'."""
+    db_path, uid = summary_db
+    db_module.save_company_profile(uid, {"vendor_name": "Patriot Facility"})
+    result = my_current_contract_summary(uid)
+    assert result is not None
+    assert result["match_method"] == "vendor_name"
+    assert result["match_term"] == "Patriot Facility"
+
+
+def test_summary_vendor_name_preferred_over_company_name(summary_db):
+    """vendor_name takes priority over company_name when no UEI."""
+    db_path, uid = summary_db
+    db_module.save_company_profile(uid, {"vendor_name": "VendorCo", "company_name": "CompanyCo"})
+    result = my_current_contract_summary(uid)
+    assert result["match_method"] == "vendor_name"
+    assert result["match_term"] == "VendorCo"
+
+
+def test_summary_uei_preferred_over_vendor_name(summary_db):
+    """UEI takes priority over vendor_name when set."""
+    db_path, uid = summary_db
+    db_module.save_company_profile(uid, {"uei": "TESTUEI99", "vendor_name": "VendorCo"})
+    result = my_current_contract_summary(uid)
+    assert result["match_method"] == "uei"
+    assert result["match_term"] == "TESTUEI99"
+
+
+def test_summary_finds_contracts_by_vendor_name(summary_db):
+    """Contracts matching by vendor LIKE are returned."""
+    db_path, uid = summary_db
+    db_module.upsert_contract({
+        "internal_id": "C-VN-1",
+        "vendor": "Patriot Facility Solutions",
+        "agency": "DoD",
+        "value": 500_000,
+        "days_remaining": 45,
+        "recompete_score": 70,
+    })
+    db_module.save_company_profile(uid, {"vendor_name": "Patriot Facility"})
+    result = my_current_contract_summary(uid)
+    assert result["count"] == 1
+    assert result["contracts"][0]["internal_id"] == "C-VN-1"
+    assert result["contracts"][0]["match_method"] == "vendor_name"
+
+
+def test_summary_finds_contracts_by_uei(summary_db):
+    """Contracts matching by recipient_uei are returned."""
+    db_path, uid = summary_db
+    db_module.upsert_contract({
+        "internal_id": "C-UEI-1",
+        "vendor": "Completely Different Name",
+        "agency": "NASA",
+        "value": 1_000_000,
+        "days_remaining": 90,
+        "recompete_score": 80,
+        "recipient_uei": "MYUEI12345",
+    })
+    db_module.save_company_profile(uid, {"uei": "MYUEI12345"})
+    result = my_current_contract_summary(uid)
+    assert result["match_method"] == "uei"
+    assert result["count"] == 1
+    assert result["contracts"][0]["internal_id"] == "C-UEI-1"
+
+
+def test_summary_uei_does_not_match_vendor_name_contract(summary_db):
+    """When UEI is set, vendor-name contracts are NOT returned (UEI-only mode)."""
+    db_path, uid = summary_db
+    db_module.upsert_contract({
+        "internal_id": "C-NOTUEI",
+        "vendor": "Acme Corp",
+        "agency": "GSA",
+        "value": 100_000,
+        "days_remaining": 30,
+        "recompete_score": 50,
+        "recipient_uei": "DIFFERENTUEI",
+    })
+    db_module.save_company_profile(uid, {"uei": "MYUEI99", "vendor_name": "Acme Corp"})
+    result = my_current_contract_summary(uid)
+    # UEI takes priority; vendor name match not used
+    assert result["match_method"] == "uei"
+    assert result["count"] == 0
