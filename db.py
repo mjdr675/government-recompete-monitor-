@@ -152,6 +152,10 @@ _MIGRATION_PROBES: dict = {
         "SELECT COUNT(*) FROM information_schema.columns "
         "WHERE table_name = 'contracts' AND column_name = 'psc_code'"
     ),
+    "019_contracts_naics_description.sql": (
+        "SELECT COUNT(*) FROM information_schema.columns "
+        "WHERE table_name = 'contracts' AND column_name = 'naics_description'"
+    ),
 }
 
 
@@ -382,7 +386,7 @@ def _ensure_description_column():
 
 
 def _extract_pop_state(row):
-    for key in ("place_of_performance_state", "pop_state", "state"):
+    for key in ("place_of_performance_state", "pop_state", "performance_state", "state"):
         val = row.get(key)
         if val and str(val).strip():
             return str(val).strip()[:2].upper()
@@ -441,7 +445,7 @@ def _ensure_richer_location_columns():
         if not rows:
             return
         existing = {r[1] for r in rows}
-        for col in ("psc_code TEXT", "place_of_performance_country TEXT"):
+        for col in ("psc_code TEXT", "place_of_performance_country TEXT", "naics_description TEXT"):
             col_name = col.split()[0]
             if col_name not in existing:
                 conn.execute(text(f"ALTER TABLE contracts ADD COLUMN {col}"))
@@ -470,6 +474,7 @@ def init_db():
             sub_agency TEXT,
             description TEXT,
             naics_code TEXT,
+            naics_description TEXT,
             place_of_performance_state TEXT,
             place_of_performance_city TEXT,
             place_of_performance_zip TEXT,
@@ -1367,7 +1372,7 @@ def upsert_contract(row):
         conn.execute(text("""
         INSERT INTO contracts (
             internal_id, award_id, vendor, agency, sub_agency, description,
-            naics_code, place_of_performance_state, place_of_performance_city,
+            naics_code, naics_description, place_of_performance_state, place_of_performance_city,
             place_of_performance_zip, place_of_performance_country,
             category, psc_description, psc_code,
             value, start_date, end_date, days_remaining, competition_type,
@@ -1375,7 +1380,7 @@ def upsert_contract(row):
             recipient_uei, cage_code
         )
         VALUES (:internal_id, :award_id, :vendor, :agency, :sub_agency, :description,
-                :naics_code, :place_of_performance_state, :place_of_performance_city,
+                :naics_code, :naics_description, :place_of_performance_state, :place_of_performance_city,
                 :place_of_performance_zip, :place_of_performance_country,
                 :category, :psc_description, :psc_code,
                 :value, :start_date, :end_date, :days_remaining, :competition_type,
@@ -1388,6 +1393,7 @@ def upsert_contract(row):
             sub_agency=excluded.sub_agency,
             description=excluded.description,
             naics_code=excluded.naics_code,
+            naics_description=excluded.naics_description,
             place_of_performance_state=excluded.place_of_performance_state,
             place_of_performance_city=excluded.place_of_performance_city,
             place_of_performance_zip=excluded.place_of_performance_zip,
@@ -1416,6 +1422,7 @@ def upsert_contract(row):
             "sub_agency": row.get("sub_agency"),
             "description": row.get("description"),
             "naics_code": naics_code,
+            "naics_description": row.get("naics_description") or None,
             "place_of_performance_state": pop_state,
             "place_of_performance_city": pop_city or None,
             "place_of_performance_zip": pop_zip or None,
@@ -1537,7 +1544,7 @@ def save_snapshot(run_date, rows):
             conn.execute(text("""
             INSERT INTO contracts (
                 internal_id, award_id, vendor, agency, sub_agency, description,
-                naics_code, place_of_performance_state, place_of_performance_city,
+                naics_code, naics_description, place_of_performance_state, place_of_performance_city,
                 place_of_performance_zip, place_of_performance_country,
                 category, psc_description, psc_code,
                 value, start_date, end_date, days_remaining, competition_type,
@@ -1545,7 +1552,7 @@ def save_snapshot(run_date, rows):
                 recipient_uei, cage_code
             )
             VALUES (:internal_id, :award_id, :vendor, :agency, :sub_agency, :description,
-                    :naics_code, :place_of_performance_state, :place_of_performance_city,
+                    :naics_code, :naics_description, :place_of_performance_state, :place_of_performance_city,
                     :place_of_performance_zip, :place_of_performance_country,
                     :category, :psc_description, :psc_code,
                     :value, :start_date, :end_date, :days_remaining, :competition_type,
@@ -1558,6 +1565,7 @@ def save_snapshot(run_date, rows):
                 sub_agency=excluded.sub_agency,
                 description=excluded.description,
                 naics_code=excluded.naics_code,
+                naics_description=excluded.naics_description,
                 place_of_performance_state=excluded.place_of_performance_state,
                 place_of_performance_city=excluded.place_of_performance_city,
                 place_of_performance_zip=excluded.place_of_performance_zip,
@@ -1586,6 +1594,7 @@ def save_snapshot(run_date, rows):
                 "sub_agency": row.get("sub_agency"),
                 "description": row.get("description"),
                 "naics_code": naics_code,
+                "naics_description": row.get("naics_description") or None,
                 "place_of_performance_state": pop_state,
                 "place_of_performance_city": pop_city or None,
                 "place_of_performance_zip": pop_zip or None,

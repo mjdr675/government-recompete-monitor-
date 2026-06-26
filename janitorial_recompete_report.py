@@ -263,6 +263,7 @@ def enrichment_from_detail(data):
         "competition_type": latest.get("extent_competed_description") or "",
         "solicitation_procedure": latest.get("solicitation_procedures_description") or "",
         "pricing_type": latest.get("type_of_contract_pricing_description") or "",
+        "naics_description": latest.get("naics_description") or "",
         "psc_code": latest.get("product_or_service_code") or psc_base.get("code") or "",
         "psc_description": latest.get("product_or_service_description") or psc_base.get("description") or "",
         "parent_contract": parent.get("piid") or "",
@@ -301,6 +302,13 @@ def _naics_code(naics):
     if isinstance(naics, dict):
         return naics.get("code") or ""
     return naics or ""
+
+
+def _naics_description(naics):
+    """Extract the human-readable description from a USASpending NAICS field."""
+    if isinstance(naics, dict):
+        return naics.get("description") or ""
+    return ""
 
 
 def main():
@@ -344,6 +352,7 @@ def main():
             "sub_agency": c.get("Awarding Sub Agency"),
             "description": c.get("Description", ""),
             "naics_code": _naics_code(c.get("NAICS")),
+            "naics_description": _naics_description(c.get("NAICS")),
             "generated_internal_id": c.get("generated_internal_id"),
             "internal_id": c.get("internal_id"),
             "solicitation_id": "",
@@ -376,9 +385,9 @@ def main():
         if should_enrich(row):
             detail = fetch_award_detail(enrichment_award_id(row))
             enriched = enrichment_from_detail(detail)
-            # Only override pop fields if enrichment has better data
+            # Only override these fields if enrichment has better data; don't blank them
             for k, v in enriched.items():
-                if v or k not in ("performance_city", "performance_state", "performance_zip", "performance_country"):
+                if v or k not in ("performance_city", "performance_state", "performance_zip", "performance_country", "naics_description"):
                     row[k] = v
             enrich_count += 1
             time.sleep(0.2)
@@ -393,7 +402,7 @@ def main():
     fields = [
         "recompete_score", "priority", "score", "days_remaining", "contract", "vendor", "value",
         "start_date", "end_date", "agency", "sub_agency",
-        "description", "naics_code", "generated_internal_id", "internal_id",
+        "description", "naics_code", "naics_description", "generated_internal_id", "internal_id",
         "solicitation_id", "awarding_office", "funding_office",
         "recipient_uei", "recipient_city", "recipient_state",
         "recipient_country", "recipient_address", "recipient_zip",
