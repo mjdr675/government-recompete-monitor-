@@ -1416,8 +1416,31 @@ def upsert_contract(row):
         })
 
 
+def _has_unique_index(conn, table, cols):
+    """True if `table` has a UNIQUE index whose columns are exactly `cols`.
+
+    SQLite-only (uses PRAGMA). A fresh table's table-level UNIQUE(...) shows up
+    here as its sqlite_autoindex, so a repair gated on this is skipped for fresh
+    tables and only runs on drifted legacy tables that lack the constraint
+    (where ON CONFLICT(...) would otherwise fail with "does not match any
+    PRIMARY KEY or UNIQUE constraint").
+
+    `table` is a trusted module constant, never user input (PRAGMA cannot bind).
+    """
+    target = set(cols)
+    for idx in conn.execute(text(f"PRAGMA index_list({table})")).fetchall():
+        name, is_unique = idx[1], idx[2]
+        if not is_unique:
+            continue
+        idx_cols = {r[2] for r in conn.execute(text(f"PRAGMA index_info({name})")).fetchall()}
+        if idx_cols == target:
+            return True
+    return False
+
+
 def init_snapshots_table():
-    with get_engine().begin() as conn:
+    engine = get_engine()
+    with engine.begin() as conn:
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS contract_snapshots (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1440,6 +1463,24 @@ def init_snapshots_table():
             UNIQUE(run_date, internal_id)
         )
         """))
+        # Legacy SQLite tables created before the UNIQUE(run_date, internal_id)
+        # constraint existed lack it, so save_snapshot's
+        # ON CONFLICT(run_date, internal_id) fails. Dedupe (keep lowest id per
+        # key) then add a unique index. Only runs when the constraint is absent.
+        if engine.dialect.name != "postgresql" and not _has_unique_index(
+            conn, "contract_snapshots", ("run_date", "internal_id")
+        ):
+            conn.execute(text("""
+                DELETE FROM contract_snapshots
+                WHERE id NOT IN (
+                    SELECT MIN(id) FROM contract_snapshots
+                    GROUP BY run_date, internal_id
+                )
+            """))
+            conn.execute(text("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_contract_snapshots_run_internal
+                ON contract_snapshots(run_date, internal_id)
+            """))
 
 
 def save_snapshot(run_date, rows):
@@ -1657,17 +1698,43 @@ def init_field_changes_table():
         # introduced after the table was first created must be added by ALTER.
         # change_kind in particular is written by insert_field_changes(); a DB
         # created before it existed fails with "no column named change_kind".
+        # Cover every column used by the insert/unique key so a legacy table is
+        # fully repaired, not just up to the next visible error.
         existing_cols = {r[1] for r in conn.execute(text("PRAGMA table_info(contract_field_changes)")).fetchall()}
         for col, coldef in [
+            ("run_date", "TEXT NOT NULL DEFAULT ''"),
             ("internal_id", "TEXT NOT NULL DEFAULT ''"),
+            ("field_name", "TEXT NOT NULL DEFAULT ''"),
             ("old_value", "TEXT"),
             ("new_value", "TEXT"),
             ("change_kind", "TEXT NOT NULL DEFAULT 'MODIFIED'"),
+            ("created_at", "TEXT DEFAULT CURRENT_TIMESTAMP"),
         ]:
             if col not in existing_cols:
                 conn.execute(text(f"ALTER TABLE contract_field_changes ADD COLUMN {col} {coldef}"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_field_changes_run_date ON contract_field_changes(run_date)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_field_changes_internal_id ON contract_field_changes(internal_id)"))
+        # Legacy tables created before the UNIQUE(run_date, internal_id,
+        # field_name) constraint existed lack it, so insert_field_changes'
+        # ON CONFLICT(run_date, internal_id, field_name) fails with "does not
+        # match any PRIMARY KEY or UNIQUE constraint". Dedupe (keep lowest id
+        # per key) then add a unique index. Only runs when the constraint is
+        # absent, so fresh tables (which carry it as sqlite_autoindex) are
+        # untouched and no duplicate rows can block index creation.
+        if engine.dialect.name != "postgresql" and not _has_unique_index(
+            conn, "contract_field_changes", ("run_date", "internal_id", "field_name")
+        ):
+            conn.execute(text("""
+                DELETE FROM contract_field_changes
+                WHERE id NOT IN (
+                    SELECT MIN(id) FROM contract_field_changes
+                    GROUP BY run_date, internal_id, field_name
+                )
+            """))
+            conn.execute(text("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_contract_field_changes_run_internal_field
+                ON contract_field_changes(run_date, internal_id, field_name)
+            """))
 
 
 def clear_field_changes_for_date(run_date):
