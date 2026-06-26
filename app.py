@@ -71,7 +71,10 @@ from db import (
     find_contract_by_award_id,
     submit_feedback,
     get_feedback_submissions,
+    import_leads,
+    get_lead_intelligence_overview,
 )
+from lead_intelligence import parse_leads_csv, SERVICE_CATEGORY_LABELS
 from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
 from analytics import dashboard_analytics, opportunity_recommendations, dashboard_recommended_actions, business_opportunities
@@ -1666,6 +1669,74 @@ def watchlist():
         ).mappings().fetchall()
     contracts = [dict(r) for r in rows]
     return render_template("watchlist.html", contracts=contracts, count=len(contracts))
+
+
+def _require_lead_admin():
+    """Gate Lead Intelligence to admins; fail closed if no admin is configured.
+
+    Returns a response to short-circuit with, or None when the caller is an
+    allowed admin. Lead data is global/unscoped, so a non-admin (or any user
+    when ADMIN_EMAILS is unset) must not see it.
+    """
+    user = g.get("user")
+    if not user:
+        return redirect(url_for("auth.login"))
+    admin_emails = {e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()}
+    if not admin_emails or user.get("email", "").lower() not in admin_emails:
+        return "Forbidden", 403
+    return None
+
+
+@app.route("/lead-intelligence")
+def lead_intelligence():
+    """Sales-prospecting view: which companies are likely Recompete buyers and
+    which contracts to mention when reaching out.
+
+    Admin/internal-only: lead_companies/lead_contract_matches are global (not
+    per-user/workspace scoped), so this must not be exposed to ordinary users.
+    Fail closed when no ADMIN_EMAILS is configured.
+    """
+    guard = _require_lead_admin()
+    if guard:
+        return guard
+    companies = get_lead_intelligence_overview(match_limit=3)
+    return render_template(
+        "lead_intelligence.html",
+        companies=companies,
+        category_labels=SERVICE_CATEGORY_LABELS,
+        count=len(companies),
+    )
+
+
+@app.route("/lead-intelligence/import", methods=["POST"])
+def lead_intelligence_import():
+    """Import prospects from pasted CSV text or an uploaded CSV file.
+
+    Accepts columns: Rank, Company, Name / Title, Phone, Email, Contact Type,
+    Notes. Parsing, inference and contract matching are deterministic.
+
+    Admin/internal-only (see lead_intelligence()).
+    """
+    guard = _require_lead_admin()
+    if guard:
+        return guard
+    text_blob = request.form.get("csv_text", "")
+    upload = request.files.get("csv_file")
+    if upload and upload.filename:
+        try:
+            text_blob = upload.read().decode("utf-8-sig")
+        except (UnicodeDecodeError, AttributeError):
+            flash("Could not read the uploaded file — please upload a UTF-8 CSV.", "error")
+            return redirect(url_for("lead_intelligence"))
+
+    leads = parse_leads_csv(text_blob)
+    if not leads:
+        flash("No companies found — check the CSV has a 'Company' column.", "error")
+        return redirect(url_for("lead_intelligence"))
+
+    imported = import_leads(leads)
+    flash(f"Imported {imported} compan{'y' if imported == 1 else 'ies'} and scored their contract matches.", "success")
+    return redirect(url_for("lead_intelligence"))
 
 
 @app.route("/watchlist/add-by-award-id", methods=["POST"])

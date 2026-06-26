@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Lead Intelligence{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:16px">
+  <h1>Lead Intelligence</h1>
+  <p class="page-subtitle">Which companies are most likely to buy Recompete &mdash; and which contracts to mention when you contact them.</p>
+  <div class="page-meta" style="margin-top:4px">{{ count }} prospect{{ "s" if count != 1 else "" }} imported</div>
+</div>
+
+<details style="margin-bottom:24px" {{ "open" if not companies else "" }}>
+  <summary style="cursor:pointer;font-weight:600;margin-bottom:8px">Import prospects (CSV)</summary>
+  <form method="post" action="/lead-intelligence/import" enctype="multipart/form-data" style="margin-top:12px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <p class="page-subtitle" style="margin-bottom:8px">
+      Columns: <code>Rank, Company, Name / Title, Phone, Email, Contact Type, Notes</code>.
+      A company like <code>Acme Corp &mdash; Richmond, VA</code> has its state inferred automatically.
+    </p>
+    <textarea name="csv_text" rows="6" placeholder="Rank,Company,Name / Title,Phone,Email,Contact Type,Notes&#10;1,Acme IT — Arlington, VA,Jane Doe / VP,555-1212,jane@acme.com,Prospect,Federal IT and cybersecurity services"
+              style="width:100%;font-family:monospace;font-size:13px;padding:8px;box-sizing:border-box"></textarea>
+    <div style="display:flex;gap:12px;align-items:center;margin-top:8px;flex-wrap:wrap">
+      <input type="file" name="csv_file" accept=".csv,text/csv">
+      <button type="submit" class="btn btn-primary">Import &amp; match</button>
+    </div>
+  </form>
+</details>
+
+{% if companies %}
+<div class="table-wrapper">
+  <table>
+    <thead>
+      <tr>
+        <th>Company</th>
+        <th>Contact</th>
+        <th>State</th>
+        <th>Service Focus</th>
+        <th>Buy&nbsp;Likelihood</th>
+        <th>Top Contract Matches</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in companies %}
+      <tr>
+        <td>
+          <strong>{{ c["company_name"] }}</strong>
+          {% if c["company_location"] and c["company_location"] != c["company_name"] %}
+            <div class="page-subtitle" style="font-size:12px">{{ c["company_location"] }}</div>
+          {% endif %}
+          {% if c["contact_type"] %}<div class="page-meta" style="font-size:11px">{{ c["contact_type"] }}</div>{% endif %}
+        </td>
+        <td>
+          {{ c["contact_name"] or "&mdash;"|safe }}
+          {% if c["contact_title"] %}<div class="page-subtitle" style="font-size:12px">{{ c["contact_title"] }}</div>{% endif %}
+          {% if c["email"] %}<div style="font-size:12px"><a href="mailto:{{ c['email'] }}">{{ c["email"] }}</a></div>{% endif %}
+          {% if c["phone"] %}<div class="page-subtitle" style="font-size:12px">{{ c["phone"] }}</div>{% endif %}
+        </td>
+        <td>{{ c["state"] or "&mdash;"|safe }}</td>
+        <td>{{ category_labels.get(c["inferred_service_category"], c["inferred_service_category"]) }}</td>
+        <td><strong>{{ c["likely_customer_score"] }}</strong>/100</td>
+        <td>
+          {% if c["matches"] %}
+            <ol style="margin:0;padding-left:18px">
+              {% for m in c["matches"] %}
+              <li style="margin-bottom:6px">
+                <a href="/contract/{{ m['internal_id'] }}">{{ m["vendor"] or m["award_id"] or m["internal_id"] }}</a>
+                <span class="page-meta" style="font-size:11px">({{ m["agency"] }}{% if m["place_of_performance_state"] %}, {{ m["place_of_performance_state"] }}{% endif %})</span>
+                &mdash; match <strong>{{ m["match_score"] }}</strong>
+                <div class="page-subtitle" style="font-size:12px">{{ m["match_reason"] }}</div>
+              </li>
+              {% endfor %}
+            </ol>
+            {% if c["outreach_angle"] %}
+            <div style="margin-top:6px;font-size:12px;background:#eff6ff;border-left:3px solid #3b82f6;padding:6px 8px">
+              <strong>Outreach:</strong> {{ c["outreach_angle"] }}
+            </div>
+            {% endif %}
+          {% else %}
+            <span class="page-subtitle">No live contract matches yet.</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state-rich">
+  <p class="empty-title">No prospects imported yet</p>
+  <p class="empty-desc">Paste or upload a CSV of companies above to score how likely they are to buy Recompete and surface the contracts worth mentioning.</p>
+</div>
+{% endif %}
+{% endblock %}

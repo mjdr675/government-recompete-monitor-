@@ -156,6 +156,10 @@ _MIGRATION_PROBES: dict = {
         "SELECT COUNT(*) FROM information_schema.columns "
         "WHERE table_name = 'contracts' AND column_name = 'naics_description'"
     ),
+    "020_lead_intelligence.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'lead_companies'"
+    ),
 }
 
 
@@ -805,6 +809,8 @@ def init_db():
             updated_at                      TEXT NOT NULL
         )
         """))
+
+    init_lead_intelligence_tables()
 
 
 _NOTIFICATION_DEFAULTS: dict = {
@@ -2345,3 +2351,204 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
         "contracts": rows, "page": page,
         "start": (page - 1) * limit, "total": total, "count": len(rows),
     }
+
+
+# ---------------------------------------------------------------------------
+# Lead Intelligence — imported prospects and their contract matches.
+#
+# Postgres/Railway: tables come from migrations/020_lead_intelligence.sql.
+# SQLite/dev: created here with CREATE TABLE IF NOT EXISTS (self-heal). The
+# matching logic itself lives in the pure module lead_intelligence.py.
+# ---------------------------------------------------------------------------
+
+def init_lead_intelligence_tables():
+    engine = get_engine()
+    if engine.dialect.name == "postgresql":
+        return  # created by migration 019 on Railway
+    with engine.begin() as conn:
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS lead_companies (
+            id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_name              TEXT NOT NULL UNIQUE,
+            contact_name              TEXT,
+            contact_title             TEXT,
+            phone                     TEXT,
+            email                     TEXT,
+            company_location          TEXT,
+            state                     TEXT,
+            website                   TEXT,
+            service_notes             TEXT,
+            contact_type              TEXT,
+            source_notes              TEXT,
+            inferred_service_category TEXT,
+            federal_experience_signal INTEGER NOT NULL DEFAULT 0,
+            likely_customer_score     INTEGER NOT NULL DEFAULT 0,
+            created_at                TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at                TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_lead_companies_score "
+            "ON lead_companies(likely_customer_score DESC)"
+        ))
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS lead_contract_matches (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            lead_company_id   INTEGER NOT NULL REFERENCES lead_companies(id) ON DELETE CASCADE,
+            internal_id       TEXT NOT NULL,
+            match_score       INTEGER NOT NULL DEFAULT 0,
+            state_score       INTEGER NOT NULL DEFAULT 0,
+            service_score     INTEGER NOT NULL DEFAULT 0,
+            timing_score      INTEGER NOT NULL DEFAULT 0,
+            value_score       INTEGER NOT NULL DEFAULT 0,
+            federal_fit_score INTEGER NOT NULL DEFAULT 0,
+            match_reason      TEXT,
+            outreach_angle    TEXT,
+            created_at        TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(lead_company_id, internal_id)
+        )
+        """))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_lead_matches_company "
+            "ON lead_contract_matches(lead_company_id)"
+        ))
+
+
+_LEAD_COMPANY_COLS = (
+    "company_name", "contact_name", "contact_title", "phone", "email",
+    "company_location", "state", "website", "service_notes", "contact_type",
+    "source_notes", "inferred_service_category", "federal_experience_signal",
+    "likely_customer_score",
+)
+
+
+def upsert_lead_company(lead) -> int:
+    """Insert or update a lead by company_name; return its id."""
+    init_lead_intelligence_tables()
+    params = {col: lead.get(col) for col in _LEAD_COMPANY_COLS}
+    params["company_name"] = (params.get("company_name") or "").strip()
+    params["federal_experience_signal"] = int(params.get("federal_experience_signal") or 0)
+    params["likely_customer_score"] = int(params.get("likely_customer_score") or 0)
+    params["now"] = datetime.now(timezone.utc).isoformat()
+    cols = ", ".join(_LEAD_COMPANY_COLS)
+    placeholders = ", ".join(f":{c}" for c in _LEAD_COMPANY_COLS)
+    updates = ", ".join(
+        f"{c}=excluded.{c}" for c in _LEAD_COMPANY_COLS if c != "company_name"
+    )
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(text(
+            f"INSERT INTO lead_companies ({cols}) VALUES ({placeholders}) "
+            f"ON CONFLICT(company_name) DO UPDATE SET {updates}, updated_at=:now"
+        ), params)
+        row = conn.execute(
+            text("SELECT id FROM lead_companies WHERE company_name = :company_name"),
+            {"company_name": params["company_name"]},
+        ).fetchone()
+    return int(row[0]) if row else 0
+
+
+def replace_lead_matches(lead_company_id, scored_matches, outreach_angle="") -> int:
+    """Replace all stored matches for a company with a freshly scored set.
+
+    `scored_matches` is the list returned by
+    lead_intelligence.find_matching_contracts().
+    """
+    init_lead_intelligence_tables()
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(
+            text("DELETE FROM lead_contract_matches WHERE lead_company_id = :cid"),
+            {"cid": lead_company_id},
+        )
+        for m in scored_matches:
+            contract = m["contract"]
+            s = m["scores"]
+            conn.execute(text("""
+                INSERT INTO lead_contract_matches
+                    (lead_company_id, internal_id, match_score, state_score,
+                     service_score, timing_score, value_score, federal_fit_score,
+                     match_reason, outreach_angle)
+                VALUES (:cid, :iid, :match_score, :state_score, :service_score,
+                        :timing_score, :value_score, :federal_fit_score,
+                        :match_reason, :outreach_angle)
+                ON CONFLICT(lead_company_id, internal_id) DO NOTHING
+            """), {
+                "cid": lead_company_id,
+                "iid": contract.get("internal_id"),
+                "match_score": int(m["match_score"]),
+                "state_score": int(s["state_score"]),
+                "service_score": int(s["service_score"]),
+                "timing_score": int(s["timing_score"]),
+                "value_score": int(s["value_score"]),
+                "federal_fit_score": int(s["federal_fit_score"]),
+                "match_reason": m.get("match_reason", ""),
+                "outreach_angle": outreach_angle,
+            })
+    return len(scored_matches)
+
+
+def get_lead_companies():
+    """Return all lead companies ordered by likely-customer score."""
+    init_lead_intelligence_tables()
+    engine = get_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(text(
+            "SELECT * FROM lead_companies "
+            "ORDER BY likely_customer_score DESC, company_name ASC"
+        )).mappings().fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_matches_for_company(lead_company_id, limit=3):
+    """Return a company's stored matches joined to contract detail."""
+    init_lead_intelligence_tables()
+    engine = get_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT m.match_score, m.state_score, m.service_score, m.timing_score,
+                   m.value_score, m.federal_fit_score, m.match_reason, m.outreach_angle,
+                   c.internal_id, c.award_id, c.vendor, c.agency, c.value,
+                   c.end_date, c.days_remaining, c.recompete_score, c.category,
+                   c.place_of_performance_state
+            FROM lead_contract_matches m
+            LEFT JOIN contracts c ON c.internal_id = m.internal_id
+            WHERE m.lead_company_id = :cid
+            ORDER BY m.match_score DESC, c.recompete_score DESC
+            LIMIT :limit
+        """), {"cid": lead_company_id, "limit": limit}).mappings().fetchall()
+    return [dict(r) for r in rows]
+
+
+def import_leads(leads) -> int:
+    """Upsert a batch of normalized leads and (re)compute their matches.
+
+    Returns the number of companies imported. Contracts are fetched once and
+    scored against every lead via the pure lead_intelligence module.
+    """
+    import lead_intelligence as li
+
+    leads = [l for l in leads if (l.get("company_name") or "").strip()]
+    if not leads:
+        return 0
+    init_lead_intelligence_tables()
+    contracts = [dict(r) for r in get_contracts(all_rows=True)["contracts"]]
+    for lead in leads:
+        company_id = upsert_lead_company(lead)
+        if not company_id:
+            continue
+        matches = li.find_matching_contracts(lead, contracts, limit=5)
+        angle = li.generate_outreach_angle(lead, matches)
+        replace_lead_matches(company_id, matches, outreach_angle=angle)
+    return len(leads)
+
+
+def get_lead_intelligence_overview(match_limit=3):
+    """Return companies with their top matches, for the dashboard page."""
+    companies = get_lead_companies()
+    for company in companies:
+        company["matches"] = get_matches_for_company(company["id"], limit=match_limit)
+        company["outreach_angle"] = (
+            company["matches"][0]["outreach_angle"] if company["matches"] else ""
+        )
+    return companies
