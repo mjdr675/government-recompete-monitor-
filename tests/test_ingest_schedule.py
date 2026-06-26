@@ -210,3 +210,70 @@ def test_ingest_run_does_not_skip_when_yesterday_ran(client, test_db):
     assert rv.status_code == 202
     data = rv.get_json()
     assert data["status"] == "started"
+
+
+# ---------------------------------------------------------------------------
+# CSRF exemption + X-Cron-Secret header (Railway cron / API pull)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def csrf_client(test_db):
+    """Test client with CSRF protection ENABLED (the default `client` fixture
+    disables it), so we can prove /ingest/run is explicitly exempt."""
+    import app as flask_app
+    flask_app.app.config["TESTING"] = True
+    flask_app.app.config["WTF_CSRF_ENABLED"] = True
+    flask_app.app.config["RATELIMIT_ENABLED"] = False
+    flask_app.app.secret_key = "test-secret-key"
+    flask_app.limiter.reset()
+    with flask_app.app.test_client() as c:
+        yield c
+
+
+def test_ingest_run_is_csrf_exempt(csrf_client):
+    """POST /ingest/run must not be rejected for a missing CSRF token even with
+    CSRF enabled — regression for 400 'The CSRF token is missing.'."""
+    import app as flask_app
+    with patch.object(flask_app, "_CRON_SECRET", ""), \
+         patch("app.threading") as mock_threading:
+        mock_threading.Thread.return_value = MagicMock()
+        rv = csrf_client.post("/ingest/run")
+    assert rv.status_code != 400
+    assert rv.status_code in (200, 202)
+
+
+def test_ingest_run_rejects_missing_secret_when_set(csrf_client):
+    """With CRON_SECRET set, no secret header is rejected with 401 (not a 400
+    CSRF error)."""
+    import app as flask_app
+    with patch.object(flask_app, "_CRON_SECRET", "correct-secret"):
+        rv = csrf_client.post("/ingest/run")
+    assert rv.status_code == 401
+
+
+def test_ingest_run_rejects_wrong_x_cron_secret(csrf_client):
+    """With CRON_SECRET set, a wrong X-Cron-Secret is rejected with 401."""
+    import app as flask_app
+    with patch.object(flask_app, "_CRON_SECRET", "correct-secret"):
+        rv = csrf_client.post("/ingest/run", headers={"X-Cron-Secret": "nope"})
+    assert rv.status_code == 401
+
+
+def test_ingest_run_accepts_correct_x_cron_secret(csrf_client):
+    """The correct X-Cron-Secret header is accepted with CSRF enabled."""
+    import app as flask_app
+    with patch.object(flask_app, "_CRON_SECRET", "correct-secret"), \
+         patch("app.threading") as mock_threading:
+        mock_threading.Thread.return_value = MagicMock()
+        rv = csrf_client.post("/ingest/run", headers={"X-Cron-Secret": "correct-secret"})
+    assert rv.status_code in (200, 202)
+
+
+def test_ingest_run_still_accepts_bearer_secret(csrf_client):
+    """Backward-compat: the existing Railway cron uses Authorization: Bearer."""
+    import app as flask_app
+    with patch.object(flask_app, "_CRON_SECRET", "correct-secret"), \
+         patch("app.threading") as mock_threading:
+        mock_threading.Thread.return_value = MagicMock()
+        rv = csrf_client.post("/ingest/run", headers={"Authorization": "Bearer correct-secret"})
+    assert rv.status_code in (200, 202)

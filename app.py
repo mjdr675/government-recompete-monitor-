@@ -616,11 +616,20 @@ def health():
 
 
 @app.route("/ingest/run", methods=["POST"])
+@csrf.exempt
 def ingest_run():
     """Ingest trigger endpoint called daily by the Railway cron service.
 
+    CSRF-exempt because the caller is a server-side cron job that holds no
+    session/CSRF token; it authenticates with the CRON_SECRET instead. This is
+    the only route exempted here; global CSRF protection stays on.
+
     Protection:
-      - Requires Authorization: Bearer <CRON_SECRET> when CRON_SECRET is set.
+      - When CRON_SECRET is set, the secret must be supplied via either the
+        ``X-Cron-Secret: <secret>`` header or ``Authorization: Bearer <secret>``
+        (the latter for the existing Railway cron command); otherwise 401.
+      - When CRON_SECRET is unset, the route is unprotected (a startup warning
+        is logged on Railway); this preserves dev/local behavior.
       - Returns 409 if an ingest is already running (overlap prevention).
       - Returns 200 with {"status": "already_ran"} if a successful ingest was
         recorded in ingest_log today (idempotent for Railway retry logic).
@@ -629,8 +638,10 @@ def ingest_run():
     global _ingest_running
 
     if _CRON_SECRET:
+        header_secret = request.headers.get("X-Cron-Secret", "")
         auth_header = request.headers.get("Authorization", "")
-        if auth_header != f"Bearer {_CRON_SECRET}":
+        bearer_ok = auth_header == f"Bearer {_CRON_SECRET}"
+        if header_secret != _CRON_SECRET and not bearer_ok:
             return {"error": "unauthorized"}, 401
 
     # Overlap prevention: reject if another ingest is already in progress.
