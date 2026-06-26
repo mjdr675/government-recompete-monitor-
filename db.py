@@ -1677,64 +1677,92 @@ def get_changes(run_date, change_type):
         """), {"run_date": run_date, "change_type": change_type}).mappings().fetchall()
 
 
+_FIELD_CHANGES_CANON_COLS = (
+    "id", "run_date", "internal_id", "field_name",
+    "old_value", "new_value", "change_kind", "created_at",
+)
+
+
+def _field_changes_create_sql(if_not_exists=True):
+    guard = "IF NOT EXISTS " if if_not_exists else ""
+    return f"""
+    CREATE TABLE {guard}contract_field_changes (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_date    TEXT NOT NULL,
+        internal_id TEXT NOT NULL,
+        field_name  TEXT NOT NULL,
+        old_value   TEXT,
+        new_value   TEXT,
+        change_kind TEXT NOT NULL,
+        created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(run_date, internal_id, field_name)
+    )
+    """
+
+
+def _heal_field_changes_schema(conn):
+    """Bring a legacy SQLite contract_field_changes table to the canonical
+    schema, fixing every accumulated drift at once instead of one error at a
+    time:
+      - missing columns added later (e.g. change_kind);
+      - a missing UNIQUE(run_date, internal_id, field_name) backing the
+        ON CONFLICT target;
+      - obsolete NOT NULL columns from older schemas (e.g. a `contract_id`
+        predecessor of internal_id) that break inserts with
+        "NOT NULL constraint failed".
+
+    Rebuilds via a temp table, carrying the canonical columns forward with safe
+    defaults and deduping on the unique key (INSERT OR IGNORE). Idempotent: a
+    table already in canonical shape is left untouched. SQLite-only (the
+    Postgres path gets the canonical schema from migration 012).
+    """
+    info = conn.execute(text("PRAGMA table_info(contract_field_changes)")).fetchall()
+    names = [r[1] for r in info]
+    is_canonical = (
+        set(names) == set(_FIELD_CHANGES_CANON_COLS)
+        and _has_unique_index(
+            conn, "contract_field_changes", ("run_date", "internal_id", "field_name")
+        )
+    )
+    if is_canonical:
+        return
+
+    def src(col, fallback):
+        return col if col in names else fallback
+
+    select_exprs = ", ".join([
+        src("run_date", "''"),
+        src("internal_id", "''"),
+        src("field_name", "''"),
+        src("old_value", "NULL"),
+        src("new_value", "NULL"),
+        "COALESCE(change_kind, 'MODIFIED')" if "change_kind" in names else "'MODIFIED'",
+        src("created_at", "CURRENT_TIMESTAMP"),
+    ])
+    target_cols = "run_date, internal_id, field_name, old_value, new_value, change_kind, created_at"
+
+    conn.execute(text("DROP TABLE IF EXISTS _contract_field_changes_legacy"))
+    conn.execute(text("ALTER TABLE contract_field_changes RENAME TO _contract_field_changes_legacy"))
+    conn.execute(text(_field_changes_create_sql(if_not_exists=False)))
+    conn.execute(text(
+        f"INSERT OR IGNORE INTO contract_field_changes ({target_cols}) "
+        f"SELECT {select_exprs} FROM _contract_field_changes_legacy"
+    ))
+    conn.execute(text("DROP TABLE _contract_field_changes_legacy"))
+
+
 def init_field_changes_table():
     engine = get_engine()
     with engine.begin() as conn:
-        conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS contract_field_changes (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            run_date    TEXT NOT NULL,
-            internal_id TEXT NOT NULL,
-            field_name  TEXT NOT NULL,
-            old_value   TEXT,
-            new_value   TEXT,
-            change_kind TEXT NOT NULL,
-            created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(run_date, internal_id, field_name)
-        )
-        """))
-        # Migrate pre-existing tables that may be missing columns added later.
-        # CREATE TABLE IF NOT EXISTS is a no-op on an existing table, so columns
-        # introduced after the table was first created must be added by ALTER.
-        # change_kind in particular is written by insert_field_changes(); a DB
-        # created before it existed fails with "no column named change_kind".
-        # Cover every column used by the insert/unique key so a legacy table is
-        # fully repaired, not just up to the next visible error.
-        existing_cols = {r[1] for r in conn.execute(text("PRAGMA table_info(contract_field_changes)")).fetchall()}
-        for col, coldef in [
-            ("run_date", "TEXT NOT NULL DEFAULT ''"),
-            ("internal_id", "TEXT NOT NULL DEFAULT ''"),
-            ("field_name", "TEXT NOT NULL DEFAULT ''"),
-            ("old_value", "TEXT"),
-            ("new_value", "TEXT"),
-            ("change_kind", "TEXT NOT NULL DEFAULT 'MODIFIED'"),
-            ("created_at", "TEXT DEFAULT CURRENT_TIMESTAMP"),
-        ]:
-            if col not in existing_cols:
-                conn.execute(text(f"ALTER TABLE contract_field_changes ADD COLUMN {col} {coldef}"))
+        conn.execute(text(_field_changes_create_sql(if_not_exists=True)))
+        # Repair legacy SQLite tables that drifted from the canonical schema —
+        # missing columns, a missing UNIQUE constraint, or obsolete NOT NULL
+        # columns (e.g. a legacy contract_id). Postgres fresh DBs carry the
+        # canonical schema via migration 012, so this is SQLite-only.
+        if engine.dialect.name != "postgresql":
+            _heal_field_changes_schema(conn)
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_field_changes_run_date ON contract_field_changes(run_date)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_field_changes_internal_id ON contract_field_changes(internal_id)"))
-        # Legacy tables created before the UNIQUE(run_date, internal_id,
-        # field_name) constraint existed lack it, so insert_field_changes'
-        # ON CONFLICT(run_date, internal_id, field_name) fails with "does not
-        # match any PRIMARY KEY or UNIQUE constraint". Dedupe (keep lowest id
-        # per key) then add a unique index. Only runs when the constraint is
-        # absent, so fresh tables (which carry it as sqlite_autoindex) are
-        # untouched and no duplicate rows can block index creation.
-        if engine.dialect.name != "postgresql" and not _has_unique_index(
-            conn, "contract_field_changes", ("run_date", "internal_id", "field_name")
-        ):
-            conn.execute(text("""
-                DELETE FROM contract_field_changes
-                WHERE id NOT IN (
-                    SELECT MIN(id) FROM contract_field_changes
-                    GROUP BY run_date, internal_id, field_name
-                )
-            """))
-            conn.execute(text("""
-                CREATE UNIQUE INDEX IF NOT EXISTS uq_contract_field_changes_run_internal_field
-                ON contract_field_changes(run_date, internal_id, field_name)
-            """))
 
 
 def clear_field_changes_for_date(run_date):

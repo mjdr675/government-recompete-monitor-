@@ -184,3 +184,83 @@ class TestSnapshotsUniqueRepair:
                 "SELECT COUNT(*) FROM contract_snapshots WHERE internal_id='D1'"
             )).scalar()
         assert n == 1
+
+
+# ---------------------------------------------------------------------------
+# Obsolete NOT NULL legacy columns (e.g. contract_id) — full canonical heal
+# ---------------------------------------------------------------------------
+
+def _legacy_field_changes_with_contract_id(engine):
+    """A much older shape: obsolete contract_id NOT NULL, no change_kind, and no
+    UNIQUE(run_date, internal_id, field_name) — mirrors the Railway volume."""
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE contract_field_changes (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                contract_id TEXT NOT NULL,
+                run_date    TEXT NOT NULL,
+                internal_id TEXT NOT NULL,
+                field_name  TEXT NOT NULL,
+                old_value   TEXT,
+                new_value   TEXT,
+                created_at  TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+
+
+class TestFieldChangesObsoleteColumnHeal:
+    KEY = ("run_date", "internal_id", "field_name")
+
+    def test_obsolete_contract_id_column_removed(self, sqlite_db):
+        engine = db_module.get_engine()
+        _legacy_field_changes_with_contract_id(engine)
+        db_module.init_field_changes_table()
+        cols = {r[1] for r in engine.connect().execute(text("PRAGMA table_info(contract_field_changes)"))}
+        assert "contract_id" not in cols
+        assert cols == set(db_module._FIELD_CHANGES_CANON_COLS)
+
+    def test_insert_works_after_heal(self, sqlite_db):
+        """Regression: NOT NULL contract_id must not block inserts anymore."""
+        engine = db_module.get_engine()
+        _legacy_field_changes_with_contract_id(engine)
+        n = db_module.insert_field_changes("2026-06-26", [{
+            "internal_id": "279443036", "field_name": "recompete_score",
+            "old_value": "70", "new_value": "25", "change_kind": "DECREASE",
+        }])
+        assert n == 1
+        with engine.connect() as conn:
+            row = conn.execute(text(
+                "SELECT change_kind, new_value FROM contract_field_changes "
+                "WHERE internal_id='279443036'"
+            )).fetchone()
+        assert row == ("DECREASE", "25")
+
+    def test_existing_rows_preserved_with_defaults(self, sqlite_db):
+        """Rows survive the rebuild; NULL change_kind is backfilled, obsolete
+        contract_id is dropped."""
+        engine = db_module.get_engine()
+        _legacy_field_changes_with_contract_id(engine)
+        with engine.begin() as conn:
+            conn.execute(text(
+                "INSERT INTO contract_field_changes "
+                "(contract_id, run_date, internal_id, field_name, old_value, new_value) "
+                "VALUES ('OLD-1', '2026-06-25', 'C1', 'value', '1', '2')"
+            ))
+        db_module.init_field_changes_table()
+        with engine.connect() as conn:
+            row = conn.execute(text(
+                "SELECT internal_id, field_name, old_value, new_value, change_kind "
+                "FROM contract_field_changes WHERE internal_id='C1'"
+            )).fetchone()
+        assert row == ("C1", "value", "1", "2", "MODIFIED")
+
+    def test_heal_is_idempotent(self, sqlite_db):
+        engine = db_module.get_engine()
+        _legacy_field_changes_with_contract_id(engine)
+        db_module.init_field_changes_table()
+        db_module.init_field_changes_table()  # second pass must be a no-op
+        cols = {r[1] for r in engine.connect().execute(text("PRAGMA table_info(contract_field_changes)"))}
+        assert cols == set(db_module._FIELD_CHANGES_CANON_COLS)
+        assert db_module._has_unique_index(
+            engine.connect(), "contract_field_changes", self.KEY
+        )
