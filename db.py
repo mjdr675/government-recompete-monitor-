@@ -148,6 +148,10 @@ _MIGRATION_PROBES: dict = {
         "SELECT COUNT(*) FROM information_schema.columns "
         "WHERE table_name = 'contract_field_changes' AND column_name = 'change_kind'"
     ),
+    "018_contracts_psc_code_and_country.sql": (
+        "SELECT COUNT(*) FROM information_schema.columns "
+        "WHERE table_name = 'contracts' AND column_name = 'psc_code'"
+    ),
 }
 
 
