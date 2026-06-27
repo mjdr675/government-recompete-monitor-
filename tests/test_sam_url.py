@@ -220,7 +220,9 @@ class TestContractDetailTemplate:
         self._insert_contract(test_db, "CONT_DIRECT", sam_url="https://sam.gov/opp/abc-uuid/view")
         rv = client.get("/contract/CONT_DIRECT")
         assert rv.status_code == 200
-        assert b"Open live SAM.gov opportunity" in rv.data
+        # The misleading "Open live SAM.gov opportunity" button was replaced by a
+        # status-aware link ("View SAM.gov solicitation"/"View SAM.gov record").
+        assert b"View SAM.gov" in rv.data
 
     def test_direct_link_href_matches_sam_url(self, client, test_db):
         self._insert_contract(test_db, "CONT_HREF", sam_url="https://sam.gov/opp/abc-uuid/view")
@@ -231,12 +233,12 @@ class TestContractDetailTemplate:
         self._insert_contract(test_db, "CONT_FALLBACK", sam_url="")
         rv = client.get("/contract/CONT_FALLBACK")
         assert rv.status_code == 200
-        assert b"Search SAM.gov for this opportunity" in rv.data
+        assert b"Search SAM.gov for this contract" in rv.data
 
     def test_fallback_link_not_shown_when_sam_url_set(self, client, test_db):
         self._insert_contract(test_db, "CONT_NO_FALLBACK", sam_url="https://sam.gov/opp/xyz/view")
         rv = client.get("/contract/CONT_NO_FALLBACK")
-        assert b"Search SAM.gov for this opportunity" not in rv.data
+        assert b"Search SAM.gov for this contract" not in rv.data
 
     def test_direct_link_opens_in_new_tab(self, client, test_db):
         self._insert_contract(test_db, "CONT_TAB", sam_url="https://sam.gov/opp/abc/view")
