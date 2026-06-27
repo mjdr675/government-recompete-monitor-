@@ -989,6 +989,45 @@ class TestMinDaysLeftRoute:
         rv = _route_client.get("/contracts")
         assert b"All states" in rv.data
 
+    def test_state_dropdown_empty_shows_no_data_hint(self, _route_client):
+        # Empty DB → no state options → should show the "No state data yet" hint
+        rv = _route_client.get("/contracts")
+        assert b"No state data yet" in rv.data
+
+    def test_state_dropdown_shows_options_when_contracts_have_state(self, _route_client):
+        # Insert a contract with a state; dropdown must show that state as an option.
+        db_module.upsert_contract({
+            "internal_id": "STATE-VA",
+            "award_id": "AW-STATE-VA",
+            "vendor": "Virginia Services LLC",
+            "agency": "GSA",
+            "value": 200000,
+            "days_remaining": 180,
+            "recompete_score": 60,
+            "priority": "MEDIUM",
+            "place_of_performance_state": "VA",
+        })
+        rv = _route_client.get("/contracts")
+        assert b'value="VA"' in rv.data
+        assert b"No state data yet" not in rv.data
+
+    def test_state_dropdown_selected_value_preserved(self, _route_client):
+        # When state=VA is in the URL, the VA option must be marked selected.
+        db_module.upsert_contract({
+            "internal_id": "STATE-VA2",
+            "award_id": "AW-STATE-VA2",
+            "vendor": "Virginia Services LLC",
+            "agency": "GSA",
+            "value": 200000,
+            "days_remaining": 180,
+            "recompete_score": 60,
+            "priority": "MEDIUM",
+            "place_of_performance_state": "VA",
+        })
+        rv = _route_client.get("/contracts?state=VA")
+        assert b'value="VA" selected' in rv.data or b"VA" in rv.data
+        assert rv.status_code == 200
+
     def test_state_filter_param_preserved_in_response(self, _route_client):
         rv = _route_client.get("/contracts?state=TX")
         assert rv.status_code == 200

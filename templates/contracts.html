@@ -38,9 +38,13 @@
       <label>State</label>
       <select name="state">
         <option value="">All states</option>
-        {% for s in all_states %}
-          <option value="{{ s }}" {% if s == state %}selected{% endif %}>{{ s }}</option>
-        {% endfor %}
+        {% if all_states %}
+          {% for s in all_states %}
+            <option value="{{ s }}" {% if s == state %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        {% else %}
+          <option value="" disabled style="color:var(--text-muted)">No state data yet</option>
+        {% endif %}
       </select>
     </div>
     <div class="filter-field sm">
