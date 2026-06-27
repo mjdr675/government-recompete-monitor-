@@ -976,6 +976,7 @@ def contracts():
     days = request.args.get("days", None)
     min_value = request.args.get("min_value", type=float)
     status = request.args.get("status", "")
+    actionability = request.args.get("actionability", "")
     sort = request.args.get("sort", "recompete_score")
     direction = request.args.get("dir", "desc")
     page = int(request.args.get("page", 1))
@@ -991,6 +992,9 @@ def contracts():
 
     if status not in ("", "open", "expired"):
         status = ""
+    _VALID_ACTIONABILITY = {"", "open_now", "prepare_recompete", "too_late", "watch", "expired"}
+    if actionability not in _VALID_ACTIONABILITY:
+        actionability = ""
 
     # Natural-language query parsing: extract category/state intent from free text
     # so "lawn care contracts in Virginia" routes correctly without exact wording.
@@ -1097,6 +1101,18 @@ def contracts():
             rows_with_scores.append(rd)
         rows = rows_with_scores
 
+    # Attach opportunity_status to each row and optionally filter by actionability.
+    from contract_summary import opportunity_status as _opp_status
+    rows_with_status = []
+    for r in rows:
+        rd = dict(r) if not isinstance(r, dict) else r
+        rd["opportunity_status"] = _opp_status(rd)
+        rows_with_status.append(rd)
+    if actionability:
+        rows_with_status = [r for r in rows_with_status
+                            if r["opportunity_status"]["status"] == actionability]
+    rows = rows_with_status
+
     return render_template(
         "contracts.html",
         rows=rows,
@@ -1133,6 +1149,7 @@ def contracts():
         for_my_business=for_my_business,
         in_pipeline=in_pipeline,
         has_profile=profile is not None,
+        actionability=actionability,
     )
 
 
@@ -1508,12 +1525,13 @@ def contract_detail(internal_id):
             ).mappings().fetchall()
             notes = [dict(r) for r in note_rows]
 
-    from contract_summary import next_step, recommended_action, why_it_matters, contract_timeline, recompete_score_breakdown
+    from contract_summary import next_step, recommended_action, why_it_matters, contract_timeline, recompete_score_breakdown, opportunity_status
     guidance = next_step(row.get("days_remaining"), row.get("priority"))
     action = recommended_action(row)
     matters = why_it_matters(row)
     timeline = contract_timeline(row)
     score_breakdown = recompete_score_breakdown(row)
+    opp_status = opportunity_status(row)
 
     # Apply-window staging for the "How to apply" CTA on the detail page.
     stage_key, stage_label, stage_detail = apply_stage(row.get("days_remaining"))
@@ -1564,7 +1582,8 @@ def contract_detail(internal_id):
                            stage_label=stage_label,
                            stage_detail=stage_detail,
                            applyable=applyable,
-                           score_breakdown=score_breakdown)
+                           score_breakdown=score_breakdown,
+                           opp_status=opp_status)
 
 
 @app.route("/contract/<internal_id>/apply")

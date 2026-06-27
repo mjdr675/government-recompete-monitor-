@@ -817,3 +817,189 @@ def format_contract_update(row):
         "run_date": row.get("run_date"),
         "created_at": row.get("created_at"),
     }
+
+
+# ---------------------------------------------------------------------------
+# Opportunity status / actionability classification
+# ---------------------------------------------------------------------------
+
+# SAM.gov notice types that represent open solicitations (bids accepted now).
+_OPEN_SAM_TYPES = frozenset({
+    "solicitation",
+    "combined synopsis/solicitation",
+    "rfq",
+    "sale of surplus property",
+})
+
+# SAM.gov types for market-research / presolicitation stages (not accepting bids yet).
+_PRESOL_SAM_TYPES = frozenset({
+    "presolicitation",
+    "sources sought",
+    "special notice",
+})
+
+# SAM.gov types that are award notices / informational — contract already awarded.
+_AWARD_SAM_TYPES = frozenset({
+    "award notice",
+    "justification",
+    "intent to bundle requirements",
+    "fair opportunity / limited sources justification",
+    "modification/amendment",
+})
+
+# Days-remaining thresholds (already defined in apply_window.py; redefined
+# here to keep contract_summary.py free of data-pipeline imports).
+_TOO_LATE_DAYS = 30     # under 30d: too late for most small-biz prep
+_WATCH_DAYS = 540       # over 540d: watch only, not yet actionable
+
+
+def opportunity_status(row) -> dict:
+    """Classify a contract row into an actionability bucket.
+
+    Returns a dict with:
+      status      — machine-readable key
+      label       — short display label
+      can_bid     — True / False / None (unknown)
+      reason      — one-sentence explanation for the user
+      next_action — what to do next
+    """
+    from datetime import date as _date
+
+    days = row.get("days_remaining")
+    try:
+        days = int(days)
+    except (TypeError, ValueError):
+        days = None
+
+    sam_type_raw = (row.get("sam_type") or "").strip()
+    sam_type = sam_type_raw.lower()
+    sam_url = (row.get("sam_url") or "").strip()
+    sam_due_raw = (row.get("sam_due_date") or "").strip()
+
+    # Parse response deadline if present.
+    due_date = None
+    if sam_due_raw:
+        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", "%m/%d/%Y %H:%M:%S", "%m/%d/%Y"):
+            try:
+                import datetime as _dt
+                due_date = _dt.datetime.strptime(sam_due_raw[:19], fmt[:len(sam_due_raw[:19])]).date()
+                break
+            except ValueError:
+                continue
+
+    due_future = due_date is not None and due_date >= _date.today()
+
+    # --- Expired ---
+    if days is not None and days <= 0:
+        return {
+            "status": "expired",
+            "label": "Expired",
+            "can_bid": False,
+            "reason": "This contract has already expired.",
+            "next_action": "Search SAM.gov for any follow-on solicitation.",
+        }
+
+    # --- Open solicitation with future due date ---
+    if sam_url and sam_type in _OPEN_SAM_TYPES and due_future:
+        return {
+            "status": "open_now",
+            "label": "Open now",
+            "can_bid": True,
+            "reason": (
+                f"Active {sam_type_raw or 'solicitation'} with response deadline"
+                f" {due_date.strftime('%b %-d, %Y')}."
+            ),
+            "next_action": "Download the solicitation package and prepare your bid.",
+        }
+
+    # --- SAM solicitation on file but we can't confirm due date ---
+    if sam_url and sam_type in _OPEN_SAM_TYPES:
+        return {
+            "status": "solicitation_unconfirmed",
+            "label": "Solicitation on file",
+            "can_bid": None,
+            "reason": (
+                "A solicitation was found on SAM.gov — "
+                "verify the response deadline before investing bid resources."
+            ),
+            "next_action": "Check the SAM.gov link to confirm the response deadline.",
+        }
+
+    # --- Pre-solicitation / sources sought (market research stage) ---
+    if sam_url and sam_type in _PRESOL_SAM_TYPES:
+        return {
+            "status": "presolicitation",
+            "label": "Pre-solicitation",
+            "can_bid": False,
+            "reason": (
+                f"{sam_type_raw or 'Pre-solicitation'} posted — the agency is gathering "
+                "market information. A formal solicitation may follow."
+            ),
+            "next_action": "Submit capability statement or sources-sought response to get on agency radar.",
+        }
+
+    # --- Award notice (contract already awarded, not open for bids) ---
+    if sam_url and sam_type in _AWARD_SAM_TYPES:
+        return {
+            "status": "awarded",
+            "label": "Awarded — not open",
+            "can_bid": False,
+            "reason": (
+                "The SAM.gov record is an award notice, not an open solicitation. "
+                "This contract has been awarded to the current incumbent."
+            ),
+            "next_action": "Watch for the recompete solicitation as the contract approaches expiry.",
+        }
+
+    # --- Has a SAM URL but type is unknown or empty ---
+    if sam_url:
+        return {
+            "status": "solicitation_on_file",
+            "label": "SAM record on file",
+            "can_bid": None,
+            "reason": "A SAM.gov record was found — check the link to see if it is open for bids.",
+            "next_action": "Review the SAM.gov record to confirm current status.",
+        }
+
+    # --- Days-remaining fallback (no SAM data) ---
+    if days is None:
+        return {
+            "status": "unknown",
+            "label": "Status unknown",
+            "can_bid": None,
+            "reason": "Contract end date is not available.",
+            "next_action": "Search SAM.gov for the solicitation number or vendor name.",
+        }
+
+    if days < _TOO_LATE_DAYS:
+        return {
+            "status": "too_late",
+            "label": "Too late",
+            "can_bid": False,
+            "reason": (
+                f"Expires in {days} day{'s' if days != 1 else ''} — "
+                "too late for most small businesses to realistically prepare a bid."
+            ),
+            "next_action": "Monitor for the follow-on recompete and engage early next cycle.",
+        }
+
+    if days > _WATCH_DAYS:
+        return {
+            "status": "watch",
+            "label": "Watch — early stage",
+            "can_bid": False,
+            "reason": f"Expires in {days} days — more than 18 months out, no solicitation yet.",
+            "next_action": "Set a reminder to revisit in 6–12 months when the procurement window opens.",
+        }
+
+    # Default: awarded contract within recompete preparation window
+    return {
+        "status": "prepare_recompete",
+        "label": "Prepare for recompete",
+        "can_bid": False,
+        "reason": (
+            "This is an awarded contract — not an open solicitation. "
+            "The incumbent is currently performing; the recompete window is approaching."
+        ),
+        "next_action": "Begin capture planning: research the incumbent, agency contacts, and requirements.",
+    }

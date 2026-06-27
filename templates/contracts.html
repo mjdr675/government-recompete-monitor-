@@ -91,6 +91,14 @@
         {% endfor %}
       </select>
     </div>
+    <div class="filter-field sm">
+      <label>Actionability</label>
+      <select name="actionability">
+        {% for val, label in [("", "All"), ("open_now", "Open now"), ("prepare_recompete", "Prepare recompete"), ("too_late", "Too late"), ("watch", "Watch only"), ("expired", "Expired")] %}
+          <option value="{{ val }}" {% if actionability == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
     <input type="hidden" name="sort" value="{{ sort }}">
     <input type="hidden" name="dir" value="{{ direction }}">
     {% if in_pipeline %}<input type="hidden" name="in_pipeline" value="1">{% endif %}
@@ -188,7 +196,7 @@
 {% macro sort_link(col, label) %}
   {% set next_dir = "asc" if (sort == col and direction == "desc") else "desc" %}
   {% set arrow = " ↓" if (sort == col and direction == "desc") else (" ↑" if sort == col else "") %}
-  <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ col }}&dir={{ next_dir }}{% if for_my_business %}&for_my_business=1{% endif %}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}">{{ label }}{{ arrow }}</a>
+  <a href="/contracts?q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&state={{ state }}&category={{ category }}&sort={{ col }}&dir={{ next_dir }}{% if for_my_business %}&for_my_business=1{% endif %}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}">{{ label }}{{ arrow }}</a>
 {% endmacro %}
 
 {# ── Desktop table (hidden on mobile) ──────────────────────── #}
@@ -228,6 +236,18 @@
           {% if pipeline_map and r['internal_id'] in pipeline_map %}
           <a href="/pipeline/{{ pipeline_map[r['internal_id']] }}"
              style="font-size:10.5px;padding:1px 6px;border-radius:var(--radius-sm);background:#d1fae5;color:#065f46;font-weight:600;text-decoration:none;vertical-align:middle;margin-left:4px">&#10003; Pipeline</a>
+          {% endif %}
+          {% if r.get("opportunity_status") %}
+            {% set os = r["opportunity_status"] %}
+            {% if os["status"] == "open_now" %}
+              <span style="display:inline-block;font-size:10px;padding:1px 6px;border-radius:var(--radius-sm);background:#d1fae5;color:#065f46;font-weight:700;margin-left:4px;border:1px solid #6ee7b7" title="{{ os['reason'] }}">Open now</span>
+            {% elif os["status"] in ("too_late", "expired") %}
+              <span style="display:inline-block;font-size:10px;padding:1px 6px;border-radius:var(--radius-sm);background:#fee2e2;color:#991b1b;font-weight:600;margin-left:4px;border:1px solid #fca5a5" title="{{ os['reason'] }}">{{ os["label"] }}</span>
+            {% elif os["status"] == "solicitation_on_file" or os["status"] == "solicitation_unconfirmed" %}
+              <span style="display:inline-block;font-size:10px;padding:1px 6px;border-radius:var(--radius-sm);background:#dbeafe;color:#1e40af;font-weight:600;margin-left:4px;border:1px solid #93c5fd" title="{{ os['reason'] }}">SAM record</span>
+            {% elif os["status"] == "presolicitation" %}
+              <span style="display:inline-block;font-size:10px;padding:1px 6px;border-radius:var(--radius-sm);background:#fef3c7;color:#92400e;font-weight:600;margin-left:4px;border:1px solid #fcd34d" title="{{ os['reason'] }}">Pre-sol</span>
+            {% endif %}
           {% endif %}
         </td>
         <td class="cw-vendor"><a href="/vendor/{{ r["vendor"]|urlencode }}">{{ r["vendor"] }}</a></td>
@@ -308,7 +328,7 @@
 </div>
 
 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px">
-  {% set base_qs %}q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}{% endset %}
+  {% set base_qs %}q={{ q }}&agency={{ agency }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}{% endset %}
 
   {% if has_prev %}
     <a href="/contracts?{{ base_qs }}&page=1" class="btn btn-ghost" style="padding:5px 10px">First</a>

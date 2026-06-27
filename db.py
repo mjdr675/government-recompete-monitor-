@@ -164,6 +164,10 @@ _MIGRATION_PROBES: dict = {
         "SELECT COUNT(*) FROM information_schema.columns "
         "WHERE table_name = 'lead_companies' AND column_name = 'contacted_status'"
     ),
+    "022_contracts_sam_enrichment.sql": (
+        "SELECT COUNT(*) FROM information_schema.columns "
+        "WHERE table_name = 'contracts' AND column_name = 'sam_type'"
+    ),
 }
 
 
@@ -459,6 +463,20 @@ def _ensure_richer_location_columns():
                 conn.execute(text(f"ALTER TABLE contracts ADD COLUMN {col}"))
 
 
+def _ensure_sam_enrichment_columns():
+    """Add sam_type and sam_due_date to pre-existing SQLite DBs (no-op if present)."""
+    engine = get_engine()
+    with engine.begin() as conn:
+        rows = conn.execute(text("PRAGMA table_info(contracts)")).fetchall()
+        if not rows:
+            return
+        existing = {r[1] for r in rows}
+        for col in ("sam_type TEXT NOT NULL DEFAULT ''", "sam_due_date TEXT NOT NULL DEFAULT ''"):
+            col_name = col.split()[0]
+            if col_name not in existing:
+                conn.execute(text(f"ALTER TABLE contracts ADD COLUMN {col}"))
+
+
 def init_db():
     database_url = os.environ.get("DATABASE_URL", "")
     if database_url:
@@ -468,6 +486,7 @@ def init_db():
     needs_fts_rebuild = _ensure_description_column()
     _ensure_ci_columns()
     needs_fts_rebuild = _ensure_discovery_columns() or needs_fts_rebuild
+    _ensure_sam_enrichment_columns()
     _ensure_psc_description_column()
     _ensure_richer_location_columns()
 
@@ -569,6 +588,14 @@ def init_db():
             conn.execute(text("ALTER TABLE contracts ADD COLUMN sam_url TEXT"))
         except Exception:
             pass
+        for _sam_col in (
+            "sam_type TEXT NOT NULL DEFAULT ''",
+            "sam_due_date TEXT NOT NULL DEFAULT ''",
+        ):
+            try:
+                conn.execute(text(f"ALTER TABLE contracts ADD COLUMN {_sam_col}"))
+            except Exception:
+                pass
         for _uei_col in (
             "recipient_uei TEXT NOT NULL DEFAULT ''",
             "cage_code TEXT NOT NULL DEFAULT ''",
@@ -1387,7 +1414,7 @@ def upsert_contract(row):
             category, psc_description, psc_code,
             value, start_date, end_date, days_remaining, competition_type,
             solicitation_id, recompete_score, priority, raw_json, updated_at, sam_url,
-            recipient_uei, cage_code
+            sam_type, sam_due_date, recipient_uei, cage_code
         )
         VALUES (:internal_id, :award_id, :vendor, :agency, :sub_agency, :description,
                 :naics_code, :naics_description, :place_of_performance_state, :place_of_performance_city,
@@ -1395,7 +1422,7 @@ def upsert_contract(row):
                 :category, :psc_description, :psc_code,
                 :value, :start_date, :end_date, :days_remaining, :competition_type,
                 :solicitation_id, :recompete_score, :priority, :raw_json, :updated_at, :sam_url,
-                :recipient_uei, :cage_code)
+                :sam_type, :sam_due_date, :recipient_uei, :cage_code)
         ON CONFLICT(internal_id) DO UPDATE SET
             award_id=excluded.award_id,
             vendor=excluded.vendor,
@@ -1422,6 +1449,8 @@ def upsert_contract(row):
             raw_json=excluded.raw_json,
             updated_at=excluded.updated_at,
             sam_url=excluded.sam_url,
+            sam_type=excluded.sam_type,
+            sam_due_date=excluded.sam_due_date,
             recipient_uei=excluded.recipient_uei,
             cage_code=excluded.cage_code
         """), {
@@ -1451,6 +1480,8 @@ def upsert_contract(row):
             "raw_json": json.dumps(row, default=str),
             "updated_at": now,
             "sam_url": row.get("sam_url") or "",
+            "sam_type": row.get("sam_type") or "",
+            "sam_due_date": row.get("sam_due_date") or "",
             "recipient_uei": row.get("recipient_uei") or "",
             "cage_code": row.get("cage_code") or "",
         })
@@ -1559,7 +1590,7 @@ def save_snapshot(run_date, rows):
                 category, psc_description, psc_code,
                 value, start_date, end_date, days_remaining, competition_type,
                 solicitation_id, recompete_score, priority, raw_json, updated_at, sam_url,
-                recipient_uei, cage_code
+                sam_type, sam_due_date, recipient_uei, cage_code
             )
             VALUES (:internal_id, :award_id, :vendor, :agency, :sub_agency, :description,
                     :naics_code, :naics_description, :place_of_performance_state, :place_of_performance_city,
@@ -1567,7 +1598,7 @@ def save_snapshot(run_date, rows):
                     :category, :psc_description, :psc_code,
                     :value, :start_date, :end_date, :days_remaining, :competition_type,
                     :solicitation_id, :recompete_score, :priority, :raw_json, CURRENT_TIMESTAMP,
-                    :sam_url, :recipient_uei, :cage_code)
+                    :sam_url, :sam_type, :sam_due_date, :recipient_uei, :cage_code)
             ON CONFLICT(internal_id) DO UPDATE SET
                 award_id=excluded.award_id,
                 vendor=excluded.vendor,
@@ -1594,6 +1625,8 @@ def save_snapshot(run_date, rows):
                 raw_json=excluded.raw_json,
                 updated_at=CURRENT_TIMESTAMP,
                 sam_url=excluded.sam_url,
+                sam_type=excluded.sam_type,
+                sam_due_date=excluded.sam_due_date,
                 recipient_uei=excluded.recipient_uei,
                 cage_code=excluded.cage_code
             """), {
@@ -1622,6 +1655,8 @@ def save_snapshot(run_date, rows):
                 "priority": row.get("priority"),
                 "raw_json": json.dumps(row, default=str),
                 "sam_url": row.get("sam_url") or "",
+                "sam_type": row.get("sam_type") or "",
+                "sam_due_date": row.get("sam_due_date") or "",
                 "recipient_uei": row.get("recipient_uei") or "",
                 "cage_code": row.get("cage_code") or "",
             })

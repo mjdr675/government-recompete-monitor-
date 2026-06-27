@@ -277,17 +277,41 @@
 </div>
 {% endif %}
 
-<div style="margin-top:20px">
+<!-- Can I bid on this now? -->
+{% if opp_status %}
+<div style="margin-top:20px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+  <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:var(--bg-card)">
+    <strong style="font-size:15px">Can I bid on this now?</strong>
+    {% if opp_status.can_bid == true %}
+      <span style="font-size:13px;font-weight:700;padding:3px 10px;border-radius:4px;background:#d1fae5;color:#065f46;border:1px solid #6ee7b7">Yes — Open</span>
+    {% elif opp_status.can_bid == false %}
+      <span style="font-size:13px;font-weight:700;padding:3px 10px;border-radius:4px;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5">No</span>
+    {% else %}
+      <span style="font-size:13px;font-weight:600;padding:3px 10px;border-radius:4px;background:#fef3c7;color:#92400e;border:1px solid #fcd34d">Verify on SAM.gov</span>
+    {% endif %}
+    <span style="font-size:12px;font-weight:600;color:var(--text-muted);margin-left:auto">{{ opp_status.label }}</span>
+  </div>
+  <div style="padding:12px 16px;font-size:13px;line-height:1.55;background:var(--bg)">
+    <p style="margin:0 0 8px;color:var(--text-primary)">{{ opp_status.reason }}</p>
+    <p style="margin:0;color:var(--text-muted)"><strong>Next action:</strong> {{ opp_status.next_action }}</p>
+  </div>
   {% if row.get("sam_url") %}
-  <a href="{{ row['sam_url'] }}" target="_blank" rel="noopener noreferrer"
-     style="display:inline-flex;align-items:center;gap:6px;padding:10px 18px;background:var(--accent);color:#fff;border-radius:var(--radius-sm);text-decoration:none;font-weight:600;font-size:14px">
-    Open live SAM.gov opportunity &rarr;
-  </a>
-  {% else %}
+  <div style="padding:10px 16px;border-top:1px solid var(--border);background:var(--bg-card)">
+    <a href="{{ row['sam_url'] }}" target="_blank" rel="noopener noreferrer"
+       style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:var(--accent);color:#fff;border-radius:var(--radius-sm);text-decoration:none;font-weight:600;font-size:13px">
+      {% if opp_status.can_bid %}View SAM.gov solicitation &rarr;{% else %}View SAM.gov record &rarr;{% endif %}
+    </a>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<div style="margin-top:12px">
+  {% if not row.get("sam_url") %}
   <a href="https://sam.gov/content/opportunities?keywords={{ (row.get('solicitation_id') or row.get('vendor') or '')|urlencode }}"
      target="_blank" rel="noopener noreferrer"
-     style="display:inline-flex;align-items:center;gap:6px;padding:10px 18px;background:var(--surface);color:var(--accent);border:1px solid var(--accent);border-radius:var(--radius-sm);text-decoration:none;font-weight:600;font-size:14px">
-    Search SAM.gov for this opportunity &rarr;
+     style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:var(--surface);color:var(--accent);border:1px solid var(--accent);border-radius:var(--radius-sm);text-decoration:none;font-weight:600;font-size:13px">
+    Search SAM.gov for this contract &rarr;
   </a>
   {% endif %}
 </div>
