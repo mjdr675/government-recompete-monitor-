@@ -443,7 +443,8 @@ class TestWorkbench:
         resp = client.post("/lead-intelligence/import", data={"csv_text": csv},
                            follow_redirects=True)
         body = resp.data.decode()
-        assert "Imported 2 prospects" in body
+        assert "Imported 2 new prospects" in body
+        assert "2 distinct prospects in workspace" in body
 
     def test_next_action_badge_present(self, client, sqlite_db):
         db_module.upsert_contract({
@@ -478,6 +479,57 @@ class TestWorkbench:
         body = resp.data.decode()
         # Either has prospects or shows the empty state / import accordion
         assert "Import Prospects" in body or "No prospects yet" in body
+
+
+class TestImportFlashConsistency:
+    """Flash wording must read consistently when a CSV has duplicate rows.
+
+    CSV rows processed can exceed the distinct prospect count (the production
+    case: "Updated 90 existing" while the header showed 88 prospects), so the
+    flash distinguishes rows processed from distinct prospects.
+    """
+
+    DUP_CSV = (
+        "Company,Email\n"
+        "Alpha Corp,a@a.com\n"
+        "Alpha Corp,a2@a.com\n"   # duplicate of Alpha (dedupes, doesn't add)
+        "Beta LLC,b@b.com\n"
+    )
+
+    def _post(self, client, csv_text):
+        return client.post("/lead-intelligence/import",
+                           data={"csv_text": csv_text}, follow_redirects=True)
+
+    def test_duplicate_rows_first_import_consistent(self, client):
+        body = self._post(client, self.DUP_CSV).data.decode()
+        assert "Imported 2 new prospects" in body
+        assert "2 distinct prospects in workspace" in body
+        # Duplicate Alpha row did not create a second prospect.
+        assert len(db_module.get_lead_companies()) == 2
+
+    def test_reimport_same_csv_flash_consistent_no_duplicates(self, client):
+        self._post(client, self.DUP_CSV)
+        body = self._post(client, self.DUP_CSV).data.decode()
+        # Every row matches an existing prospect now.
+        assert "Imported 0 new prospects" in body
+        assert "Processed 3 existing CSV rows" in body
+        assert "2 distinct prospects in workspace" in body
+        # The old wording ("Updated N existing.") that implied N distinct
+        # prospects changed is gone.
+        assert "Updated 3 existing." not in body
+        assert len(db_module.get_lead_companies()) == 2
+
+    def test_reimport_preserves_status_and_notes(self, client):
+        csv = "Company,Email\nAlpha Corp,a@a.com\n"
+        self._post(client, csv)
+        cid = db_module.get_lead_companies()[0]["id"]
+        db_module.set_lead_contacted_status(cid, "contacted")
+        db_module.set_lead_notes(cid, "spoke with VP")
+        self._post(client, csv)  # re-import the same row
+        company = db_module.get_lead_companies()[0]
+        assert len(db_module.get_lead_companies()) == 1
+        assert company["contacted_status"] == "contacted"
+        assert company["outreach_notes"] == "spoke with VP"
 
 
 class TestNormalizeCompanyName:

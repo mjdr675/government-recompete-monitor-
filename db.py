@@ -2631,6 +2631,14 @@ def get_lead_companies():
     return [dict(r) for r in rows]
 
 
+def count_lead_companies() -> int:
+    """Return the number of distinct prospect records in the workspace."""
+    init_lead_intelligence_tables()
+    engine = get_engine()
+    with engine.connect() as conn:
+        return int(conn.execute(text("SELECT COUNT(*) FROM lead_companies")).scalar() or 0)
+
+
 def get_matches_for_company(lead_company_id, limit=3):
     """Return a company's stored matches joined to contract detail."""
     init_lead_intelligence_tables()

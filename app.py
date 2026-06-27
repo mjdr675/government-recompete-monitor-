@@ -72,6 +72,7 @@ from db import (
     submit_feedback,
     get_feedback_submissions,
     import_leads,
+    count_lead_companies,
     get_lead_intelligence_overview,
     set_lead_contacted_status,
     set_lead_notes,
@@ -1816,11 +1817,16 @@ def lead_intelligence_import():
     new = result["new"]
     updated = result["updated"]
     skipped = max(0, raw_rows - len(leads))
-    parts = [f"Imported {new} prospect{'s' if new != 1 else ''}."]
+    distinct = count_lead_companies()
+    # "updated" counts CSV rows that matched an existing prospect — duplicate
+    # rows in one file can exceed the distinct prospect count, so say "rows
+    # processed" rather than implying that many distinct prospects changed.
+    parts = [f"Imported {new} new prospect{'s' if new != 1 else ''}."]
     if updated:
-        parts.append(f"Updated {updated} existing.")
+        parts.append(f"Processed {updated} existing CSV row{'s' if updated != 1 else ''}.")
     if skipped:
         parts.append(f"Skipped {skipped} row{'s' if skipped != 1 else ''} (no company name).")
+    parts.append(f"{distinct} distinct prospect{'s' if distinct != 1 else ''} in workspace.")
     flash(" ".join(parts), "success")
     return redirect(url_for("lead_intelligence"))
 
