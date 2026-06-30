@@ -1031,3 +1031,181 @@ class TestMinDaysLeftRoute:
     def test_state_filter_param_preserved_in_response(self, _route_client):
         rv = _route_client.get("/contracts?state=TX")
         assert rv.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# TestNaicsFilter
+# ---------------------------------------------------------------------------
+
+class TestNaicsFilter:
+    """get_contracts(naics_code=X) filters by prefix match on c.naics_code."""
+
+    @pytest.fixture()
+    def db(self, tmp_path):
+        db = _fresh_db(tmp_path)
+        _insert(db, internal_id="N561720", naics_code="561720", description="janitorial services")
+        _insert(db, internal_id="N561730", naics_code="561730", description="lawn mowing")
+        _insert(db, internal_id="N541512", naics_code="541512", description="it support")
+        _insert(db, internal_id="NNONE",   naics_code=None,     description="misc services")
+        return db
+
+    def _ids(self, result):
+        return {r["internal_id"] for r in result["contracts"]}
+
+    def test_exact_naics_match(self, db):
+        result = db.get_contracts(naics_code="561720")
+        assert self._ids(result) == {"N561720"}
+
+    def test_prefix_4digit_matches_6digit(self, db):
+        result = db.get_contracts(naics_code="5617")
+        assert {"N561720", "N561730"}.issubset(self._ids(result))
+        assert "N541512" not in self._ids(result)
+
+    def test_prefix_3digit(self, db):
+        result = db.get_contracts(naics_code="561")
+        ids = self._ids(result)
+        assert "N561720" in ids
+        assert "N561730" in ids
+        assert "N541512" not in ids
+
+    def test_no_naics_filter_returns_all(self, db):
+        result = db.get_contracts(naics_code="")
+        assert result["total"] == 4
+
+    def test_nonexistent_naics_returns_empty(self, db):
+        result = db.get_contracts(naics_code="999999")
+        assert result["total"] == 0
+
+    def test_naics_combined_with_state(self, tmp_path):
+        db = _fresh_db(tmp_path)
+        _insert(db, internal_id="NS1", naics_code="561720", place_of_performance_state="VA")
+        _insert(db, internal_id="NS2", naics_code="561720", place_of_performance_state="TX")
+        result = db.get_contracts(naics_code="561720", state="VA")
+        ids = self._ids(result)
+        assert "NS1" in ids
+        assert "NS2" not in ids
+
+    def test_naics_combined_with_category(self, tmp_path):
+        db = _fresh_db(tmp_path)
+        _insert(db, internal_id="NC1", naics_code="561720", description="janitorial cleaning")
+        _insert(db, internal_id="NC2", naics_code="541512", description="it support services")
+        result = db.get_contracts(naics_code="5617", category="Cleaning")
+        ids = self._ids(result)
+        assert "NC1" in ids
+        assert "NC2" not in ids
+
+    def test_naics_null_not_matched_by_prefix(self, db):
+        result = db.get_contracts(naics_code="561720")
+        assert "NNONE" not in self._ids(result)
+
+
+class TestNaicsFilterRoute:
+    """Route-level smoke tests for /contracts?naics_code=..."""
+
+    def test_naics_param_accepted(self, _route_client):
+        rv = _route_client.get("/contracts?naics_code=561720")
+        assert rv.status_code == 200
+
+    def test_naics_input_rendered_in_page(self, _route_client):
+        rv = _route_client.get("/contracts?naics_code=561720")
+        assert b"561720" in rv.data
+
+    def test_naics_empty_param_accepted(self, _route_client):
+        rv = _route_client.get("/contracts?naics_code=")
+        assert rv.status_code == 200
+
+    def test_naics_combined_with_state(self, _route_client):
+        rv = _route_client.get("/contracts?naics_code=5617&state=VA")
+        assert rv.status_code == 200
+
+    def test_naics_chip_shown_when_active(self, _route_client):
+        db_module.upsert_contract({
+            "internal_id": "NAICS-CHIP",
+            "award_id": "AW-NAICS-CHIP",
+            "vendor": "Test Vendor",
+            "agency": "GSA",
+            "value": 200000,
+            "days_remaining": 180,
+            "recompete_score": 60,
+            "priority": "MEDIUM",
+            "naics_code": "561720",
+        })
+        rv = _route_client.get("/contracts?naics_code=561720")
+        assert b"NAICS" in rv.data
+
+    def test_empty_naics_produces_no_chip(self, _route_client):
+        rv = _route_client.get("/contracts?naics_code=")
+        assert rv.status_code == 200
+        # No chip should appear for blank NAICS
+        html = rv.data.decode()
+        # The active-filter-chip label "NAICS:" only appears when the chip is present
+        assert "NAICS: <strong>" not in html
+
+    def test_naics_combined_with_q_and_category(self, _route_client):
+        rv = _route_client.get("/contracts?naics_code=5617&q=cleaning&category=Cleaning")
+        assert rv.status_code == 200
+
+    def test_naics_combined_with_status_and_sort(self, _route_client):
+        rv = _route_client.get("/contracts?naics_code=541512&status=open&sort=value&dir=desc")
+        assert rv.status_code == 200
+
+    def test_naics_preserved_in_for_my_business_url(self, _route_client):
+        rv = _route_client.get("/contracts?naics_code=561720")
+        assert rv.status_code == 200
+        html = rv.data.decode()
+        # For My Business toggle link must carry naics_code forward
+        assert "naics_code=561720" in html
+
+    def test_naics_preserved_in_sort_links(self, _route_client):
+        rv = _route_client.get("/contracts?naics_code=561720")
+        assert rv.status_code == 200
+        html = rv.data.decode()
+        # Sort column links must include naics_code so it survives a sort change
+        assert "naics_code=561720" in html
+
+
+# ---------------------------------------------------------------------------
+# TestNaicsChipLogic (unit tests against views.active_filter_chips)
+# ---------------------------------------------------------------------------
+
+class TestNaicsChipLogic:
+    """Unit tests for chip building and remove-URL logic for naics_code."""
+
+    def test_naics_chip_built_when_present(self):
+        from views import active_filter_chips
+        chips = active_filter_chips({"naics_code": "561720"})
+        assert any(c["key"] == "naics_code" for c in chips)
+
+    def test_naics_chip_label(self):
+        from views import active_filter_chips
+        chips = active_filter_chips({"naics_code": "561720"})
+        chip = next(c for c in chips if c["key"] == "naics_code")
+        assert chip["label"] == "NAICS"
+        assert chip["value"] == "561720"
+
+    def test_naics_chip_remove_url_drops_naics_only(self):
+        from views import active_filter_chips
+        chips = active_filter_chips({"naics_code": "561720", "state": "VA", "category": "Cleaning"})
+        chip = next(c for c in chips if c["key"] == "naics_code")
+        # remove_url must not contain naics_code
+        assert "naics_code" not in chip["remove_url"]
+        # but must still contain the other filters
+        assert "state=VA" in chip["remove_url"]
+        assert "category=Cleaning" in chip["remove_url"]
+
+    def test_removing_state_chip_preserves_naics(self):
+        from views import active_filter_chips
+        chips = active_filter_chips({"naics_code": "561720", "state": "VA"})
+        state_chip = next(c for c in chips if c["key"] == "state")
+        assert "naics_code=561720" in state_chip["remove_url"]
+        assert "state" not in state_chip["remove_url"]
+
+    def test_empty_naics_produces_no_chip(self):
+        from views import active_filter_chips
+        chips = active_filter_chips({"naics_code": ""})
+        assert not any(c["key"] == "naics_code" for c in chips)
+
+    def test_whitespace_naics_produces_no_chip(self):
+        from views import active_filter_chips
+        chips = active_filter_chips({"naics_code": "  "})
+        assert not any(c["key"] == "naics_code" for c in chips)

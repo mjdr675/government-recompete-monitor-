@@ -2240,7 +2240,7 @@ def parse_nl_query(q: str) -> dict:
 def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort="recompete_score",
                   direction="desc", page=1, limit=25, status="", profile_filter=None,
                   internal_ids=None, state="", category="", exclude_ids=None, all_rows=False,
-                  applyable=False, min_days_left=None):
+                  applyable=False, min_days_left=None, naics_code=""):
     engine = get_engine()
     is_pg = engine.dialect.name == "postgresql"
     params: dict = {}
@@ -2288,6 +2288,10 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
     if min_days_left is not None:
         base += " AND c.days_remaining >= :min_days_left"
         params["min_days_left"] = int(min_days_left)
+
+    if naics_code:
+        base += " AND c.naics_code LIKE :naics_prefix"
+        params["naics_prefix"] = f"{naics_code.strip()}%"
 
     if min_value is not None:
         base += " AND c.value >= :min_value"

@@ -989,6 +989,7 @@ def contracts():
     # done in SQL (get_contracts applyable=...) so pagination stays cheap.
     applyable = request.args.get("applyable", "1") != "0"
     min_days_left = request.args.get("min_days_left", type=int)
+    naics_code = request.args.get("naics_code", "").strip()
 
     if status not in ("", "open", "expired"):
         status = ""
@@ -1068,6 +1069,7 @@ def contracts():
             exclude_ids=discover_exclude_ids,
             applyable=applyable,
             min_days_left=min_days_left,
+            naics_code=naics_code,
         )
 
     _total = result["total"]
@@ -1138,6 +1140,7 @@ def contracts():
         sort=sort,
         direction=direction,
         state=state,
+        naics_code=naics_code,
         discover=discover,
         applyable=applyable,
         watchlist_ids=watchlist_ids,
@@ -1168,6 +1171,7 @@ def contracts_export():
     direction = request.args.get("dir", "desc")
     state = request.args.get("state", "")
     category = request.args.get("category", "")
+    naics_code_export = request.args.get("naics_code", "").strip()
 
     days_int = int(days) if days else None
     result = get_contracts(
@@ -1177,6 +1181,7 @@ def contracts_export():
         page=1, limit=10000,
         state=state, category=category,
         min_days_left=min_days_left,
+        naics_code=naics_code_export,
     )
 
     fields = ["internal_id", "award_id", "vendor", "agency", "value",

@@ -41,6 +41,7 @@ def format_filter_summary(filters: dict) -> str:
 # from _FILTER_LABELS in a couple of spots ("Search", "State", "Category").
 _CHIP_LABELS = {
     "q": "Search",
+    "naics_code": "NAICS",
     "agency": "Agency",
     "category": "Category",
     "state": "State",

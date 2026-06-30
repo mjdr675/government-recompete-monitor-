@@ -146,7 +146,9 @@ def test_contracts_days_critical_class_for_imminent_expiry(test_db, client):
             ("ID-CRIT", "AWARD-CRIT", "Urgent Vendor", "DOD", 500_000, "2026-07-01", "CRITICAL", 92, 15),
         )
         con.commit()
-    rv = client.get("/contracts")
+    # applyable=0: bypass the apply-window filter (60–540 days) so contracts
+    # with days_remaining < 60 appear and we can verify urgency CSS class rendering.
+    rv = client.get("/contracts?applyable=0")
     assert rv.status_code == 200
     assert b'class="days-critical"' in rv.data
 
