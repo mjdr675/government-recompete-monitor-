@@ -109,10 +109,14 @@
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
       </svg>
-      {% if last_ingest %}
+      {% if last_ingest_display %}
+        {{ last_ingest_display }}
+      {% elif last_failure_display %}
+        Last refresh failed &mdash; {{ last_failure_display }} &mdash; <a href="/ingest" style="color:inherit">check status</a>
+      {% elif last_ingest %}
         Data last updated {{ hours_ago }}h ago &middot; {{ last_ingest[:10] }}
       {% else %}
-        Data freshness unknown
+        No successful data refresh yet
       {% endif %}
     </span>
     <a href="/ingest" class="btn btn-primary" style="font-size:12.5px;padding:6px 12px">
