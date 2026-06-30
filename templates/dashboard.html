@@ -4,19 +4,6 @@
 {% block content %}
 <div class="dash-wrap">
 
-<div class="page-meta">
-  Data as of {{ report.run_date }}
-  {% if last_ingest_display %}
-   &middot; {{ last_ingest_display }}
-  {% elif last_failure_display %}
-   &middot; Last refresh failed &mdash; {{ last_failure_display }} &mdash; <a href="/ingest">check status</a>
-  {% elif last_ingest %}
-   &middot; Data last updated {{ hours_ago }}h ago ({{ last_ingest[:10] }})
-  {% else %}
-   &middot; No successful data refresh yet
-  {% endif %}
-</div>
-
 {# ── Mobile greeting (hidden on desktop via CSS) ─────────── #}
 <div class="mobile-greeting">
   <p class="mobile-greeting-text" id="mobile-greeting-text">Welcome back</p>
@@ -259,10 +246,8 @@
     {% if g.user %}
     <div style="margin-bottom:16px">
       <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px">
-        <button id="tab-my-contracts" onclick="switchTab('my-contracts')"
-          style="padding:8px 18px;border:none;border-bottom:2px solid var(--accent);margin-bottom:-2px;background:none;font-size:14px;font-weight:600;color:var(--accent);cursor:pointer">My Contracts</button>
-        <button id="tab-discover" onclick="switchTab('discover')"
-          style="padding:8px 18px;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;background:none;font-size:14px;font-weight:400;color:var(--text-muted);cursor:pointer">Discover</button>
+        <button id="tab-my-contracts" class="tab-btn active" onclick="switchTab('my-contracts')">My Contracts</button>
+        <button id="tab-discover" class="tab-btn" onclick="switchTab('discover')">Discover</button>
       </div>
 
       {# My Contracts panel #}
@@ -309,7 +294,7 @@
         </div>
         {% elif contract_summary %}
         {# Identifier set but no awards found in dataset #}
-        <div style="padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:12px">
+        <div class="content-card">
           {% if contract_summary.match_method == 'uei' %}
           <div style="font-weight:500;margin-bottom:6px">No federal awards found for this UEI yet</div>
           <div class="muted" style="font-size:13px;margin-bottom:12px">
@@ -336,7 +321,7 @@
         </div>
         {% elif has_profile %}
         {# Profile exists but no identifier set at all #}
-        <div style="padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:12px">
+        <div class="content-card">
           <div style="font-weight:500;margin-bottom:4px">Match your current contracts</div>
           <div class="muted" style="font-size:13px;margin-bottom:10px">
             Add your UEI or exact vendor name to auto-match the federal awards your business holds.
@@ -345,7 +330,7 @@
         </div>
         {% else %}
         {# No profile yet #}
-        <div style="padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:12px">
+        <div class="content-card">
           <div style="font-weight:500;margin-bottom:4px">Match your current contracts</div>
           <div class="muted" style="font-size:13px;margin-bottom:10px">
             Set up your company profile to auto-match the federal awards your business holds.
@@ -577,16 +562,7 @@
       var panels = ['my-contracts', 'discover'];
       panels.forEach(function(p) {
         document.getElementById('panel-' + p).style.display = (p === name) ? '' : 'none';
-        var btn = document.getElementById('tab-' + p);
-        if (p === name) {
-          btn.style.borderBottomColor = 'var(--accent)';
-          btn.style.fontWeight = '600';
-          btn.style.color = 'var(--accent)';
-        } else {
-          btn.style.borderBottomColor = 'transparent';
-          btn.style.fontWeight = '400';
-          btn.style.color = 'var(--text-muted)';
-        }
+        document.getElementById('tab-' + p).classList.toggle('active', p === name);
       });
     }
     </script>

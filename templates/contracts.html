@@ -10,12 +10,17 @@
   <div class="page-meta" style="margin-top:4px">Showing {{ start }}&ndash;{{ end }} of {{ total }} matching contracts</div>
 </div>
 
-<form method="get" class="filter-bar">
+{% set has_secondary_filters = agency or category or state or priority or days or min_value or status or actionability %}
+<form method="get" class="filter-bar{% if has_secondary_filters %} filter-expanded{% endif %}">
   <div class="filter-row">
     <div class="filter-field grow">
       <label>Search <span style="font-size:11px;font-weight:400;color:var(--text-muted)">— try "cleaning Virginia" or "IT contracts DOD"</span></label>
       <input name="q" value="{{ q }}" placeholder="Vendor, agency, keyword, or natural-language query&hellip;">
     </div>
+    <div class="filter-expand-toggle">
+      <button type="button" id="filter-toggle-btn" class="btn btn-ghost" style="padding:5px 11px;font-size:13px" onclick="toggleFilterBar()">{% if has_secondary_filters %}Filters &#x25b4;{% else %}Filters &#x25be;{% endif %}</button>
+    </div>
+    <div class="filter-secondary">
     <div class="filter-field grow">
       <label>Agency</label>
       <select name="agency">
@@ -102,6 +107,7 @@
           <option value="{{ val }}" {% if actionability == val %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
       </select>
+    </div>
     </div>
     <input type="hidden" name="sort" value="{{ sort }}">
     <input type="hidden" name="dir" value="{{ direction }}">
@@ -226,7 +232,6 @@
         <th class="cw-days col-r">{{ sort_link("days_remaining", "Days") }}</th>
         <th class="cw-score col-r">{{ sort_link("recompete_score", "Score") }} <button type="button" class="score-info-btn" onclick="openScoreModal()" aria-haspopup="dialog" aria-label="How the Recompete Score is calculated" title="How the Recompete Score is calculated">&#9432;</button></th>
         {% if for_my_business %}<th class="cw-match col-r" title="How well this contract matches your Company Profile">Match</th>{% endif %}
-        <th class="cw-action"></th>
       </tr>
     </thead>
     <tbody>
@@ -269,11 +274,10 @@
         </td>
         <td class="cw-score col-r">{{ r["recompete_score"] }}</td>
         {% if for_my_business %}<td class="cw-match col-r" style="font-weight:600;color:var(--accent)">{% if r.get("match_score") is not none %}{{ r.get("match_score") }}%{% endif %}</td>{% endif %}
-        <td class="cw-action"><a href="/contract/{{ r['internal_id'] }}" class="btn btn-ghost" style="padding:3px 10px;font-size:11.5px;white-space:nowrap">View details &rarr;</a></td>
       </tr>
       {% else %}
       <tr>
-        <td colspan="{{ 13 if for_my_business else 12 }}" style="text-align:center;padding:32px 20px;color:var(--text-muted)">
+        <td colspan="{{ 12 if for_my_business else 11 }}" style="text-align:center;padding:32px 20px;color:var(--text-muted)">
           <div style="font-size:15px;margin-bottom:10px">No contracts match your current filters.</div>
           <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
             {% if q %}<a href="/contracts?{{ request.query_string.decode().replace('q=' + q|urlencode, 'q=') }}" class="btn btn-ghost" style="font-size:12px;padding:3px 10px">Clear keyword "{{ q }}"</a>{% endif %}
@@ -369,6 +373,12 @@
 {{ score_help.score_modal() }}
 
 <script>
+function toggleFilterBar() {
+  var form = document.querySelector('.filter-bar');
+  form.classList.toggle('filter-expanded');
+  var btn = document.getElementById('filter-toggle-btn');
+  if (btn) btn.textContent = form.classList.contains('filter-expanded') ? 'Filters ▴' : 'Filters ▾';
+}
 function updateCompare() {
   var checked = document.querySelectorAll('.cmp-check:checked');
   var btn = document.getElementById('compare-btn');
