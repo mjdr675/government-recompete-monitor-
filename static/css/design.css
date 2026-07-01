@@ -2119,3 +2119,137 @@ tbody tr:hover > th { background: var(--accent-light) !important; }
 .table-empty-state .empty-icon { margin-bottom: 14px; }
 .table-empty-state .empty-title { margin-bottom: 4px; }
 .table-empty-state .empty-desc { margin-bottom: 16px; }
+
+/* ── Contract detail page classes ────────────────────────────── */
+.cd-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.cd-section {
+  padding: 16px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+  line-height: 1.6;
+}
+.cd-section-title {
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.cd-stage {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+}
+.cd-stage-left { flex: 1; min-width: 200px; }
+.cd-stage-key {
+  font-weight: 700;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin-bottom: 4px;
+}
+.cd-stage-detail { font-size: 14px; color: var(--text-muted); line-height: 1.5; }
+.cd-action { border-left: 4px solid var(--accent); }
+.cd-action .cd-section-title { color: var(--accent); }
+.cd-action-text { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
+.cd-nextstep { border-left: 3px solid var(--accent); }
+.cd-timing { font-weight: 600; color: var(--accent); margin-bottom: 4px; }
+.cd-match { border-left: 4px solid var(--accent); }
+.cd-match-pct { font-size: 24px; font-weight: 700; color: var(--accent); margin-bottom: 8px; }
+.cd-mismatch { margin-top: 10px; font-size: 13px; color: var(--text-muted); }
+.cd-profile-link { margin-top: 10px; font-size: 12px; color: var(--text-muted); }
+.cd-bullets { margin: 0; padding-left: 18px; list-style: disc; }
+.cd-bullets li { margin-bottom: 3px; }
+.cd-bullets-sm { font-size: 14px; }
+.cd-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.cd-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.cd-watch-btn {
+  font-size: 14px;
+  padding: 8px 18px;
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+.cd-watch-btn.cd-watching { background: var(--accent); color: var(--bg); }
+.cd-pipeline-in {
+  padding: 8px 14px;
+  font-size: 13px;
+  background: #d1fae5;
+  color: #065f46;
+  font-weight: 600;
+  text-decoration: none;
+  border: none;
+}
+.cd-pipeline-add {
+  font-size: 14px;
+  padding: 8px 18px;
+  border: 2px solid #10b981;
+  background: transparent;
+  color: #059669;
+  font-weight: 600;
+}
+.cd-bid-box {
+  margin-top: 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.cd-bid-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-card, var(--surface));
+}
+.cd-bid-header strong { font-size: 15px; }
+.cd-bid-badge { font-size: 13px; font-weight: 700; padding: 3px 10px; border-radius: 4px; }
+.cd-bid-yes   { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+.cd-bid-no    { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+.cd-bid-check { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+.cd-bid-label { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-left: auto; }
+.cd-bid-body  { padding: 12px 16px; font-size: 13px; line-height: 1.55; }
+.cd-bid-body p { margin: 0 0 8px; }
+.cd-bid-body p:last-child { margin: 0; }
+.cd-bid-footer { padding: 10px 16px; border-top: 1px solid var(--border); background: var(--bg-card, var(--surface)); }
+.cd-sam-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: var(--surface);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 13px;
+}

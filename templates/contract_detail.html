@@ -6,36 +6,36 @@
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <script>(function(){if(window.innerWidth<=768)document.body.classList.add('has-contract-cta');})()</script>
 
-<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:4px">
+{# ── Page header: contract ID + action buttons ─────────────── #}
+<div class="cd-header">
   <div>
     <h1>{{ row["award_id"] or row["internal_id"] }}</h1>
     <div class="page-meta" style="margin-bottom:6px">{{ row["internal_id"] }}</div>
   </div>
   {% if g.user %}
-  <div class="detail-desktop-actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-    <button id="watch-btn" data-id="{{ row['internal_id'] }}" onclick="watchToggle(this)" class="btn"
-            style="font-size:14px;padding:8px 18px;border:2px solid var(--accent);border-radius:var(--radius-sm);background:{{ 'var(--accent)' if is_bookmarked else 'transparent' }};color:{{ 'var(--bg)' if is_bookmarked else 'var(--accent)' }};font-weight:600;cursor:pointer" title="Watch this contract">
+  <div class="detail-desktop-actions">
+    <button id="watch-btn" data-id="{{ row['internal_id'] }}" onclick="watchToggle(this)"
+            class="btn cd-watch-btn {{ 'cd-watching' if is_bookmarked else '' }}"
+            title="Watch this contract">
       {{ "★ Watching" if is_bookmarked else "☆ Watch" }}
     </button>
     {% if pipeline_opp %}
-    <a href="/pipeline/{{ pipeline_opp['id'] }}" class="btn" style="padding:8px 14px;font-size:13px;background:#d1fae5;color:#065f46;font-weight:600;text-decoration:none;border:none">&#10003; In Pipeline</a>
+    <a href="/pipeline/{{ pipeline_opp['id'] }}" class="btn cd-pipeline-in">&#10003; In Pipeline</a>
     <form method="post" action="/pipeline/remove/{{ row['internal_id'] }}" style="margin:0">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" onclick="return confirm('Remove from pipeline?')" class="btn btn-ghost"
-              style="font-size:13px">Remove</button>
+      <button type="submit" onclick="return confirm('Remove from pipeline?')" class="btn btn-ghost" style="font-size:13px">Remove</button>
     </form>
     {% else %}
     <form method="post" action="/pipeline/add/{{ row['internal_id'] }}" style="margin:0">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="btn"
-              style="font-size:14px;padding:8px 18px;border:2px solid #10b981;background:transparent;color:#059669;font-weight:600">+ Add to Pipeline</button>
+      <button type="submit" class="btn cd-pipeline-add">+ Add to Pipeline</button>
     </form>
     {% endif %}
   </div>
   {% endif %}
 </div>
 
-{# ── Mobile sticky CTA bar (hidden on desktop) ──────────── #}
+{# ── Mobile sticky CTA bar (hidden on desktop) ──────────────── #}
 {% if g.user %}
 <div class="contract-mobile-cta m-show" aria-label="Contract actions">
   <button id="mobile-watch-btn" data-id="{{ row['internal_id'] }}" onclick="watchToggleMobile(this)" class="contract-cta-btn {{ 'contract-cta-watching' if is_bookmarked else '' }}">
@@ -52,31 +52,9 @@
 </div>
 {% endif %}
 
-<div class="summary-box">
-  {# Quick-scan badges: category + location #}
-  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
-    {% if category and category != "Other" %}
-    <span data-testid="category-badge" style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:9999px;background:var(--surface);border:1px solid var(--border);color:var(--text-muted)">{{ category }}</span>
-    {% endif %}
-    {% if performance_state %}
-    <span data-testid="location-badge" style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:9999px;background:var(--surface);border:1px solid var(--border);color:var(--text-muted)">
-      📍 {% if performance_city %}{{ performance_city }}, {% endif %}{{ performance_state }}
-    </span>
-    {% endif %}
-  </div>
-  <strong>Summary:</strong>
-  This contract{% if row["vendor"] %} is held by <strong>{{ row["vendor"] }}</strong>{% endif %}{% if row["agency"] %} for <strong>{{ row["agency"] }}</strong>{% if row["sub_agency"] %} ({{ row["sub_agency"] }}){% endif %}{% endif %}{% if row["value"] %}, valued at <strong>${{ "{:,.0f}".format(row["value"]) }}</strong>{% endif %}.
-  {% if row["description"] %}<br><span style="color:var(--text-muted)">{{ row["description"][:200] }}{% if row["description"]|length > 200 %}…{% endif %}</span>{% endif %}
-  <br><strong>Where:</strong>
-  {% if performance_city and performance_state %}{{ performance_city }}, {{ performance_state }}{% elif performance_state %}{{ performance_state }}{% else %}<span class="muted">Location not recorded</span>{% endif %}.
-  <br><strong>When:</strong>
-  {% if row["end_date"] %}Runs through <strong>{{ row["end_date"] }}</strong>{% if row["days_remaining"] is not none %} ({{ row["days_remaining"] }} days remaining){% endif %}.{% else %}No end date on file.{% endif %}
-  {% if row["competition_type"] %} Awarded via {{ row["competition_type"]|lower }}.{% endif %}
-  <br><strong>Priority:</strong>
-  {% if row["priority"] %}<span class="priority-badge priority-{{ row['priority'].lower() }}">{{ row["priority"] }}</span> (score {{ row["recompete_score"] or "—" }}){% else %}<span class="muted">Not scored</span>{% endif %}
-</div>
+{# ══ SIGNAL ZONE — intelligence first ═════════════════════════ #}
 
-{# ── How to apply CTA — apply-window stage + link to the per-contract guide ── #}
+{# ── 1. Recommendation / apply-window stage ──────────────────── #}
 {% set stage_color = {
   "too_late": "#dc2626",
   "submit_now": "#d97706",
@@ -85,20 +63,13 @@
   "watch": "var(--text-muted)",
   "unknown": "var(--text-muted)"
 } %}
-<div style="margin-top:12px;padding:16px 18px;background:var(--surface);border:1px solid var(--border);border-left:4px solid {{ stage_color.get(stage_key, 'var(--accent)') }};border-radius:var(--radius-sm);line-height:1.6;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
-  <div style="flex:1;min-width:240px">
-    <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:{{ stage_color.get(stage_key, 'var(--accent)') }};margin-bottom:4px">{{ stage_label }}</div>
-    <div style="font-size:14px;color:var(--text-muted)">{{ stage_detail }}</div>
+<div class="cd-stage" style="border-left:4px solid {{ stage_color.get(stage_key, 'var(--accent)') }}">
+  <div class="cd-stage-left">
+    <div class="cd-stage-key" style="color:{{ stage_color.get(stage_key, 'var(--accent)') }}">{{ stage_label }}</div>
+    <div class="cd-stage-detail">{{ stage_detail }}</div>
   </div>
-  <a href="/contract/{{ row['internal_id'] }}/apply" class="btn btn-primary" style="font-size:14px;padding:9px 18px;white-space:nowrap">How to apply &rarr;</a>
+  <a href="/contract/{{ row['internal_id'] }}/apply" class="btn btn-primary" style="white-space:nowrap">How to apply &rarr;</a>
 </div>
-
-{% if row.get("description") %}
-<div style="margin-top:12px;padding:14px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);line-height:1.6">
-  <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Contract Description</div>
-  <div style="font-size:14px">{{ row["description"] }}</div>
-</div>
-{% endif %}
 
 {# ── Capture Brief: Pursue / Monitor / Pass verdict ──────────────────────── #}
 {% if capture %}
@@ -165,33 +136,69 @@
 {% endif %}
 {# ── End Capture Brief ────────────────────────────────────────────────────── #}
 
-{% if action %}
-<div style="margin-top:14px;padding:16px 18px;background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:var(--radius-sm);line-height:1.6">
-  <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);margin-bottom:6px">Next Recommended Action</div>
-  <div style="font-size:17px;font-weight:600;margin-bottom:6px">{{ action.action }}</div>
-  <div class="muted">{{ action.explanation }}</div>
-</div>
-{% endif %}
-
+{# ── 2. Why This Opportunity Matters ─────────────────────────── #}
 {% if why_matters %}
-<div style="margin-top:10px;padding:14px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);line-height:1.6">
-  <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Why This Opportunity Matters</div>
-  <ul style="margin:0;padding-left:18px;list-style:disc">
+<div class="cd-section">
+  <div class="cd-section-title">Why This Opportunity Matters</div>
+  <ul class="cd-bullets">
     {% for bullet in why_matters %}
-    <li style="margin-bottom:3px">{{ bullet }}</li>
+    <li>{{ bullet }}</li>
     {% endfor %}
   </ul>
 </div>
 {% endif %}
 
+{# ── 3. Next Recommended Action ──────────────────────────────── #}
+{% if action %}
+<div class="cd-section cd-action">
+  <div class="cd-section-title">Next Recommended Action</div>
+  <div class="cd-action-text">{{ action.action }}</div>
+  <div class="muted">{{ action.explanation }}</div>
+</div>
+{% endif %}
+
+{# ── 4. Business Match Summary ────────────────────────────────── #}
+{% if biz_match_score is not none %}
+<div class="cd-section cd-match">
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:10px">
+    <div class="cd-section-title" style="margin-bottom:0">Why this matches your business</div>
+    <div class="cd-match-pct" style="margin-bottom:0">{{ biz_match_score }}% match</div>
+  </div>
+  {% if biz_match_reasons %}
+  <ul class="cd-bullets cd-bullets-sm">
+    {% for r in biz_match_reasons %}
+    <li>{{ r }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if biz_mismatch_reasons %}
+  <div class="cd-mismatch">
+    This contract is outside parts of your company profile:
+    <ul class="cd-bullets cd-bullets-sm">
+      {% for r in biz_mismatch_reasons %}
+      <li>{{ r }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  {% if not biz_match_reasons and not biz_mismatch_reasons %}
+  <div class="muted" style="font-size:13px">This contract is outside parts of your company profile.</div>
+  {% endif %}
+  <div class="cd-profile-link"><a href="/company-profile">Edit your Company Profile</a></div>
+</div>
+{% endif %}
+
+{# ── 5. AI Summary / Next Step ────────────────────────────────── #}
 {% if next_step %}
-<div style="margin-top:10px;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--radius-sm);line-height:1.6">
-  <div style="font-weight:600;color:var(--accent);margin-bottom:4px">Recompete timing: {{ next_step.timing }}</div>
+<div class="cd-section cd-nextstep">
+  <div class="cd-section-title">AI Summary</div>
+  <div class="cd-timing">Recompete timing: {{ next_step.timing }}</div>
   <div class="muted" style="margin-bottom:8px">{{ next_step.detail }}</div>
   <div><strong>Suggested approach:</strong> {{ next_step.action }}</div>
 </div>
 {% endif %}
 
+{# ══ KPI CARDS ═════════════════════════════════════════════════ #}
 <div class="kpi-row" style="grid-template-columns:repeat(4,1fr)">
   <div class="kpi-card">
     <div class="kpi-label">Value</div>
@@ -218,41 +225,46 @@
   </div>
 </div>
 
-{% if biz_match_score is not none %}
-<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:var(--radius-sm);padding:16px 20px;margin-bottom:16px">
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:10px">
-    <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.05em">Why this matches your business</div>
-    <div style="font-size:22px;font-weight:700;color:var(--accent)">{{ biz_match_score }}% match</div>
+{# ══ CONTEXT ════════════════════════════════════════════════════ #}
+
+{# ── Contract summary with badges ─────────────────────────────── #}
+<div class="summary-box">
+  <div class="cd-badges">
+    {% if category and category != "Other" %}
+    <span data-testid="category-badge" class="cd-badge">{{ category }}</span>
+    {% endif %}
+    {% if performance_state %}
+    <span data-testid="location-badge" class="cd-badge">
+      📍 {% if performance_city %}{{ performance_city }}, {% endif %}{{ performance_state }}
+    </span>
+    {% endif %}
   </div>
-  {% if biz_match_reasons %}
-  <ul style="margin:0;padding-left:18px;list-style:disc">
-    {% for r in biz_match_reasons %}
-    <li style="font-size:14px;margin-bottom:3px">{{ r }}</li>
-    {% endfor %}
-  </ul>
-  {% endif %}
-  {% if biz_mismatch_reasons %}
-  <div style="margin-top:10px;font-size:13px;color:var(--text-muted)">
-    This contract is outside parts of your company profile:
-    <ul style="margin:4px 0 0;padding-left:18px;list-style:disc">
-      {% for r in biz_mismatch_reasons %}
-      <li>{{ r }}</li>
-      {% endfor %}
-    </ul>
-  </div>
-  {% endif %}
-  {% if not biz_match_reasons and not biz_mismatch_reasons %}
-  <div class="muted" style="font-size:13px">This contract is outside parts of your company profile.</div>
-  {% endif %}
-  <div style="margin-top:10px;font-size:12px;color:var(--text-muted)"><a href="/company-profile">Edit your Company Profile</a></div>
+  <strong>Summary:</strong>
+  This contract{% if row["vendor"] %} is held by <strong>{{ row["vendor"] }}</strong>{% endif %}{% if row["agency"] %} for <strong>{{ row["agency"] }}</strong>{% if row["sub_agency"] %} ({{ row["sub_agency"] }}){% endif %}{% endif %}{% if row["value"] %}, valued at <strong>${{ "{:,.0f}".format(row["value"]) }}</strong>{% endif %}.
+  {% if row["description"] %}<br><span style="color:var(--text-muted)">{{ row["description"][:200] }}{% if row["description"]|length > 200 %}…{% endif %}</span>{% endif %}
+  <br><strong>Where:</strong>
+  {% if performance_city and performance_state %}{{ performance_city }}, {{ performance_state }}{% elif performance_state %}{{ performance_state }}{% else %}<span class="muted">Location not recorded</span>{% endif %}.
+  <br><strong>When:</strong>
+  {% if row["end_date"] %}Runs through <strong>{{ row["end_date"] }}</strong>{% if row["days_remaining"] is not none %} ({{ row["days_remaining"] }} days remaining){% endif %}.{% else %}No end date on file.{% endif %}
+  {% if row["competition_type"] %} Awarded via {{ row["competition_type"]|lower }}.{% endif %}
+  <br><strong>Priority:</strong>
+  {% if row["priority"] %}<span class="priority-badge priority-{{ row['priority'].lower() }}">{{ row["priority"] }}</span> (score {{ row["recompete_score"] or "—" }}){% else %}<span class="muted">Not scored</span>{% endif %}
+</div>
+
+{# ── Full contract description (if present and not truncated above) ── #}
+{% if row.get("description") %}
+<div class="cd-section">
+  <div class="cd-section-title">Contract Description</div>
+  <div style="font-size:14px">{{ row["description"] }}</div>
 </div>
 {% endif %}
+
+{# ══ DEEP DIVE ══════════════════════════════════════════════════ #}
 
 <details id="score-explainer" class="score-explainer" data-testid="score-explainer">
   <summary>Why is this contract scored {{ row["recompete_score"] or "—" }}?</summary>
   <div class="explainer-body">
     {% if score_breakdown %}
-    {# Per-contract component breakdown — shows actual pts earned for this specific contract. #}
     <div style="margin-bottom:14px;font-size:13px">
       This contract earned <strong>{{ score_breakdown.total }}</strong> points across {{ score_breakdown.components|length }} scoring dimensions:
     </div>
@@ -268,7 +280,6 @@
       <div style="font-size:11px;color:var(--text-muted);padding-left:0;margin-top:-2px;margin-bottom:4px">{{ c.detail }}</div>
       {% endfor %}
     </div>
-    {# Also show the canonical formula so users understand what each dimension means. #}
     <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
     {{ score_help.score_breakdown() }}
     </div>
@@ -279,7 +290,6 @@
     </div>
     {% endif %}
     {% else %}
-    {# Fallback when score_breakdown is unavailable. #}
     {% if row["recompete_score"] is not none %}
     <div style="margin-bottom:12px;font-size:13px">
       This contract scores <strong>{{ row["recompete_score"] }}</strong>
@@ -348,28 +358,27 @@
 </div>
 {% endif %}
 
-<!-- Can I bid on this now? -->
+{# ── Can I bid on this now? ───────────────────────────────────── #}
 {% if opp_status %}
-<div style="margin-top:20px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
-  <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:var(--bg-card)">
-    <strong style="font-size:15px">Can I bid on this now?</strong>
+<div class="cd-bid-box">
+  <div class="cd-bid-header">
+    <strong>Can I bid on this now?</strong>
     {% if opp_status.can_bid == true %}
-      <span style="font-size:13px;font-weight:700;padding:3px 10px;border-radius:4px;background:#d1fae5;color:#065f46;border:1px solid #6ee7b7">Yes — Open</span>
+      <span class="cd-bid-badge cd-bid-yes">Yes — Open</span>
     {% elif opp_status.can_bid == false %}
-      <span style="font-size:13px;font-weight:700;padding:3px 10px;border-radius:4px;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5">No</span>
+      <span class="cd-bid-badge cd-bid-no">No</span>
     {% else %}
-      <span style="font-size:13px;font-weight:600;padding:3px 10px;border-radius:4px;background:#fef3c7;color:#92400e;border:1px solid #fcd34d">Verify on SAM.gov</span>
+      <span class="cd-bid-badge cd-bid-check">Verify on SAM.gov</span>
     {% endif %}
-    <span style="font-size:12px;font-weight:600;color:var(--text-muted);margin-left:auto">{{ opp_status.label }}</span>
+    <span class="cd-bid-label">{{ opp_status.label }}</span>
   </div>
-  <div style="padding:12px 16px;font-size:13px;line-height:1.55;background:var(--bg)">
-    <p style="margin:0 0 8px;color:var(--text-primary)">{{ opp_status.reason }}</p>
-    <p style="margin:0;color:var(--text-muted)"><strong>Next action:</strong> {{ opp_status.next_action }}</p>
+  <div class="cd-bid-body">
+    <p>{{ opp_status.reason }}</p>
+    <p class="muted"><strong>Next action:</strong> {{ opp_status.next_action }}</p>
   </div>
   {% if row.get("sam_url") %}
-  <div style="padding:10px 16px;border-top:1px solid var(--border);background:var(--bg-card)">
-    <a href="{{ row['sam_url'] }}" target="_blank" rel="noopener noreferrer"
-       style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:var(--accent);color:#fff;border-radius:var(--radius-sm);text-decoration:none;font-weight:600;font-size:13px">
+  <div class="cd-bid-footer">
+    <a href="{{ row['sam_url'] }}" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="font-size:13px">
       {% if opp_status.can_bid %}View SAM.gov solicitation &rarr;{% else %}View SAM.gov record &rarr;{% endif %}
     </a>
   </div>
@@ -380,8 +389,7 @@
 <div style="margin-top:12px">
   {% if not row.get("sam_url") %}
   <a href="https://sam.gov/content/opportunities?keywords={{ (row.get('solicitation_id') or row.get('vendor') or '')|urlencode }}"
-     target="_blank" rel="noopener noreferrer"
-     style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:var(--surface);color:var(--accent);border:1px solid var(--accent);border-radius:var(--radius-sm);text-decoration:none;font-weight:600;font-size:13px">
+     target="_blank" rel="noopener noreferrer" class="cd-sam-link">
     Search SAM.gov for this contract &rarr;
   </a>
   {% endif %}
@@ -408,14 +416,11 @@
 
 <script>
 function _applyWatchState(btn, watching) {
+  btn.textContent = watching ? '★ Watching' : '☆ Watch';
   if (btn.classList.contains('contract-cta-btn')) {
-    btn.textContent = watching ? '★ Watching' : '☆ Watch';
-    if (watching) btn.classList.add('contract-cta-watching');
-    else btn.classList.remove('contract-cta-watching');
+    btn.classList.toggle('contract-cta-watching', watching);
   } else {
-    btn.textContent = watching ? '★ Watching' : '☆ Watch';
-    btn.style.background = watching ? 'var(--accent)' : 'transparent';
-    btn.style.color = watching ? 'var(--bg)' : 'var(--accent)';
+    btn.classList.toggle('cd-watching', watching);
   }
 }
 function _doWatch(id, isWatching) {
