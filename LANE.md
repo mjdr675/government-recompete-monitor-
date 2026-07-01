@@ -1,52 +1,47 @@
-# Lane: Integration Gate
+# Lane: Bugfix
 
-**Branch:** `lane/integration` → target: `main`
-**Worktree:** `/home/michael/recompete-worktrees/integration`
+**Branch:** `lane/bugfix`
+**Worktree:** `/home/michael/recompete-worktrees/bugfix`
 
 ## Role
 
-Merge authority only. This lane compiles completed lane work into `main`. It does not build, fix, or patch features. When it encounters failures, it stops and reports — it does not debug other lanes' code.
+Emergency hotfix staging. Exists to isolate and patch production regressions without disrupting in-flight lane work. Every fix must be small, targeted, and immediately mergeable through the integration gate.
 
 ## Owns
 
-- Merge sequencing: deciding the order lanes are integrated
-- Conflict classification: identifying which lane owns a conflict before resolving it
-- Validation: running `scripts/integration_gate.sh` before every merge
-- Final merge readiness reports: documenting what passed, what was deferred
-- Maintaining `INTEGRATION_RULES.md` and `LEGACY_WORKTREES_REPORT.md`
+- Isolated regression fixes for production failures
+- One bug per branch/commit — no bundling
+- Failing test repair when the root cause is a clear, contained defect
+- Emergency patches with documented removal or follow-up path
 
 ## Forbidden
 
-- Building features of any kind
-- Patching large test failures manually (→ return to owning lane)
-- Force pushing without explicit user approval and a written list of overwritten commits
-- Accepting a stale remote rewrite without reporting it first
-- Merging when the gate fails — STOP and report instead
+- Building new features (→ appropriate feature lane)
+- Refactoring architecture or restructuring files (→ owning lane)
+- Mixing unrelated fixes in a single commit
+- Changing lane ownership rules or LANE.md files (→ integration lane)
+- Schema changes (→ `lane/platform`)
+- Fixes requiring coordination across 2+ lanes — escalate to the owning lane instead
 
-## Critical Rule: Large Failure Protocol
+## Rules
 
-If a merge creates broad structural failures (missing imports, broken `app.py`, route collapse, 50+ test failures):
+- State the owning lane in every commit message: `fix(<lane>): description`
+- Every fix must have a test or a written explanation of why one is not feasible
+- If a fix requires changes to more than 3 files, it belongs in the owning lane — stop and escalate
+- After merge, the owning lane must absorb the fix before continuing feature work
 
-1. **STOP** — do not patch blindly
-2. Run `git merge --abort` or `git reset --hard HEAD` to restore pre-merge state
-3. Report the failure and which lane introduced it
-4. Ask for direction before retrying
+## Related Rules
+
+See `.claude/rules/` in the repo root (imported by root `CLAUDE.md`) for the
+full operating rules this lane must follow:
+- `.claude/rules/testing.md` — every fix needs a test or a written reason one isn't feasible
+- `.claude/rules/git-workflow.md` — lane ownership, no force push, handoff receipt format
 
 ## Process
 
 ```bash
-cd /home/michael/recompete-worktrees/integration
+# Always branch from origin/main, not an in-flight lane
+git checkout -b bugfix/<short-description> origin/main
 
-# Before merging any lane
-bash scripts/integration_gate.sh lane/<target>
-
-# Only if gate passes
-git merge --no-ff lane/<target>
-
-# If gate fails broadly
-git merge --abort   # or git reset --hard HEAD if already committed
+# After fix, merge via integration gate — same process as all lanes
 ```
-
-## Dependencies
-
-All other lanes. Must not create cross-lane dependencies during conflict resolution.
