@@ -1209,3 +1209,191 @@ class TestNaicsChipLogic:
         from views import active_filter_chips
         chips = active_filter_chips({"naics_code": "  "})
         assert not any(c["key"] == "naics_code" for c in chips)
+
+
+# ---------------------------------------------------------------------------
+# TestIntelligenceFieldExposure
+# Verify analytics queries return the metadata fields that intelligence
+# functions (opportunity_status, recommended_action, etc.) depend on.
+# ---------------------------------------------------------------------------
+
+def _fresh_analytics_db(tmp_path, monkeypatch):
+    import db as _db
+    db_path = str(tmp_path / "analytics_test.db")
+    monkeypatch.setattr(_db, "DB_PATH", db_path)
+    _db._cached_engine.cache_clear()
+    _db.init_db()
+    return _db
+
+
+def _insert_full_contract(db, internal_id="C-INTEL-1", **kwargs):
+    row = {
+        "internal_id": internal_id,
+        "award_id": f"AW-{internal_id}",
+        "vendor": "Intel Vendor",
+        "agency": "Department of Defense",
+        "value": 5_000_000,
+        "days_remaining": 180,
+        "recompete_score": 80,
+        "priority": "HIGH",
+        "naics_code": "561720",
+        "category": "Cleaning",
+        "competition_type": "FULL AND OPEN COMPETITION",
+        "solicitation_id": "SOL-2026-001",
+        "sam_url": "https://sam.gov/opp/test",
+        "sam_type": "solicitation",
+        "sam_due_date": "2027-01-15",
+        "place_of_performance_state": "VA",
+        "place_of_performance_city": "Arlington",
+        "sub_agency": "Army",
+        "start_date": "2024-01-01",
+        "end_date": "2027-01-01",
+    }
+    row.update(kwargs)
+    db.upsert_contract(row)
+
+
+class TestOpportunityRecommendationsFields:
+    """opportunity_recommendations() must include intelligence-relevant fields."""
+
+    def test_includes_naics_code(self, tmp_path, monkeypatch):
+        from analytics import opportunity_recommendations
+        db = _fresh_analytics_db(tmp_path, monkeypatch)
+        _insert_full_contract(db)
+        recs = opportunity_recommendations()
+        assert recs, "expected at least one recommendation"
+        assert "naics_code" in recs[0]
+        assert recs[0]["naics_code"] == "561720"
+
+    def test_includes_competition_type(self, tmp_path, monkeypatch):
+        from analytics import opportunity_recommendations
+        db = _fresh_analytics_db(tmp_path, monkeypatch)
+        _insert_full_contract(db)
+        recs = opportunity_recommendations()
+        assert recs
+        assert "competition_type" in recs[0]
+
+    def test_includes_solicitation_id(self, tmp_path, monkeypatch):
+        from analytics import opportunity_recommendations
+        db = _fresh_analytics_db(tmp_path, monkeypatch)
+        _insert_full_contract(db)
+        recs = opportunity_recommendations()
+        assert recs
+        assert "solicitation_id" in recs[0]
+        assert recs[0]["solicitation_id"] == "SOL-2026-001"
+
+    def test_includes_sam_fields(self, tmp_path, monkeypatch):
+        from analytics import opportunity_recommendations
+        db = _fresh_analytics_db(tmp_path, monkeypatch)
+        _insert_full_contract(db)
+        recs = opportunity_recommendations()
+        assert recs
+        r = recs[0]
+        assert "sam_url" in r
+        assert "sam_type" in r
+        assert "sam_due_date" in r
+
+    def test_includes_category_and_state(self, tmp_path, monkeypatch):
+        from analytics import opportunity_recommendations
+        db = _fresh_analytics_db(tmp_path, monkeypatch)
+        _insert_full_contract(db)
+        recs = opportunity_recommendations()
+        assert recs
+        r = recs[0]
+        assert r.get("category") == "Cleaning"
+        assert r.get("place_of_performance_state") == "VA"
+
+
+class TestSuggestedMatchesFields:
+    """suggested_matches() must return naics_code, category, SAM fields."""
+
+    def test_includes_naics_code(self, tmp_path, monkeypatch):
+        import users as users_module
+        db = _fresh_analytics_db(tmp_path, monkeypatch)
+        users_module.create_user("sugg@example.com", "pass123")
+        import db as _db
+        uid = _db.connect().execute("SELECT id FROM users WHERE email='sugg@example.com'").fetchone()[0]
+        _insert_full_contract(db)
+        with _db.connect() as conn:
+            conn.execute(
+                "INSERT INTO user_watchlist(user_id, internal_id, added_at) VALUES (?,?,?)",
+                (uid, "C-INTEL-1", "2026-01-01"),
+            )
+            conn.commit()
+        from analytics import suggested_matches
+        _insert_full_contract(db, internal_id="C-INTEL-2")
+        results = suggested_matches(uid, limit=5)
+        if results:
+            assert "naics_code" in results[0]
+
+    def test_includes_sam_fields(self, tmp_path, monkeypatch):
+        import users as users_module
+        db = _fresh_analytics_db(tmp_path, monkeypatch)
+        users_module.create_user("sugg2@example.com", "pass123")
+        import db as _db
+        uid = _db.connect().execute("SELECT id FROM users WHERE email='sugg2@example.com'").fetchone()[0]
+        _insert_full_contract(db)
+        with _db.connect() as conn:
+            conn.execute(
+                "INSERT INTO user_watchlist(user_id, internal_id, added_at) VALUES (?,?,?)",
+                (uid, "C-INTEL-1", "2026-01-01"),
+            )
+            conn.commit()
+        _insert_full_contract(db, internal_id="C-INTEL-3", vendor="Other Vendor")
+        from analytics import suggested_matches
+        results = suggested_matches(uid, limit=5)
+        if results:
+            r = results[0]
+            assert "sam_url" in r
+            assert "sam_type" in r
+            assert "competition_type" in r
+
+
+class TestPersonalizedForBusinessFields:
+    """personalized_for_business() SELECT must include SAM/location fields."""
+
+    def test_includes_place_of_performance_city(self, tmp_path, monkeypatch):
+        import users as users_module
+        db = _fresh_analytics_db(tmp_path, monkeypatch)
+        users_module.create_user("pfb@example.com", "pass123")
+        import db as _db
+        uid = _db.connect().execute("SELECT id FROM users WHERE email='pfb@example.com'").fetchone()[0]
+        _insert_full_contract(db)
+        _db.save_company_profile(uid, {
+            "company_name": "Test Co",
+            "naics_codes": ["561720"],
+            "states": ["VA"],
+            "agencies": [],
+        })
+        from db import get_company_profile
+        from analytics import personalized_for_business
+        profile = get_company_profile(uid)
+        results = personalized_for_business(uid, profile, limit=5)
+        if results:
+            assert "place_of_performance_city" in results[0]
+            assert results[0]["place_of_performance_city"] == "Arlington"
+
+    def test_includes_competition_type_and_solicitation(self, tmp_path, monkeypatch):
+        import users as users_module
+        db = _fresh_analytics_db(tmp_path, monkeypatch)
+        users_module.create_user("pfb2@example.com", "pass123")
+        import db as _db
+        uid = _db.connect().execute("SELECT id FROM users WHERE email='pfb2@example.com'").fetchone()[0]
+        _insert_full_contract(db)
+        _db.save_company_profile(uid, {
+            "company_name": "Test Co 2",
+            "naics_codes": ["561720"],
+            "states": ["VA"],
+            "agencies": [],
+        })
+        from db import get_company_profile
+        from analytics import personalized_for_business
+        profile = get_company_profile(uid)
+        results = personalized_for_business(uid, profile, limit=5)
+        if results:
+            r = results[0]
+            assert "competition_type" in r
+            assert "solicitation_id" in r
+            assert "sam_url" in r
+            assert "sam_type" in r
+            assert "sam_due_date" in r

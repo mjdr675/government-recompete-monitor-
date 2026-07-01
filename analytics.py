@@ -80,19 +80,24 @@ def opportunity_recommendations():
             entry["reason"] = reason
             recs.append(entry)
 
+    _intel_cols = (
+        "internal_id, award_id, vendor, agency, value, end_date, start_date, "
+        "days_remaining, priority, recompete_score, naics_code, category, "
+        "place_of_performance_state, competition_type, solicitation_id, "
+        "sam_url, sam_type, sam_due_date, sub_agency"
+    )
+
     with engine.connect() as conn:
-        for r in conn.execute(text("""
-            SELECT internal_id, award_id, vendor, agency, value, end_date,
-                   days_remaining, priority, recompete_score
+        for r in conn.execute(text(f"""
+            SELECT {_intel_cols}
             FROM contracts
             WHERE COALESCE(days_remaining, 0) > 0 AND recompete_score IS NOT NULL
             ORDER BY recompete_score DESC LIMIT 3
         """)).mappings().fetchall():
             _add(r, f"Highest recompete score ({r['recompete_score']})")
 
-        for r in conn.execute(text("""
-            SELECT internal_id, award_id, vendor, agency, value, end_date,
-                   days_remaining, priority, recompete_score
+        for r in conn.execute(text(f"""
+            SELECT {_intel_cols}
             FROM contracts
             WHERE COALESCE(days_remaining, 0) > 0 AND value IS NOT NULL
             ORDER BY value DESC LIMIT 3
@@ -100,9 +105,8 @@ def opportunity_recommendations():
             v = r["value"] or 0
             _add(r, f"Highest value (${v:,.0f})")
 
-        for r in conn.execute(text("""
-            SELECT internal_id, award_id, vendor, agency, value, end_date,
-                   days_remaining, priority, recompete_score
+        for r in conn.execute(text(f"""
+            SELECT {_intel_cols}
             FROM contracts
             WHERE COALESCE(days_remaining, 0) > 0
             ORDER BY days_remaining ASC LIMIT 3
@@ -110,9 +114,8 @@ def opportunity_recommendations():
             days = r["days_remaining"]
             _add(r, f"Expiring in {days} day{'s' if days != 1 else ''}")
 
-        for r in conn.execute(text("""
-            SELECT internal_id, award_id, vendor, agency, value, end_date,
-                   days_remaining, priority, recompete_score
+        for r in conn.execute(text(f"""
+            SELECT {_intel_cols}
             FROM contracts
             WHERE priority = 'CRITICAL' AND COALESCE(days_remaining, 0) > 0
             ORDER BY recompete_score DESC LIMIT 3
@@ -120,9 +123,8 @@ def opportunity_recommendations():
             _add(r, "Critical priority contract")
 
         try:
-            for r in conn.execute(text("""
-                SELECT c.internal_id, c.award_id, c.vendor, c.agency, c.value, c.end_date,
-                       c.days_remaining, c.priority, c.recompete_score,
+            for r in conn.execute(text(f"""
+                SELECT {', '.join('c.' + col.strip() for col in _intel_cols.split(','))},
                        ch.change_type, ch.run_date
                 FROM changes ch
                 JOIN contracts c ON ch.internal_id = c.internal_id
@@ -267,8 +269,11 @@ def suggested_matches(user_id, limit=5):
     with engine.connect() as conn:
         rows = conn.execute(
             text(f"""
-                SELECT internal_id, award_id, vendor, agency, value, end_date,
-                       days_remaining, priority, recompete_score
+                SELECT internal_id, award_id, vendor, agency, value, end_date, start_date,
+                       days_remaining, priority, recompete_score,
+                       naics_code, category, place_of_performance_state,
+                       competition_type, solicitation_id,
+                       sam_url, sam_type, sam_due_date, sub_agency
                 FROM contracts
                 WHERE agency IN ({placeholders})
                   AND COALESCE(days_remaining, 0) > 0
@@ -339,7 +344,9 @@ def personalized_for_business(user_id, profile, limit=10):
                     c.internal_id, c.award_id, c.vendor, c.agency, c.value,
                     c.start_date, c.end_date, c.days_remaining, c.priority, c.recompete_score,
                     c.category, c.naics_code, c.place_of_performance_state,
-                    c.description,
+                    c.place_of_performance_city, c.description,
+                    c.competition_type, c.solicitation_id,
+                    c.sam_url, c.sam_type, c.sam_due_date, c.sub_agency,
                     COALESCE(
                         (CASE WHEN c.place_of_performance_state IN ({state_in}) THEN 1 ELSE 0 END) +
                         (CASE WHEN c.category IN ({category_in}) THEN 2 ELSE 0 END) +

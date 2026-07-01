@@ -1184,13 +1184,20 @@ def contracts_export():
         naics_code=naics_code_export,
     )
 
-    fields = ["internal_id", "award_id", "vendor", "agency", "value",
-              "end_date", "days_remaining", "priority", "recompete_score"]
+    fields = [
+        "internal_id", "award_id", "vendor", "agency", "sub_agency", "value",
+        "start_date", "end_date", "days_remaining", "priority", "recompete_score",
+        "naics_code", "naics_description", "psc_code", "psc_description",
+        "competition_type", "solicitation_id",
+        "place_of_performance_state", "place_of_performance_city",
+        "category", "sam_url", "sam_type", "sam_due_date",
+        "recipient_uei", "cage_code",
+    ]
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=fields, extrasaction="ignore")
     writer.writeheader()
     for row in result["contracts"]:
-        writer.writerow({f: row[f] for f in fields})
+        writer.writerow({f: (row[f] if f in row.keys() else "") for f in fields})
 
     from flask import Response
     return Response(

@@ -30,7 +30,15 @@ _SET_ASIDE_LABELS = {
 
 
 def _naics_from_contract(contract) -> str | None:
-    """Return the NAICS code stored in raw_json, or None if unavailable."""
+    """Return the contract's NAICS code, preferring the dedicated column.
+
+    Checks naics_code column first (canonical, ingest-normalised value), then
+    falls back to raw_json for SAM-enriched values (sam_naics) that may differ
+    from the USASpending column value.
+    """
+    column_val = (contract.get("naics_code") or "").strip()
+    if column_val:
+        return column_val
     raw = contract.get("raw_json")
     if not raw:
         return None

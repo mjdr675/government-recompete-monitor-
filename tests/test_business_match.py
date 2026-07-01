@@ -123,6 +123,22 @@ class TestNaicsFromContract:
         c = _make_contract(raw_json=json.dumps({"naics_code": "541511"}))
         assert _naics_from_contract(c) == "541511"
 
+    def test_prefers_naics_column_over_raw_json(self):
+        c = _make_contract(naics_code="561720", raw_json=json.dumps({"sam_naics": "999999"}))
+        assert _naics_from_contract(c) == "561720"
+
+    def test_returns_naics_column_when_raw_json_absent(self):
+        c = _make_contract(naics_code="541511", raw_json=None)
+        assert _naics_from_contract(c) == "541511"
+
+    def test_falls_back_to_raw_json_when_column_empty(self):
+        c = _make_contract(naics_code="", raw_json=json.dumps({"sam_naics": "561720"}))
+        assert _naics_from_contract(c) == "561720"
+
+    def test_whitespace_naics_column_treated_as_empty(self):
+        c = _make_contract(naics_code="   ", raw_json=json.dumps({"sam_naics": "561720"}))
+        assert _naics_from_contract(c) == "561720"
+
 
 # ---------------------------------------------------------------------------
 # _naics_matches (prefix hierarchy)
