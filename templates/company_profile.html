@@ -164,6 +164,15 @@
               placeholder="561720&#10;541511&#10;541519">{% if profile and profile.naics_codes %}{{ profile.naics_codes | join('\n') }}{% endif %}</textarea>
   </div>
 
+  {# ── PSC Codes ────────────────────────────────────────────────────────── #}
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
+    <h2 style="margin-top:0;margin-bottom:4px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)">Service Categories (PSC Codes)</h2>
+    <div class="muted" style="font-size:12px;margin-bottom:10px">Enter PSC (Product/Service Codes) your company delivers, one per line or comma-separated. Use a prefix (e.g. <code>R</code> for Professional Services, <code>D</code> for IT) to match an entire category, or a full 4-character code (e.g. <code>R499</code>) for a specific service.</div>
+    <textarea name="psc_codes" rows="3"
+              style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:14px;font-family:monospace;resize:vertical"
+              placeholder="R499&#10;D302&#10;S201">{% if profile and profile.psc_codes %}{{ profile.psc_codes | join('\n') }}{% endif %}</textarea>
+  </div>
+
   {# ── Geographic Coverage ───────────────────────────────────────────────── #}
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
     <h2 style="margin-top:0;margin-bottom:12px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)">Geographic Coverage</h2>

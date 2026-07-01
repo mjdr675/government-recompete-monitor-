@@ -26,6 +26,8 @@ from business_match import (
     _naics_from_contract,
     _agency_matches,
     _comp_type_matches_set_aside,
+    _state_matches,
+    _psc_matches,
 )
 
 
@@ -686,3 +688,131 @@ class TestEdgeCases:
         profile = _make_profile(naics_codes=["561720"])
         contract = _contract_with_naics("541511")
         assert business_match_score(contract, profile) == 0
+
+
+# ---------------------------------------------------------------------------
+# State matching unit tests
+# ---------------------------------------------------------------------------
+
+class TestStateMatches:
+    def test_exact_match(self):
+        assert _state_matches("VA", ["VA", "MD"]) is True
+
+    def test_case_insensitive(self):
+        assert _state_matches("va", ["VA"]) is True
+
+    def test_no_match(self):
+        assert _state_matches("TX", ["VA", "MD"]) is False
+
+    def test_empty_contract_state(self):
+        assert _state_matches("", ["VA"]) is False
+
+    def test_empty_profile_states(self):
+        assert _state_matches("VA", []) is False
+
+
+class TestStateScoring:
+    def test_state_match_scores(self):
+        profile = _make_profile(geo_coverage="states", states=["VA"])
+        contract = _make_contract(place_of_performance_state="VA")
+        assert business_match_score(contract, profile) > 0
+
+    def test_state_mismatch_scores_zero(self):
+        profile = _make_profile(geo_coverage="states", states=["VA"])
+        contract = _make_contract(place_of_performance_state="TX")
+        assert business_match_score(contract, profile) == 0
+
+    def test_nationwide_skips_state_dimension(self):
+        profile = _make_profile(geo_coverage="nationwide", states=["VA"])
+        contract = _make_contract(place_of_performance_state="TX")
+        # state dimension skipped when nationwide — no possible points
+        assert business_match_score(contract, profile) == 0
+
+    def test_state_match_adds_reason(self):
+        profile = _make_profile(geo_coverage="states", states=["VA"])
+        contract = _make_contract(place_of_performance_state="VA")
+        reasons = business_match_reasons(contract, profile)
+        assert any("VA" in r for r in reasons)
+
+    def test_state_mismatch_adds_reason(self):
+        profile = _make_profile(geo_coverage="states", states=["VA"])
+        contract = _make_contract(place_of_performance_state="TX")
+        reasons = business_mismatch_reasons(contract, profile)
+        assert any("TX" in r for r in reasons)
+
+    def test_missing_contract_state_skips_dimension(self):
+        profile = _make_profile(geo_coverage="states", states=["VA"])
+        contract = _make_contract(place_of_performance_state=None)
+        # no data to evaluate — possible stays 0
+        assert business_match_score(contract, profile) == 0
+
+    def test_profile_filter_includes_states_when_limited(self):
+        profile = _make_profile(geo_coverage="states", states=["VA", "MD"])
+        f = profile_filter_for_sql(profile)
+        assert f["states"] == ["VA", "MD"]
+
+    def test_profile_filter_empty_states_when_nationwide(self):
+        profile = _make_profile(geo_coverage="nationwide", states=["VA"])
+        f = profile_filter_for_sql(profile)
+        assert f["states"] == []
+
+
+# ---------------------------------------------------------------------------
+# PSC code matching unit tests
+# ---------------------------------------------------------------------------
+
+class TestPscMatches:
+    def test_exact_match(self):
+        assert _psc_matches("R499", ["R499"]) is True
+
+    def test_prefix_single_char(self):
+        assert _psc_matches("R499", ["R"]) is True
+
+    def test_prefix_two_char(self):
+        assert _psc_matches("R499", ["R4"]) is True
+
+    def test_no_match(self):
+        assert _psc_matches("S201", ["R499", "D302"]) is False
+
+    def test_case_insensitive(self):
+        assert _psc_matches("r499", ["R"]) is True
+
+    def test_empty_contract_psc(self):
+        assert _psc_matches("", ["R"]) is False
+
+    def test_empty_profile_psc(self):
+        assert _psc_matches("R499", []) is False
+
+
+class TestPscScoring:
+    def test_psc_match_scores(self):
+        profile = _make_profile(psc_codes=["R499"])
+        contract = _make_contract(psc_code="R499")
+        assert business_match_score(contract, profile) > 0
+
+    def test_psc_prefix_scores(self):
+        profile = _make_profile(psc_codes=["R"])
+        contract = _make_contract(psc_code="R499")
+        assert business_match_score(contract, profile) > 0
+
+    def test_psc_mismatch_scores_zero(self):
+        profile = _make_profile(psc_codes=["D302"])
+        contract = _make_contract(psc_code="S201")
+        assert business_match_score(contract, profile) == 0
+
+    def test_missing_contract_psc_skips_dimension(self):
+        profile = _make_profile(psc_codes=["R499"])
+        contract = _make_contract(psc_code=None)
+        assert business_match_score(contract, profile) == 0
+
+    def test_psc_match_adds_reason(self):
+        profile = _make_profile(psc_codes=["R499"])
+        contract = _make_contract(psc_code="R499")
+        reasons = business_match_reasons(contract, profile)
+        assert any("R499" in r for r in reasons)
+
+    def test_psc_mismatch_adds_reason(self):
+        profile = _make_profile(psc_codes=["D302"])
+        contract = _make_contract(psc_code="S201")
+        reasons = business_mismatch_reasons(contract, profile)
+        assert any("S201" in r for r in reasons)

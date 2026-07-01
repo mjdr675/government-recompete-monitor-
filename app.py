@@ -2345,6 +2345,13 @@ def company_profile_page():
             for k in [part.strip()] if k
         ]
 
+        raw_psc = request.form.get("psc_codes", "")
+        psc_codes = [
+            c.strip().upper()
+            for part in raw_psc.replace(",", "\n").splitlines()
+            for c in [part.strip()] if c
+        ]
+
         min_val = request.form.get("min_contract_value", "").strip()
         max_val = request.form.get("max_contract_value", "").strip()
 
@@ -2379,6 +2386,7 @@ def company_profile_page():
                 "agencies": agencies,
                 "set_asides": set_asides,
                 "keywords": keywords,
+                "psc_codes": psc_codes,
             })
             success = "Profile saved."
 

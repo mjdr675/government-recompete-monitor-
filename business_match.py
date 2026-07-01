@@ -2,8 +2,9 @@
 
 No DB calls, no Flask dependencies. All inputs are plain dicts.
 
-NAICS matching extracts sam_naics from raw_json when present. Geographic
-filtering is not yet supported (contracts lack a performance_state column).
+NAICS matching extracts sam_naics from raw_json when present. State matching
+uses place_of_performance_state on the contract dict. PSC matching uses
+psc_code on the contract dict with prefix-hierarchy logic (same as NAICS).
 """
 
 import json
@@ -97,6 +98,29 @@ def _keyword_matches(contract, profile_keywords: list[str]) -> list[str]:
     return [kw for kw in profile_keywords if kw and kw.lower() in searchable]
 
 
+def _state_matches(contract_state: str, profile_states: list[str]) -> bool:
+    """True when contract's place_of_performance_state is in the profile's preferred states."""
+    cs = (contract_state or "").strip().upper()
+    if not cs:
+        return False
+    return cs in {s.strip().upper() for s in profile_states if s}
+
+
+def _psc_matches(contract_psc: str, profile_psc_codes: list[str]) -> bool:
+    """True when contract_psc starts with any profile PSC code (prefix hierarchy).
+
+    A profile code of "R" matches "R499"; "R4" matches "R499"; "R499" exact.
+    """
+    cp = (contract_psc or "").strip().upper()
+    if not cp or not profile_psc_codes:
+        return False
+    for code in profile_psc_codes:
+        pc = code.strip().upper()
+        if pc and cp.startswith(pc):
+            return True
+    return False
+
+
 def business_match_score(contract, profile) -> int:
     """Return a 0–100 Business Match score for a contract against a company profile.
 
@@ -106,6 +130,8 @@ def business_match_score(contract, profile) -> int:
       - Value range  : 20 pts  (only when profile has min or max value)
       - Set-aside    : 10 pts  (only when profile has set-asides AND contract has competition_type)
       - Keywords     : 10 pts  (only when profile has keywords)
+      - State        : 10 pts  (only when geo_coverage==states, profile has states, contract has state)
+      - PSC codes    : 15 pts  (only when profile has PSC codes AND contract has psc_code)
 
     Each dimension is skipped (not penalised) when the data is unavailable.
     Returns 0 if profile is None or no dimension can be evaluated.
@@ -161,6 +187,24 @@ def business_match_score(contract, profile) -> int:
             ratio = len(matched) / len(profile_keywords)
             earned += round(10 * min(ratio, 1.0))
 
+    # State (only active when user explicitly chose state-limited coverage)
+    profile_states = profile.get("states") or []
+    if profile.get("geo_coverage") == "states" and profile_states:
+        contract_state = contract.get("place_of_performance_state")
+        if contract_state:
+            possible += 10
+            if _state_matches(contract_state, profile_states):
+                earned += 10
+
+    # PSC codes
+    profile_psc = profile.get("psc_codes") or []
+    if profile_psc:
+        contract_psc = contract.get("psc_code")
+        if contract_psc:
+            possible += 15
+            if _psc_matches(contract_psc, profile_psc):
+                earned += 15
+
     if possible == 0:
         return 0
     return round(earned * 100 / possible)
@@ -207,6 +251,18 @@ def business_match_reasons(contract, profile) -> list[str]:
         display = ", ".join(matched_kws[:3])
         reasons.append(f"Keywords match: {display}")
 
+    profile_states = profile.get("states") or []
+    if profile.get("geo_coverage") == "states" and profile_states:
+        contract_state = contract.get("place_of_performance_state")
+        if contract_state and _state_matches(contract_state, profile_states):
+            reasons.append(f"Performance state ({contract_state.upper()}) matches your coverage")
+
+    profile_psc = profile.get("psc_codes") or []
+    if profile_psc:
+        contract_psc = contract.get("psc_code")
+        if contract_psc and _psc_matches(contract_psc, profile_psc):
+            reasons.append(f"PSC code {contract_psc.upper()} matches your service categories")
+
     return reasons
 
 
@@ -238,6 +294,18 @@ def business_mismatch_reasons(contract, profile) -> list[str]:
             if max_val is not None and val > max_val:
                 reasons.append(f"Contract value exceeds your maximum (${max_val:,.0f})")
 
+    profile_states = profile.get("states") or []
+    if profile.get("geo_coverage") == "states" and profile_states:
+        contract_state = (contract.get("place_of_performance_state") or "").strip()
+        if contract_state and not _state_matches(contract_state, profile_states):
+            reasons.append(f"Performance state ({contract_state.upper()}) is outside your coverage")
+
+    profile_psc = profile.get("psc_codes") or []
+    if profile_psc:
+        contract_psc = (contract.get("psc_code") or "").strip()
+        if contract_psc and not _psc_matches(contract_psc, profile_psc):
+            reasons.append(f"PSC code {contract_psc.upper()} is outside your service categories")
+
     return reasons
 
 
@@ -245,15 +313,20 @@ def profile_filter_for_sql(profile) -> dict:
     """Translate a company profile into kwargs understood by get_contracts().
 
     Returns a dict with keys: agencies (list), min_value (float|None),
-    max_value (float|None), set_aside_keywords (list[str]).
+    max_value (float|None), set_aside_keywords (list[str]),
+    states (list[str] — only populated when geo_coverage == "states").
     """
     if not profile:
         return {}
+    states = []
+    if profile.get("geo_coverage") == "states":
+        states = profile.get("states") or []
     return {
         "agencies": profile.get("agencies") or [],
         "min_value": profile.get("min_contract_value"),
         "max_value": profile.get("max_contract_value"),
         "set_aside_keywords": _set_aside_sql_keywords(profile.get("set_asides") or []),
+        "states": states,
     }
 
 
@@ -265,7 +338,7 @@ def _set_aside_sql_keywords(set_aside_codes: list[str]) -> list[str]:
     return keywords
 
 
-# Profile completeness: 8 dimensions, each worth 12.5 points.
+# Profile completeness: 9 dimensions, each worth ~11 points.
 _COMPLETENESS_FIELDS = [
     ("company_name", lambda p: bool(p.get("company_name"))),
     ("naics_codes", lambda p: bool(p.get("naics_codes"))),
@@ -275,6 +348,7 @@ _COMPLETENESS_FIELDS = [
     ("set_asides", lambda p: bool(p.get("set_asides"))),
     ("geo", lambda p: bool(p.get("states")) or p.get("geo_coverage") == "nationwide"),
     ("keywords", lambda p: bool(p.get("keywords"))),
+    ("psc_codes", lambda p: bool(p.get("psc_codes"))),
 ]
 
 

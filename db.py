@@ -168,6 +168,10 @@ _MIGRATION_PROBES: dict = {
         "SELECT COUNT(*) FROM information_schema.columns "
         "WHERE table_name = 'contracts' AND column_name = 'sam_type'"
     ),
+    "023_company_psc_codes.sql": (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'company_psc_codes'"
+    ),
 }
 
 
@@ -747,6 +751,15 @@ def init_db():
         )
         """))
         conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS company_psc_codes (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile_id  INTEGER NOT NULL REFERENCES company_profiles(id) ON DELETE CASCADE,
+            psc_code    TEXT NOT NULL,
+            UNIQUE(profile_id, psc_code)
+        )
+        """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_company_psc_codes_profile ON company_psc_codes(profile_id)"))
+        conn.execute(text("""
         CREATE TABLE IF NOT EXISTS workspaces (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             name        TEXT,
@@ -951,6 +964,12 @@ def get_company_profile(user_id):
                 {"pid": pid},
             ).fetchall()
         ]
+        profile["psc_codes"] = [
+            r[0] for r in conn.execute(
+                text("SELECT psc_code FROM company_psc_codes WHERE profile_id = :pid ORDER BY psc_code"),
+                {"pid": pid},
+            ).fetchall()
+        ]
     return profile
 
 
@@ -968,6 +987,13 @@ def save_company_profile(user_id, data):
             for k in [part.strip()] if k
         ]
     keywords = [k.lower() for k in keywords_raw if k.strip()]
+    psc_codes_raw = data.get("psc_codes") or []
+    if isinstance(psc_codes_raw, str):
+        psc_codes_raw = [
+            c for part in psc_codes_raw.replace(",", "\n").splitlines()
+            for c in [part.strip()] if c
+        ]
+    psc_codes = [c.upper() for c in psc_codes_raw if c.strip()]
     min_val = data.get("min_contract_value")
     max_val = data.get("max_contract_value")
     try:
@@ -1012,7 +1038,7 @@ def save_company_profile(user_id, data):
         profile_id = row[0]
         for table in ("company_naics", "company_states",
                       "company_preferred_agencies", "company_set_asides",
-                      "company_keywords"):
+                      "company_keywords", "company_psc_codes"):
             conn.execute(text(f"DELETE FROM {table} WHERE profile_id = :pid"), {"pid": profile_id})
         for code in naics_codes:
             conn.execute(
@@ -1038,6 +1064,11 @@ def save_company_profile(user_id, data):
             conn.execute(
                 text("INSERT INTO company_keywords (profile_id, keyword) VALUES (:pid, :kw) ON CONFLICT(profile_id, keyword) DO NOTHING"),
                 {"pid": profile_id, "kw": kw},
+            )
+        for psc in psc_codes:
+            conn.execute(
+                text("INSERT INTO company_psc_codes (profile_id, psc_code) VALUES (:pid, :psc) ON CONFLICT(profile_id, psc_code) DO NOTHING"),
+                {"pid": profile_id, "psc": psc},
             )
     return profile_id
 

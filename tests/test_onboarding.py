@@ -42,6 +42,7 @@ def _make_full_profile(**kwargs):
         "states": [],
         "geo_coverage": "nationwide",
         "keywords": ["IT support"],
+        "psc_codes": ["D302"],
     }
     base.update(kwargs)
     return base
