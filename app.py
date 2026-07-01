@@ -1530,13 +1530,21 @@ def contract_detail(internal_id):
             ).mappings().fetchall()
             notes = [dict(r) for r in note_rows]
 
-    from contract_summary import next_step, recommended_action, why_it_matters, contract_timeline, recompete_score_breakdown, opportunity_status
+    from contract_summary import (
+        next_step, recommended_action, why_it_matters, contract_timeline,
+        recompete_score_breakdown, opportunity_status,
+        capture_recommendation, incumbent_intelligence,
+        contract_plain_summary, score_data_confidence,
+    )
     guidance = next_step(row.get("days_remaining"), row.get("priority"))
     action = recommended_action(row)
     matters = why_it_matters(row)
     timeline = contract_timeline(row)
     score_breakdown = recompete_score_breakdown(row)
     opp_status = opportunity_status(row)
+    incumbent = incumbent_intelligence(row)
+    plain_summary = contract_plain_summary(row)
+    data_confidence = score_data_confidence(row)
 
     # Apply-window staging for the "How to apply" CTA on the detail page.
     stage_key, stage_label, stage_detail = apply_stage(row.get("days_remaining"))
@@ -1570,6 +1578,8 @@ def contract_detail(internal_id):
     psc_description = row.get("psc_description") or extract_raw_field(row, "psc_description") or ""
     psc_code = row.get("psc_code") or extract_raw_field(row, "psc_code") or ""
 
+    capture = capture_recommendation(row, biz_match_score)
+
     return render_template("contract_detail.html", row=row, is_bookmarked=is_bookmarked,
                            notes=notes, next_step=guidance, action=action,
                            why_matters=matters, timeline=timeline,
@@ -1588,7 +1598,11 @@ def contract_detail(internal_id):
                            stage_detail=stage_detail,
                            applyable=applyable,
                            score_breakdown=score_breakdown,
-                           opp_status=opp_status)
+                           opp_status=opp_status,
+                           capture=capture,
+                           incumbent=incumbent,
+                           plain_summary=plain_summary,
+                           data_confidence=data_confidence)
 
 
 @app.route("/contract/<internal_id>/apply")

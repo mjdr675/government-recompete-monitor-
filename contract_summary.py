@@ -820,6 +820,367 @@ def format_contract_update(row):
 
 
 # ---------------------------------------------------------------------------
+# Capture Brief — top-level intelligence for the contract detail page
+#
+# Pure functions: no DB, no external/AI calls. Uses only stored fields.
+# ---------------------------------------------------------------------------
+
+def score_data_confidence(row) -> dict:
+    """How complete is the data backing the recompete score?
+
+    Returns {level: HIGH|MEDIUM|LOW, missing: [field labels], note: str}.
+    HIGH when all six key fields are present; MEDIUM for 1–2 absent;
+    LOW for 3 or more missing (score/recommendation reliability is reduced).
+    """
+    key_fields = [
+        ("description", "work description"),
+        ("competition_type", "competition type"),
+        ("value", "contract value"),
+        ("days_remaining", "expiration date"),
+        ("naics_code", "NAICS code"),
+        ("vendor", "incumbent vendor"),
+    ]
+    missing = [label for field, label in key_fields if not row.get(field)]
+
+    if not missing:
+        return {"level": "HIGH", "missing": [], "note": "All key data fields are present."}
+    if len(missing) <= 2:
+        return {
+            "level": "MEDIUM",
+            "missing": missing,
+            "note": f"Missing: {', '.join(missing)}. Score may be slightly understated.",
+        }
+    return {
+        "level": "LOW",
+        "missing": missing,
+        "note": f"Incomplete record ({len(missing)} fields absent). Verify on SAM.gov before committing pursuit resources.",
+    }
+
+
+def capture_recommendation(row, biz_match_score=None) -> dict:
+    """Top-level Pursue / Monitor / Pass verdict for a single contract.
+
+    Combines recompete score, timing stage, competition type, value, and (when
+    a business profile exists) the business match score into a single verdict.
+    Every signal is returned so the UI can show the reasoning — no black box.
+
+    Returns:
+        verdict:    "PURSUE" | "MONITOR" | "PASS"
+        confidence: "HIGH" | "MEDIUM" | "LOW"
+        headline:   one-line rationale
+        signals:    [{label, value, positive: True|False|None}]
+        caution:    [str]  — counter-signals or caveats
+    """
+    score = _safe_int(row.get("recompete_score"))
+    days = _safe_int(row.get("days_remaining"))
+    comp_type = (row.get("competition_type") or "").upper()
+    value = float(row.get("value") or 0)
+    sol_id = (row.get("solicitation_id") or "").strip()
+
+    stage = pursuit_stage(days)
+    stage_key = stage["stage_key"]
+    stage_actionable = stage["actionable"]
+
+    signals = []
+    caution = []
+
+    # Signal: recompete score
+    if score is not None:
+        if score >= 75:
+            signals.append({"label": "Opportunity score", "value": f"{score}/100", "positive": True})
+        elif score >= 50:
+            signals.append({"label": "Opportunity score", "value": f"{score}/100", "positive": None})
+        else:
+            signals.append({"label": "Opportunity score", "value": f"{score}/100", "positive": False})
+            caution.append(f"Score {score}/100 is below the standard pursuit threshold (75)")
+
+    # Signal: timing
+    _timing_labels = {
+        "best_window":    "Best pursuit window (12–18 months)",
+        "shape":          "Opportunity shaping window",
+        "prepare":        "Proposal preparation window",
+        "active_pursuit": "Active pursuit window",
+        "watch":          "Early monitoring — more than 18 months out",
+        "urgent":         "Late stage — under 90 days",
+        "too_late":       "Too late for new challengers",
+        "expired":        "Contract expired",
+        "unknown":        "Timing unknown",
+    }
+    timing_label = _timing_labels.get(stage_key, stage["label"])
+    if stage_key in ("best_window", "shape", "prepare", "active_pursuit"):
+        signals.append({"label": "Timing", "value": timing_label, "positive": True})
+    elif stage_key in ("expired", "too_late"):
+        signals.append({"label": "Timing", "value": timing_label, "positive": False})
+        caution.append(stage["description"])
+    else:
+        signals.append({"label": "Timing", "value": timing_label, "positive": None})
+
+    # Signal: competition type
+    if "FULL AND OPEN" in comp_type:
+        signals.append({"label": "Competition", "value": "Full & Open — any vendor may bid", "positive": True})
+    elif "SAP" in comp_type or "SIMPLIFIED" in comp_type:
+        signals.append({"label": "Competition", "value": "Simplified Acquisition", "positive": None})
+    elif comp_type:
+        signals.append({"label": "Competition", "value": comp_type.title(), "positive": None})
+    else:
+        signals.append({"label": "Competition", "value": "Not recorded", "positive": None})
+
+    # Signal: contract value
+    if value >= 1_000_000:
+        signals.append({"label": "Contract value", "value": f"${value:,.0f}", "positive": True})
+    elif value > 0:
+        signals.append({"label": "Contract value", "value": f"${value:,.0f} (below $1M threshold)", "positive": None})
+    else:
+        signals.append({"label": "Contract value", "value": "Not recorded", "positive": None})
+        caution.append("Contract value is missing — return-on-investment cannot be assessed")
+
+    # Signal: business match (only when profile exists)
+    if biz_match_score is not None:
+        if biz_match_score >= 60:
+            signals.append({"label": "Business match", "value": f"{biz_match_score}% match", "positive": True})
+        elif biz_match_score >= 30:
+            signals.append({"label": "Business match", "value": f"{biz_match_score}% match", "positive": None})
+        else:
+            signals.append({"label": "Business match", "value": f"{biz_match_score}% match", "positive": False})
+            caution.append(f"Low business profile match ({biz_match_score}%) — verify capability alignment before investing pursuit time")
+
+    # Signal: solicitation on file
+    if sol_id:
+        signals.append({"label": "Solicitation on file", "value": sol_id, "positive": True})
+
+    # --- Verdict ---
+    pos_count = sum(1 for s in signals if s["positive"] is True)
+    neg_count = sum(1 for s in signals if s["positive"] is False)
+
+    score_ok = score is not None and score >= 75
+    biz_ok = biz_match_score is None or biz_match_score >= 40
+
+    if stage_key in ("expired", "too_late"):
+        verdict = "PASS"
+        confidence = "HIGH"
+        headline = "Too late for this pursuit cycle — watch for the follow-on solicitation"
+
+    elif score is not None and score < 40:
+        verdict = "PASS"
+        confidence = "HIGH" if neg_count >= 2 else "MEDIUM"
+        headline = f"Low opportunity score ({score}/100) — limited pursuit value"
+
+    elif biz_match_score is not None and biz_match_score < 20:
+        verdict = "PASS"
+        confidence = "MEDIUM"
+        headline = f"Poor business fit ({biz_match_score}% match) — focus resources on better-aligned opportunities"
+
+    elif score_ok and stage_actionable and biz_ok:
+        verdict = "PURSUE"
+        if pos_count >= 3 and neg_count == 0:
+            confidence = "HIGH"
+        elif pos_count >= 2:
+            confidence = "MEDIUM"
+        else:
+            confidence = "LOW"
+        if "FULL AND OPEN" in comp_type and score >= 75:
+            headline = f"Strong recompete candidate — open competition, score {score}/100"
+        elif value >= 5_000_000:
+            headline = f"High-value opportunity — ${value:,.0f} in the active pursuit window"
+        else:
+            headline = f"Pursue now — score {score}/100 with {stage['label'].lower()} timing"
+
+    else:
+        verdict = "MONITOR"
+        if neg_count > pos_count:
+            confidence = "LOW"
+        else:
+            confidence = "MEDIUM"
+        if stage_key == "watch":
+            headline = "Too early to pursue — track and revisit in 6–12 months"
+        elif score_ok and not stage_actionable:
+            headline = f"Strong score ({score}/100) but timing not yet optimal — track closely"
+        elif score is not None and 50 <= score < 75:
+            headline = "Moderate opportunity — monitor until score or timing improves"
+        else:
+            headline = "Track this contract — not yet ready for active pursuit"
+
+    return {
+        "verdict": verdict,
+        "confidence": confidence,
+        "headline": headline,
+        "signals": signals,
+        "caution": caution,
+    }
+
+
+def incumbent_intelligence(row) -> dict:
+    """Analyze the incumbent contractor from stored contract fields.
+
+    Returns a dict with hold duration, displacement difficulty, and UEI/CAGE
+    identifiers. Displacement signal is derived from contract length and
+    competition type — no external lookups.
+
+    displacement_signal: "easy" | "medium" | "hard" | "unknown"
+    """
+    from datetime import date as _date
+
+    name = (row.get("vendor") or "").strip() or None
+    uei = (row.get("recipient_uei") or "").strip() or None
+    cage_code = (row.get("cage_code") or "").strip() or None
+    comp_type = (row.get("competition_type") or "").upper()
+
+    # Hold duration from contract dates
+    hold_months = None
+    hold_label = "Unknown duration"
+    start_raw = (row.get("start_date") or "").strip()
+    end_raw = (row.get("end_date") or "").strip()
+    if start_raw and end_raw:
+        try:
+            s = _date.fromisoformat(start_raw[:10])
+            e = _date.fromisoformat(end_raw[:10])
+            months = (e.year - s.year) * 12 + (e.month - s.month)
+            if months > 0:
+                hold_months = months
+                if months < 12:
+                    hold_label = f"{months} months"
+                elif months == 12:
+                    hold_label = "1 year"
+                else:
+                    years = months // 12
+                    rem = months % 12
+                    hold_label = f"{years} year{'s' if years > 1 else ''}" + (
+                        f", {rem} month{'s' if rem > 1 else ''}" if rem else ""
+                    )
+        except (ValueError, TypeError):
+            pass
+
+    is_open = "FULL AND OPEN" in comp_type
+
+    if not name:
+        return {
+            "name": None,
+            "has_name": False,
+            "uei": uei,
+            "cage_code": cage_code,
+            "hold_months": hold_months,
+            "hold_label": hold_label,
+            "displacement_signal": "unknown",
+            "displacement_label": "Incumbent unknown",
+            "displacement_note": "No incumbent vendor on file. Search SAM.gov to identify the current award holder.",
+        }
+
+    # Displacement logic
+    if hold_months is not None and hold_months > 48:
+        signal = "hard"
+        label = "Strongly entrenched"
+        note = (
+            f"{name} has held this contract for {hold_label}. "
+            "Deep agency relationships and incumbent past performance make displacement difficult."
+        )
+    elif hold_months is not None and hold_months > 36 and not is_open:
+        signal = "hard"
+        label = "Entrenched"
+        note = (
+            f"{name} has held this contract for {hold_label} under limited competition. "
+            "Expect a strong recompete defense — differentiation and agency relationships are critical."
+        )
+    elif is_open and (hold_months is None or hold_months <= 24):
+        signal = "easy"
+        label = "Displaceable — open competition"
+        note = (
+            f"Awarded under full & open competition"
+            f"{' for ' + hold_label if hold_months else ''}. "
+            "A well-prepared challenger with comparable past performance can compete on merit."
+        )
+    else:
+        signal = "medium"
+        label = "Moderately entrenched"
+        note = (
+            f"{name} holds this contract for {hold_label}. " if hold_months else f"{name} holds this contract. "
+        ) + "Research their agency performance history and any vulnerabilities before committing to a bid."
+
+    return {
+        "name": name,
+        "has_name": True,
+        "uei": uei,
+        "cage_code": cage_code,
+        "hold_months": hold_months,
+        "hold_label": hold_label,
+        "displacement_signal": signal,
+        "displacement_label": label,
+        "displacement_note": note,
+    }
+
+
+def contract_plain_summary(row) -> str:
+    """Two-to-three sentence plain-English capture brief from stored fields.
+
+    Action-oriented framing for the contract detail page header. Pure
+    function — no AI calls. Falls back gracefully for sparse records.
+    """
+    from datetime import date as _date
+
+    agency = (row.get("agency") or "").strip()
+    vendor = (row.get("vendor") or "").strip()
+    value = float(row.get("value") or 0)
+    category = (row.get("category") or "").strip()
+    description = (row.get("description") or "").strip()
+    end_raw = (row.get("end_date") or "").strip()
+    days = _safe_int(row.get("days_remaining"))
+    comp_type = (row.get("competition_type") or "").strip()
+    sol_id = (row.get("solicitation_id") or "").strip()
+    sam_type = (row.get("sam_type") or "").strip()
+
+    # Work label
+    work = category if (category and category.lower() not in ("other", "unknown")) else ""
+    if not work and description:
+        work = (description[:75].rsplit(" ", 1)[0] if len(description) > 75 else description)
+
+    # Sentence 1: holder + agency + work + value
+    val_str = f"${value:,.0f}" if value else ""
+    parts = []
+    if agency and vendor:
+        s1 = f"{agency} has a contract with {vendor}"
+        s1 += f" for {work.lower()}" if work else ""
+        s1 += f", valued at {val_str}" if val_str else ""
+        s1 += "."
+    elif agency:
+        s1 = f"{agency} holds an active government contract"
+        s1 += f" for {work.lower()}" if work else ""
+        s1 += f" valued at {val_str}" if val_str else ""
+        s1 += "."
+    else:
+        s1 = f"Active government contract valued at {val_str}." if val_str else "Active government contract."
+    parts.append(s1)
+
+    # Sentence 2: timing + competition
+    timing_parts = []
+    if end_raw:
+        try:
+            e = _date.fromisoformat(end_raw[:10])
+            timing_parts.append(f"runs through {e.strftime('%B %Y')}")
+        except (ValueError, TypeError):
+            timing_parts.append(f"runs through {end_raw}")
+    if days is not None and days > 0:
+        timing_parts.append(f"{days} days remaining")
+    if comp_type:
+        timing_parts.append(f"awarded via {comp_type.lower()}")
+
+    if timing_parts:
+        s2 = f"The contract {timing_parts[0]}"
+        if len(timing_parts) == 2:
+            s2 += f" ({timing_parts[1]})"
+        elif len(timing_parts) == 3:
+            s2 += f" ({timing_parts[1]}), {timing_parts[2]}"
+        s2 += "."
+        parts.append(s2)
+
+    # Sentence 3: solicitation status
+    if sol_id and sam_type:
+        parts.append(f"SAM.gov shows a {sam_type.lower()} record (solicitation {sol_id}).")
+    elif sol_id:
+        parts.append(f"Solicitation {sol_id} is on file.")
+
+    return " ".join(parts)
+
+
+# ---------------------------------------------------------------------------
 # Opportunity status / actionability classification
 # ---------------------------------------------------------------------------
 

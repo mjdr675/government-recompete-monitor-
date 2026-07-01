@@ -100,6 +100,71 @@
 </div>
 {% endif %}
 
+{# ── Capture Brief: Pursue / Monitor / Pass verdict ──────────────────────── #}
+{% if capture %}
+{% set verdict_colors = {
+  "PURSUE": {"bg": "#d1fae5", "border": "#6ee7b7", "text": "#065f46"},
+  "MONITOR": {"bg": "#fef3c7", "border": "#fcd34d", "text": "#92400e"},
+  "PASS": {"bg": "#fee2e2", "border": "#fca5a5", "text": "#991b1b"}
+} %}
+{% set vc = verdict_colors.get(capture.verdict, verdict_colors["MONITOR"]) %}
+<div style="margin-top:14px;border:1px solid {{ vc.border }};border-radius:var(--radius-sm);overflow:hidden" data-testid="capture-brief">
+
+  {# Verdict header #}
+  <div style="padding:12px 18px;background:{{ vc.bg }};display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <span style="font-size:15px;font-weight:800;color:{{ vc.text }};letter-spacing:.04em">{{ capture.verdict }}</span>
+    <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;background:rgba(0,0,0,.07);color:{{ vc.text }}">{{ capture.confidence }} CONFIDENCE</span>
+    <div style="font-size:13px;color:var(--text-primary);flex:1;min-width:180px">{{ capture.headline }}</div>
+  </div>
+
+  {# Decision signals grid #}
+  <div style="padding:12px 18px;background:var(--surface)">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:8px">Decision signals</div>
+    <div style="display:grid;gap:5px">
+      {% for sig in capture.signals %}
+      <div style="display:grid;grid-template-columns:16px 150px 1fr;align-items:baseline;gap:6px;font-size:13px">
+        <span style="font-weight:700;color:{% if sig.positive == true %}#059669{% elif sig.positive == false %}#dc2626{% else %}var(--text-muted){% endif %}">
+          {% if sig.positive == true %}✓{% elif sig.positive == false %}✗{% else %}·{% endif %}
+        </span>
+        <span style="color:var(--text-muted)">{{ sig.label }}</span>
+        <span style="font-weight:{% if sig.positive %}600{% else %}400{% endif %};color:{% if sig.positive == true %}#059669{% elif sig.positive == false %}#dc2626{% else %}var(--text-primary){% endif %}">{{ sig.value }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% if capture.caution %}
+    <div style="margin-top:10px;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-left:3px solid #d97706;border-radius:4px;font-size:12px;color:var(--text-muted)">
+      {% for c in capture.caution %}<div style="margin-bottom:2px">⚠ {{ c }}</div>{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  {# Incumbent intelligence — only when vendor name is known #}
+  {% if incumbent and incumbent.has_name %}
+  <div style="padding:10px 18px;border-top:1px solid var(--border);background:var(--bg);font-size:13px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:6px">Incumbent intelligence</div>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:6px">
+      <div><span style="color:var(--text-muted)">Vendor:</span> <a href="/vendor/{{ incumbent.name|urlencode }}" style="font-weight:600">{{ incumbent.name }}</a></div>
+      {% if incumbent.hold_months %}<div><span style="color:var(--text-muted)">Contract hold:</span> <strong>{{ incumbent.hold_label }}</strong></div>{% endif %}
+      {% if incumbent.uei %}<div><span style="color:var(--text-muted)">UEI:</span> <span style="font-family:monospace;font-size:12px">{{ incumbent.uei }}</span></div>{% endif %}
+      <div>
+        <span style="color:var(--text-muted)">Displacement:</span>
+        <span style="font-weight:600;color:{% if incumbent.displacement_signal == 'easy' %}#059669{% elif incumbent.displacement_signal == 'hard' %}#dc2626{% else %}#d97706{% endif %}">
+          {{ incumbent.displacement_label }}
+        </span>
+      </div>
+    </div>
+    <div style="color:var(--text-muted);font-size:12px">{{ incumbent.displacement_note }}</div>
+  </div>
+  {% elif incumbent and not incumbent.has_name %}
+  <div style="padding:8px 18px;border-top:1px solid var(--border);background:var(--bg);font-size:12px;color:var(--text-muted)">
+    Incumbent not identified — <a href="https://sam.gov/content/opportunities?keywords={{ (row.get('solicitation_id') or row.get('award_id') or '')|urlencode }}" target="_blank" rel="noopener">search SAM.gov</a> to find the current award holder.
+  </div>
+  {% endif %}
+
+</div>
+{% endif %}
+{# ── End Capture Brief ────────────────────────────────────────────────────── #}
+
 {% if action %}
 <div style="margin-top:14px;padding:16px 18px;background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:var(--radius-sm);line-height:1.6">
   <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);margin-bottom:6px">Next Recommended Action</div>
@@ -207,6 +272,12 @@
     <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
     {{ score_help.score_breakdown() }}
     </div>
+    {% if data_confidence %}
+    <div style="margin-top:10px;font-size:12px;color:var(--text-muted);border-top:1px solid var(--border);padding-top:8px">
+      Data confidence: <strong style="color:{% if data_confidence.level == 'HIGH' %}#059669{% elif data_confidence.level == 'MEDIUM' %}#d97706{% else %}#dc2626{% endif %}">{{ data_confidence.level }}</strong>
+      — {{ data_confidence.note }}
+    </div>
+    {% endif %}
     {% else %}
     {# Fallback when score_breakdown is unavailable. #}
     {% if row["recompete_score"] is not none %}
