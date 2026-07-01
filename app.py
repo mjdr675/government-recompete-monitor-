@@ -83,6 +83,7 @@ from analytics import vendor_profile_analytics as vendor_profile_query
 from analytics import agency_profile as agency_profile_query
 from analytics import dashboard_analytics, opportunity_recommendations, dashboard_recommended_actions, business_opportunities
 from analytics import suggested_matches as get_suggested_matches, my_contracts_summary, personalized_for_business, my_current_contracts, my_current_contract_summary
+from dashboard_today import today_work_items, section_counts
 from business_match import (
     business_match_score,
     business_match_reasons,
@@ -846,6 +847,9 @@ def dashboard():
         dash_saved_searches = _saved_searches_with_urls(user_id) if user_id else []
         alert_configured = bool(os.environ.get("ALERT_TO"))
 
+        today_items = today_work_items(user_id)
+        today_section_counts = section_counts(today_items)
+
         return render_template(
             "dashboard.html",
             report=build_report(date.today().isoformat()),
@@ -875,6 +879,8 @@ def dashboard():
             pipeline_stages=PIPELINE_STAGES,
             saved_searches=dash_saved_searches,
             alert_configured=alert_configured,
+            today_items=today_items,
+            today_section_counts=today_section_counts,
         )
 
     except Exception:
