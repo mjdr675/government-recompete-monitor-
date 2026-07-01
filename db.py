@@ -1867,13 +1867,38 @@ def _heal_field_changes_schema(conn):
 
 def init_field_changes_table():
     engine = get_engine()
+    is_pg = engine.dialect.name == "postgresql"
+    # id/created_at need dialect-specific DDL: AUTOINCREMENT and PRAGMA are
+    # SQLite-only syntax and are invalid on Postgres.
+    if is_pg:
+        id_col = "id          SERIAL PRIMARY KEY,"
+        created_at_col = "created_at  TIMESTAMP DEFAULT NOW()"
+    else:
+        id_col = "id          INTEGER PRIMARY KEY AUTOINCREMENT,"
+        created_at_col = "created_at  TEXT DEFAULT CURRENT_TIMESTAMP"
     with engine.begin() as conn:
-        conn.execute(text(_field_changes_create_sql(if_not_exists=True)))
-        # Repair legacy SQLite tables that drifted from the canonical schema —
-        # missing columns, a missing UNIQUE constraint, or obsolete NOT NULL
-        # columns (e.g. a legacy contract_id). Postgres fresh DBs carry the
-        # canonical schema via migration 012, so this is SQLite-only.
-        if engine.dialect.name != "postgresql":
+        if is_pg:
+            # _field_changes_create_sql() hardcodes SQLite-only AUTOINCREMENT /
+            # CURRENT_TIMESTAMP syntax, so Postgres needs its own DDL here.
+            conn.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS contract_field_changes (
+                {id_col}
+                run_date    TEXT NOT NULL,
+                internal_id TEXT NOT NULL,
+                field_name  TEXT NOT NULL,
+                old_value   TEXT,
+                new_value   TEXT,
+                change_kind TEXT NOT NULL,
+                {created_at_col},
+                UNIQUE(run_date, internal_id, field_name)
+            )
+            """))
+        else:
+            conn.execute(text(_field_changes_create_sql(if_not_exists=True)))
+            # Repair legacy SQLite tables that drifted from the canonical schema —
+            # missing columns, a missing UNIQUE constraint, or obsolete NOT NULL
+            # columns (e.g. a legacy contract_id). Postgres fresh DBs carry the
+            # canonical schema via migration 012, so this is SQLite-only.
             _heal_field_changes_schema(conn)
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_field_changes_run_date ON contract_field_changes(run_date)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_field_changes_internal_id ON contract_field_changes(internal_id)"))
