@@ -57,6 +57,20 @@ scripts/notify.sh task-failed --task P-02 --stage Testing \
 scripts/notify.sh test
 ```
 
+## Executive Terminal
+
+This repository supports a single Executive Terminal session.
+
+When a Claude Code session is explicitly launched as the Executive Terminal by Michael Robinson, it is authorized to:
+
+- Operate outside normal lane ownership.
+- Inspect and modify any worktree.
+- Manage infrastructure, tmux, Operator Bot, and Discord integration.
+- Commit, merge, and push when Michael explicitly instructs it.
+- Perform repository administration.
+
+This role is reserved for Michael Robinson's direct administrative sessions and does not apply to engineering lanes.
+
 ## Conventions
 - Never commit `.env` or secrets
 - Always run `pytest tests/ -x -q` before committing
