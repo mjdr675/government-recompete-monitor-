@@ -308,7 +308,7 @@ def detail_client(detail_db):
 def test_detail_page_shows_action_card(detail_client):
     rv = detail_client.get("/contract/DETAIL001")
     assert rv.status_code == 200
-    assert b"Next Recommended Action" in rv.data
+    assert b"Next Steps" in rv.data or b"Next Recommended Action" in rv.data
 
 
 def test_detail_page_shows_why_matters(detail_client):

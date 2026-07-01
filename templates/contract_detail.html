@@ -82,10 +82,15 @@
 <div style="margin-top:14px;border:1px solid {{ vc.border }};border-radius:var(--radius-sm);overflow:hidden" data-testid="capture-brief">
 
   {# Verdict header #}
-  <div style="padding:12px 18px;background:{{ vc.bg }};display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-    <span style="font-size:15px;font-weight:800;color:{{ vc.text }};letter-spacing:.04em">{{ capture.verdict }}</span>
-    <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;background:rgba(0,0,0,.07);color:{{ vc.text }}">{{ capture.confidence }} CONFIDENCE</span>
-    <div style="font-size:13px;color:var(--text-primary);flex:1;min-width:180px">{{ capture.headline }}</div>
+  <div style="padding:12px 18px 8px;background:{{ vc.bg }}">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:4px">
+      <span style="font-size:15px;font-weight:800;color:{{ vc.text }};letter-spacing:.04em">{{ capture.verdict }}</span>
+      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;background:rgba(0,0,0,.07);color:{{ vc.text }}">{{ capture.confidence }} CONFIDENCE</span>
+      <div style="font-size:13px;color:var(--text-primary);flex:1;min-width:180px">{{ capture.headline }}</div>
+    </div>
+    {% if capture.confidence_rationale %}
+    <div style="font-size:12px;color:{{ vc.text }};opacity:.8">{{ capture.confidence_rationale }}</div>
+    {% endif %}
   </div>
 
   {# Decision signals grid #}
@@ -149,7 +154,21 @@
 {% endif %}
 
 {# ── 3. Next Recommended Action ──────────────────────────────── #}
-{% if action %}
+{% if action_steps %}
+<div class="cd-section cd-action" data-testid="action-steps">
+  <div class="cd-section-title">Next Steps</div>
+  {% for step in action_steps %}
+  <div style="display:flex;gap:12px;{% if not loop.last %}margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border);{% endif %}">
+    <div style="font-size:15px;font-weight:800;color:var(--accent);min-width:22px;padding-top:1px">{{ loop.index }}.</div>
+    <div style="flex:1">
+      <div style="font-weight:600;font-size:14px;margin-bottom:3px;line-height:1.4">{{ step.action }}</div>
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:4px">{{ step.detail }}</div>
+      <span style="font-size:11px;font-weight:700;padding:1px 6px;border-radius:3px;background:{% if step.priority == 'now' %}var(--accent){% elif step.priority == 'soon' %}#fef3c7{% else %}var(--surface){% endif %};color:{% if step.priority == 'now' %}#fff{% elif step.priority == 'soon' %}#92400e{% else %}var(--text-muted){% endif %}">{{ step.timeframe }}</span>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% elif action %}
 <div class="cd-section cd-action">
   <div class="cd-section-title">Next Recommended Action</div>
   <div class="cd-action-text">{{ action.action }}</div>
@@ -193,7 +212,19 @@
 <div class="cd-section cd-nextstep">
   <div class="cd-section-title">AI Summary</div>
   <div class="cd-timing">Recompete timing: {{ next_step.timing }}</div>
+  {% if why_now %}
+  <div style="font-size:14px;margin-bottom:6px;color:var(--text-primary)">{{ why_now }}</div>
+  {% endif %}
   <div class="muted" style="margin-bottom:8px">{{ next_step.detail }}</div>
+  {% if solicitation_window and solicitation_window.status not in ("unknown",) %}
+  <div style="font-size:13px;margin-bottom:8px">
+    <strong>Solicitation window:</strong>
+    <span style="color:{% if solicitation_window.urgency in ('critical','high') %}#dc2626{% elif solicitation_window.urgency == 'medium' %}#d97706{% else %}var(--text-muted){% endif %}">
+      {{ solicitation_window.label }}
+    </span>
+    <span class="muted"> — {{ solicitation_window.detail }}</span>
+  </div>
+  {% endif %}
   <div><strong>Suggested approach:</strong> {{ next_step.action }}</div>
 </div>
 {% endif %}
