@@ -616,6 +616,17 @@ def why_it_matters(row):
     if "FULL AND OPEN" in comp_type:
         bullets.append("Full and open competition — strong recompete target")
 
+    naics_desc = (row.get("naics_description") or "").strip()
+    naics_code = (row.get("naics_code") or "").strip()
+    if naics_desc and naics_code:
+        bullets.append(f"Industry sector: {naics_desc} (NAICS {naics_code})")
+    elif naics_desc:
+        bullets.append(f"Industry sector: {naics_desc}")
+
+    psc_desc = (row.get("psc_description") or "").strip()
+    if psc_desc:
+        bullets.append(f"Product/service classification: {psc_desc}")
+
     if not bullets:
         bullets.append("Active government contract")
 
@@ -1000,9 +1011,31 @@ def capture_recommendation(row, biz_match_score=None) -> dict:
         else:
             headline = "Track this contract — not yet ready for active pursuit"
 
+    # --- Confidence rationale (plain English) ---
+    pos_labels = [s["label"].lower() for s in signals if s["positive"] is True]
+    neg_labels = [s["label"].lower() for s in signals if s["positive"] is False]
+
+    if confidence == "HIGH":
+        if not neg_labels and pos_labels:
+            cr = f"Confidence is HIGH: {', '.join(pos_labels[:3])} all point toward {verdict} with no counter-signals."
+        elif neg_labels:
+            cr = f"Confidence is HIGH: strong positive signals ({', '.join(pos_labels[:2])}) outweigh the {neg_labels[0]} concern."
+        else:
+            cr = f"Confidence is HIGH based on available data."
+    elif confidence == "MEDIUM":
+        if neg_labels and pos_labels:
+            cr = f"Confidence is MEDIUM: {pos_labels[0]} supports {verdict}, but {neg_labels[0]} is a concern."
+        elif neg_labels:
+            cr = f"Confidence is MEDIUM: some signals are negative ({', '.join(neg_labels[:2])})."
+        else:
+            cr = "Confidence is MEDIUM: supporting signals exist but data is incomplete."
+    else:
+        cr = "Confidence is LOW: signals are mixed or incomplete. Verify on SAM.gov before committing pursuit resources."
+
     return {
         "verdict": verdict,
         "confidence": confidence,
+        "confidence_rationale": cr,
         "headline": headline,
         "signals": signals,
         "caution": caution,
@@ -1178,6 +1211,453 @@ def contract_plain_summary(row) -> str:
         parts.append(f"Solicitation {sol_id} is on file.")
 
     return " ".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Time-anchored urgency and solicitation window estimation
+# ---------------------------------------------------------------------------
+
+def why_now(row) -> str:
+    """One sentence answering: why should I act on this contract today?
+
+    Time-anchors urgency to THIS contract's specific solicitation cycle.
+    Not a generic stage label — a concrete sentence with dates and numbers.
+    Pure function: no DB, no AI calls.
+    """
+    import datetime as _dt
+    from datetime import date as _date, timedelta as _td
+
+    days = _safe_int(row.get("days_remaining"))
+    sam_type = (row.get("sam_type") or "").lower().strip()
+    sam_due_raw = (row.get("sam_due_date") or "").strip()
+
+    due_date = None
+    if sam_due_raw:
+        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", "%m/%d/%Y %H:%M:%S", "%m/%d/%Y"):
+            try:
+                due_date = _dt.datetime.strptime(sam_due_raw[:19], fmt[:len(sam_due_raw[:19])]).date()
+                break
+            except ValueError:
+                continue
+
+    due_future = due_date is not None and due_date >= _date.today()
+    days_to_due = (due_date - _date.today()).days if due_future else None
+
+    # Open solicitation with a live deadline — most urgent case
+    if sam_type in _OPEN_SAM_TYPES and due_future and days_to_due is not None:
+        if days_to_due <= 7:
+            return (
+                f"A solicitation is live and closes in {days_to_due} day{'s' if days_to_due != 1 else ''} "
+                "— respond now or the window closes."
+            )
+        return (
+            f"A solicitation is open and closes {due_date.strftime('%B %-d, %Y')} ({days_to_due} days) "
+            "— this is the active bid window."
+        )
+
+    if sam_type in _PRESOL_SAM_TYPES:
+        return (
+            "A pre-solicitation is posted — the formal RFP could drop any time. "
+            "Submit a capability statement now to get on the agency's radar."
+        )
+
+    if days is None:
+        return "Timing is unknown — verify the contract end date on SAM.gov before allocating pursuit resources."
+
+    if days <= 0:
+        return "This contract has expired — search SAM.gov for the follow-on award or recompete solicitation."
+
+    if days < 30:
+        return (
+            f"With only {days} day{'s' if days != 1 else ''} remaining, "
+            "the solicitation has almost certainly closed. Shift focus to the follow-on award."
+        )
+
+    if days < 90:
+        return (
+            f"Only {days} days remain — the solicitation may already be live on SAM.gov. "
+            "Check immediately if you are already engaged with this agency."
+        )
+
+    if days < 180:
+        return (
+            f"With {days} days until expiry, the solicitation is likely to appear within "
+            "the next 30–60 days. Prepare your proposal and teaming now."
+        )
+
+    if days < 270:
+        return (
+            f"At {days} days out, teaming and pricing discussions must begin now — "
+            "most competitive proposals take 90+ days to build properly."
+        )
+
+    if days < 365:
+        return (
+            f"With {days} days remaining, requirements are being drafted by the agency now. "
+            "Engaging today can still influence the solicitation language."
+        )
+
+    if days <= 540:
+        try:
+            solicit_estimate = _date.today() + _td(days=days - 150)
+            return (
+                f"The {days}-day pursuit window is open now — solicitation expected around "
+                f"{solicit_estimate.strftime('%B %Y')}. "
+                "Start building agency relationships and shaping your position before that window closes."
+            )
+        except Exception:
+            pass
+        return "You are in the ideal 12–18 month pursuit window — act now to build agency relationships before the solicitation drops."
+
+    try:
+        revisit = _date.today() + _td(days=180)
+        return (
+            f"At {days} days out, active pursuit is premature. "
+            f"Set a reminder to revisit around {revisit.strftime('%B %Y')} when the window opens."
+        )
+    except Exception:
+        return "More than 18 months out — watch and revisit when it enters the 12–18 month pursuit window."
+
+
+def estimated_solicitation_window(row) -> dict:
+    """Estimate when this contract will open for competitive bids.
+
+    Returns:
+        status:  "open" | "presolicitation" | "awarded" | "near" | "expected" | "early" | "too_late" | "expired" | "unknown"
+        label:   short display string (e.g. "Open now — closes Aug 15, 2026")
+        detail:  one sentence of context
+        urgency: "critical" | "high" | "medium" | "low" | "none"
+    """
+    import datetime as _dt
+    from datetime import date as _date, timedelta as _td
+
+    days = _safe_int(row.get("days_remaining"))
+    sam_type = (row.get("sam_type") or "").lower().strip()
+    sam_due_raw = (row.get("sam_due_date") or "").strip()
+
+    due_date = None
+    if sam_due_raw:
+        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", "%m/%d/%Y %H:%M:%S", "%m/%d/%Y"):
+            try:
+                due_date = _dt.datetime.strptime(sam_due_raw[:19], fmt[:len(sam_due_raw[:19])]).date()
+                break
+            except ValueError:
+                continue
+
+    due_future = due_date is not None and due_date >= _date.today()
+
+    if sam_type in _OPEN_SAM_TYPES:
+        if due_future:
+            days_left = (due_date - _date.today()).days
+            return {
+                "status": "open",
+                "label": f"Open now — closes {due_date.strftime('%b %-d, %Y')}",
+                "detail": f"Active solicitation with {days_left} day{'s' if days_left != 1 else ''} to respond.",
+                "urgency": "critical" if days_left <= 14 else "high",
+            }
+        return {
+            "status": "open",
+            "label": "Solicitation on file — verify deadline",
+            "detail": "A SAM.gov solicitation record exists. Confirm the response deadline before starting your proposal.",
+            "urgency": "high",
+        }
+
+    if sam_type in _PRESOL_SAM_TYPES:
+        return {
+            "status": "presolicitation",
+            "label": f"Pre-solicitation posted ({sam_type})",
+            "detail": "Agency is gathering market information. Formal RFP expected to follow — submit a capability statement now.",
+            "urgency": "high",
+        }
+
+    if sam_type in _AWARD_SAM_TYPES:
+        urgency = "low" if (days or 0) > 180 else "medium"
+        return {
+            "status": "awarded",
+            "label": "Awarded — not open for bids",
+            "detail": "SAM.gov shows an award notice. The recompete solicitation will open closer to contract expiry.",
+            "urgency": urgency,
+        }
+
+    if days is None:
+        return {
+            "status": "unknown",
+            "label": "Solicitation date unknown",
+            "detail": "No SAM.gov record found. Search by contract number or vendor name to find current status.",
+            "urgency": "none",
+        }
+
+    if days <= 0:
+        return {
+            "status": "expired",
+            "label": "Expired — search for follow-on",
+            "detail": "This contract has ended. The follow-on procurement may already be posted on SAM.gov.",
+            "urgency": "medium",
+        }
+
+    if days < 30:
+        return {
+            "status": "too_late",
+            "label": "Solicitation window likely closed",
+            "detail": f"Only {days} day{'s' if days != 1 else ''} remain — too late for most challengers to prepare a competitive bid.",
+            "urgency": "none",
+        }
+
+    if days < 90:
+        return {
+            "status": "near",
+            "label": "Solicitation may be live now",
+            "detail": f"Contract expires in {days} days — check SAM.gov immediately for an active solicitation.",
+            "urgency": "critical",
+        }
+
+    if days < 180:
+        return {
+            "status": "near",
+            "label": "Solicitation expected within 1–3 months",
+            "detail": f"Based on the {days}-day runway, a solicitation is likely to appear soon.",
+            "urgency": "high",
+        }
+
+    try:
+        if days < 270:
+            est = _date.today() + _td(days=days - 90)
+        else:
+            est = _date.today() + _td(days=max(30, days - 150))
+        est_label = est.strftime("%B %Y")
+    except Exception:
+        est_label = "unknown"
+
+    if days < 540:
+        return {
+            "status": "expected",
+            "label": f"Solicitation expected ~{est_label}",
+            "detail": f"Typically appears 3–6 months before contract expiry; roughly {est_label} based on the {days}-day runway.",
+            "urgency": "medium" if days < 400 else "low",
+        }
+
+    return {
+        "status": "early",
+        "label": f"Solicitation not expected until ~{est_label}",
+        "detail": "More than 18 months out. Watch for pre-solicitation notices as the pursuit window approaches.",
+        "urgency": "low",
+    }
+
+
+def next_action_steps(row, incumbent_intel=None) -> list[dict]:
+    """Return 2–4 ordered, contract-specific next steps.
+
+    Steps name the incumbent, agency, and timeframe — not generic stage text.
+    Each step: {action: str, detail: str, timeframe: str, priority: str}
+    priority: "now" | "soon" | "later"
+    """
+    from datetime import date as _date, timedelta as _td
+
+    days = _safe_int(row.get("days_remaining"))
+    stage = pursuit_stage(days)
+    stage_key = stage["stage_key"]
+
+    agency = (row.get("agency") or "").strip()
+    sub_agency = (row.get("sub_agency") or "").strip()
+    sol_id = (row.get("solicitation_id") or "").strip()
+    sam_url = (row.get("sam_url") or "").strip()
+    sam_type = (row.get("sam_type") or "").lower().strip()
+    value = float(row.get("value") or 0)
+    val_str = f"${value:,.0f}" if value else ""
+
+    vendor = None
+    if incumbent_intel and incumbent_intel.get("has_name"):
+        vendor = incumbent_intel["name"]
+    else:
+        vendor = (row.get("vendor") or "").strip() or None
+
+    agency_label = sub_agency or agency or "the agency"
+
+    steps = []
+
+    if stage_key in ("expired", "too_late"):
+        steps.append({
+            "action": "Search SAM.gov for the follow-on solicitation",
+            "detail": f"Search {agency_label} on SAM.gov by award ID or vendor name to find the next procurement.",
+            "timeframe": "This week",
+            "priority": "now",
+        })
+        if vendor:
+            steps.append({
+                "action": f"Check {vendor}'s recent award history",
+                "detail": "If the incumbent was re-awarded, note the contract structure for the next recompete cycle.",
+                "timeframe": "This week",
+                "priority": "soon",
+            })
+        return steps
+
+    if stage_key == "urgent":
+        steps.append({
+            "action": "Check SAM.gov for the active solicitation immediately",
+            "detail": (
+                f"Search {agency_label} opportunities — solicitation {sol_id} may be active." if sol_id
+                else f"Search {agency_label} opportunities by NAICS or contract value."
+            ),
+            "timeframe": "Today",
+            "priority": "now",
+        })
+        steps.append({
+            "action": "Only proceed if already engaged with this agency",
+            "detail": "Starting from scratch at 30–90 days is very late. Allocate resources here only if you have an existing agency relationship.",
+            "timeframe": "Decision today",
+            "priority": "now",
+        })
+        return steps
+
+    if stage_key == "active_pursuit":
+        if sol_id or sam_url:
+            steps.append({
+                "action": "Download and review the solicitation package",
+                "detail": (
+                    f"Solicitation {sol_id} is on file — pull the full requirements and evaluation criteria from SAM.gov." if sol_id
+                    else "A SAM.gov record exists — download requirements and review evaluation criteria now."
+                ),
+                "timeframe": "Today",
+                "priority": "now",
+            })
+        else:
+            steps.append({
+                "action": "Search SAM.gov for the active solicitation",
+                "detail": f"Contract expires in {days} days — the solicitation may already be posted. Search {agency_label} on SAM.gov now.",
+                "timeframe": "Today",
+                "priority": "now",
+            })
+        steps.append({
+            "action": "Finalize teaming partners and past performance citations",
+            "detail": "Lock in subcontractors, confirm past performance references, and have pricing ready for a short proposal timeline.",
+            "timeframe": "This week",
+            "priority": "now",
+        })
+        if vendor:
+            steps.append({
+                "action": f"Analyze {vendor}'s performance on this contract",
+                "detail": "Research any past performance gaps, agency feedback, or protest history that could weaken their recompete position.",
+                "timeframe": "This week",
+                "priority": "soon",
+            })
+        return steps
+
+    if stage_key == "prepare":
+        steps.append({
+            "action": "Begin writing your proposal and pricing model",
+            "detail": (
+                f"The solicitation for this {val_str} contract is expected soon — "
+                f"{agency_label} typically issues 3–6 months before expiry."
+            ),
+            "timeframe": "This week",
+            "priority": "now",
+        })
+        steps.append({
+            "action": "Finalize teaming arrangements",
+            "detail": "Lock in subcontractors now — late teaming discussions compress proposal quality and negotiating leverage.",
+            "timeframe": "Within 30 days",
+            "priority": "now",
+        })
+        if vendor:
+            steps.append({
+                "action": f"Build a competitive analysis of {vendor}",
+                "detail": "Identify their strengths, weaknesses, and any agency relationship gaps your team can exploit in the proposal.",
+                "timeframe": "Within 2 weeks",
+                "priority": "soon",
+            })
+        return steps
+
+    if stage_key == "shape":
+        steps.append({
+            "action": f"Request a capability briefing with {agency_label}",
+            "detail": "At this stage you can still influence solicitation requirements. A briefing introduces your team and can shape evaluation criteria.",
+            "timeframe": "Within 2 weeks",
+            "priority": "now",
+        })
+        steps.append({
+            "action": "Set a SAM.gov alert for draft RFP or sources-sought",
+            "detail": f"Create an email alert for {agency_label} on SAM.gov so you catch any presolicitation notices immediately.",
+            "timeframe": "Set up today",
+            "priority": "now",
+        })
+        if vendor:
+            steps.append({
+                "action": f"Research {vendor}'s agency relationships and past performance",
+                "detail": "Understanding their strengths helps you position your differentiators before the solicitation drops.",
+                "timeframe": "Within 30 days",
+                "priority": "soon",
+            })
+        steps.append({
+            "action": "Begin identifying and vetting teaming partners",
+            "detail": "Preliminary teaming discussions take 30–60 days — start now even before the solicitation is finalized.",
+            "timeframe": "Within 30 days",
+            "priority": "soon",
+        })
+        return steps
+
+    if stage_key == "best_window":
+        steps.append({
+            "action": f"Initiate agency engagement with {agency_label}",
+            "detail": "Schedule a capability briefing or attend an upcoming industry day. Early engagement is the highest-leverage investment in a recompete win.",
+            "timeframe": "Within 30 days",
+            "priority": "now",
+        })
+        if vendor:
+            steps.append({
+                "action": f"Study {vendor}'s contract history and performance",
+                "detail": "Research their award, any modifications, and public performance data. Identify capability gaps your proposal can address.",
+                "timeframe": "Within 2 weeks",
+                "priority": "now",
+            })
+        else:
+            steps.append({
+                "action": "Identify the current incumbent on SAM.gov",
+                "detail": "Search the award ID or contract number to find the current awardee. Knowing the incumbent is critical for a competitive strategy.",
+                "timeframe": "This week",
+                "priority": "now",
+            })
+        try:
+            solicit_est = _date.today() + _td(days=max(0, (days or 0) - 150))
+            solicit_str = solicit_est.strftime("%B %Y")
+        except Exception:
+            solicit_str = "in 6–12 months"
+        steps.append({
+            "action": "Build your win theme and key discriminators",
+            "detail": f"Define what makes your team the best choice before the solicitation drops (~{solicit_str}). Specific past performance and pricing strategy should be ready.",
+            "timeframe": "Within 60 days",
+            "priority": "soon",
+        })
+        return steps
+
+    if stage_key == "watch":
+        try:
+            revisit = _date.today() + _td(days=180)
+            revisit_str = revisit.strftime("%B %Y")
+        except Exception:
+            revisit_str = "in 6 months"
+        steps.append({
+            "action": "Add to your watch list and set a follow-up reminder",
+            "detail": f"This contract is more than 18 months out. Revisit around {revisit_str} when it enters the active pursuit window.",
+            "timeframe": f"Revisit ~{revisit_str}",
+            "priority": "later",
+        })
+        if vendor:
+            steps.append({
+                "action": f"Track {vendor} for news and agency relationship changes",
+                "detail": "Leadership changes, past performance issues, or agency dissatisfaction create openings as the recompete approaches.",
+                "timeframe": "Ongoing",
+                "priority": "later",
+            })
+        return steps
+
+    # Unknown timing
+    steps.append({
+        "action": "Verify the contract end date on SAM.gov",
+        "detail": "No expiration date is on file. Confirm the timeline before committing pursuit resources.",
+        "timeframe": "This week",
+        "priority": "now",
+    })
+    return steps
 
 
 # ---------------------------------------------------------------------------

@@ -1581,6 +1581,7 @@ def contract_detail(internal_id):
         recompete_score_breakdown, opportunity_status,
         capture_recommendation, incumbent_intelligence,
         contract_plain_summary, score_data_confidence,
+        why_now, estimated_solicitation_window, next_action_steps,
     )
     guidance = next_step(row.get("days_remaining"), row.get("priority"))
     action = recommended_action(row)
@@ -1591,6 +1592,8 @@ def contract_detail(internal_id):
     incumbent = incumbent_intelligence(row)
     plain_summary = contract_plain_summary(row)
     data_confidence = score_data_confidence(row)
+    why_now_text = why_now(row)
+    solicitation_window = estimated_solicitation_window(row)
 
     # Apply-window staging for the "How to apply" CTA on the detail page.
     stage_key, stage_label, stage_detail = apply_stage(row.get("days_remaining"))
@@ -1625,6 +1628,7 @@ def contract_detail(internal_id):
     psc_code = row.get("psc_code") or extract_raw_field(row, "psc_code") or ""
 
     capture = capture_recommendation(row, biz_match_score)
+    action_steps = next_action_steps(row, incumbent)
 
     return render_template("contract_detail.html", row=row, is_bookmarked=is_bookmarked,
                            notes=notes, next_step=guidance, action=action,
@@ -1648,7 +1652,10 @@ def contract_detail(internal_id):
                            capture=capture,
                            incumbent=incumbent,
                            plain_summary=plain_summary,
-                           data_confidence=data_confidence)
+                           data_confidence=data_confidence,
+                           why_now=why_now_text,
+                           solicitation_window=solicitation_window,
+                           action_steps=action_steps)
 
 
 @app.route("/contract/<internal_id>/apply")
