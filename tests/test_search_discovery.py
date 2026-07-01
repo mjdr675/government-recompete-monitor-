@@ -1397,3 +1397,179 @@ class TestPersonalizedForBusinessFields:
             assert "sam_url" in r
             assert "sam_type" in r
             assert "sam_due_date" in r
+
+
+# ---------------------------------------------------------------------------
+# TestContractSearchUrl
+# Unit tests for the views.contract_search_url() helper.
+# ---------------------------------------------------------------------------
+
+class TestContractSearchUrl:
+    def test_category_and_state(self):
+        from views import contract_search_url
+        url = contract_search_url(category="Cleaning", state="VA")
+        assert "category=Cleaning" in url
+        assert "state=VA" in url
+        assert url.startswith("/contracts")
+
+    def test_category_without_state(self):
+        from views import contract_search_url
+        url = contract_search_url(category="IT")
+        assert "category=IT" in url
+        assert "state" not in url
+
+    def test_agency_when_no_category(self):
+        from views import contract_search_url
+        url = contract_search_url(agency="Department of Defense")
+        assert "agency=" in url
+        assert "Department" in url
+
+    def test_category_takes_priority_over_agency(self):
+        from views import contract_search_url
+        url = contract_search_url(category="Cleaning", agency="DOD")
+        assert "category=Cleaning" in url
+        assert "agency=" not in url
+
+    def test_naics_prefix_truncated_to_4_digits(self):
+        from views import contract_search_url
+        url = contract_search_url(naics_code="561720")
+        assert "naics_code=5617" in url
+
+    def test_empty_returns_contracts_root(self):
+        from views import contract_search_url
+        assert contract_search_url() == "/contracts"
+
+    def test_blank_category_falls_through_to_agency(self):
+        from views import contract_search_url
+        url = contract_search_url(category="", agency="DHS")
+        assert "agency=DHS" in url
+
+    def test_other_category_falls_through_to_agency(self):
+        from views import contract_search_url
+        url = contract_search_url(category="Other", agency="DOD")
+        assert "agency=DOD" in url
+        assert "category=" not in url
+
+
+# ---------------------------------------------------------------------------
+# TestNewSavedViews
+# Verify new critical-expiring and open-contracts saved views.
+# ---------------------------------------------------------------------------
+
+class TestNewSavedViews:
+    def test_critical_expiring_exists(self):
+        from views import SAVED_VIEWS
+        assert "critical-expiring" in SAVED_VIEWS
+
+    def test_critical_expiring_filters(self):
+        from views import SAVED_VIEWS
+        f = SAVED_VIEWS["critical-expiring"]["filters"]
+        assert f.get("priority") == "CRITICAL"
+        assert int(f.get("days")) == 90
+
+    def test_open_contracts_exists(self):
+        from views import SAVED_VIEWS
+        assert "open-contracts" in SAVED_VIEWS
+
+    def test_open_contracts_filters(self):
+        from views import SAVED_VIEWS
+        f = SAVED_VIEWS["open-contracts"]["filters"]
+        assert f.get("status") == "open"
+
+    def test_critical_expiring_in_quick_views(self):
+        from views import quick_views
+        ids = [v["id"] for v in quick_views()]
+        assert "critical-expiring" in ids
+
+    def test_open_contracts_in_quick_views(self):
+        from views import quick_views
+        ids = [v["id"] for v in quick_views()]
+        assert "open-contracts" in ids
+
+    def test_critical_expiring_active_view_id_match(self):
+        from views import active_view_id
+        args = {"priority": "CRITICAL", "days": "90"}
+        assert active_view_id(args) == "critical-expiring"
+
+    def test_open_contracts_active_view_id_match(self):
+        from views import active_view_id
+        args = {"status": "open"}
+        assert active_view_id(args) == "open-contracts"
+
+    def test_build_view_query_critical_expiring(self):
+        from views import build_view_query
+        qs = build_view_query("critical-expiring")
+        assert "priority=CRITICAL" in qs
+        assert "days=90" in qs
+
+
+# ---------------------------------------------------------------------------
+# TestDashboardSearchUrlEnrichment
+# Verify app.py dashboard route attaches search_url to for_business / suggested.
+# ---------------------------------------------------------------------------
+
+class TestDashboardSearchUrlEnrichment:
+    @pytest.fixture()
+    def authed_db(self, tmp_path, monkeypatch):
+        import db as _db
+        import users as _users
+        db_path = str(tmp_path / "enrich_test.db")
+        monkeypatch.setattr(_db, "DB_PATH", db_path)
+        _db._cached_engine.cache_clear()
+        _db.init_db()
+        _users.create_user("enrich@example.com", "pass123")
+        uid = _db.connect().execute(
+            "SELECT id FROM users WHERE email='enrich@example.com'"
+        ).fetchone()[0]
+        _db.save_company_profile(uid, {
+            "company_name": "Enrich Co",
+            "naics_codes": ["561720"],
+            "states": ["VA"],
+            "agencies": ["Department of Defense"],
+        })
+        contract = {
+            "internal_id": "C-ENRICH-1",
+            "award_id": "AW-ENRICH-1",
+            "vendor": "Enrich Vendor",
+            "agency": "Department of Defense",
+            "value": 2_000_000,
+            "days_remaining": 200,
+            "recompete_score": 75,
+            "priority": "HIGH",
+            "naics_code": "561720",
+            "category": "Cleaning",
+            "place_of_performance_state": "VA",
+            "competition_type": "FULL AND OPEN COMPETITION",
+        }
+        _db.upsert_contract(contract)
+        return uid
+
+    def test_for_business_rows_have_search_url(self, authed_db, tmp_path, monkeypatch):
+        import db as _db
+        from analytics import personalized_for_business
+        from db import get_company_profile
+        from views import contract_search_url
+        uid = authed_db
+        profile = get_company_profile(uid)
+        results = personalized_for_business(uid, profile, limit=5)
+        if results:
+            r = results[0]
+            url = contract_search_url(
+                category=r.get("category"),
+                state=r.get("place_of_performance_state"),
+                agency=r.get("agency"),
+            )
+            assert url.startswith("/contracts")
+            assert "?" in url
+
+    def test_contract_search_url_with_category_and_state(self, authed_db, tmp_path, monkeypatch):
+        from views import contract_search_url
+        url = contract_search_url(category="Cleaning", state="VA")
+        assert "category=Cleaning" in url
+        assert "state=VA" in url
+
+    def test_suggested_rows_get_agency_search_url(self, authed_db, tmp_path, monkeypatch):
+        from views import contract_search_url
+        url = contract_search_url(agency="Department of Defense")
+        assert "agency=" in url
+        assert url.startswith("/contracts")

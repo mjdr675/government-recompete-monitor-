@@ -127,7 +127,9 @@ def active_filter_chips(args):
 # page. Keeps the most common research starting points within reach without
 # duplicating the full /views catalogue.
 QUICK_VIEW_KEYS = [
+    "critical-expiring",
     "expiring-soon",
+    "open-contracts",
     "high-value-contracts",
     "cleaning-contracts",
     "grounds-contracts",
@@ -172,6 +174,21 @@ def active_view_id(args):
 
 
 SAVED_VIEWS = {
+    "critical-expiring": {
+        "label": "Critical + Expiring Soon",
+        "description": "CRITICAL-priority contracts expiring within 90 days — highest-urgency opportunities. These have the best combination of competitive bid type, value, and timing. Act before the window closes.",
+        "filters": {
+            "priority": "CRITICAL",
+            "days": 90,
+        },
+    },
+    "open-contracts": {
+        "label": "Open Solicitations",
+        "description": "Contracts with an open SAM.gov solicitation — actively accepting bids right now. Sorted by days remaining so the most time-sensitive appear first.",
+        "filters": {
+            "status": "open",
+        },
+    },
     "dod-critical": {
         # "DoD" = U.S. Department of Defense. Label spelled out for clarity since it
         # was the only preset using a bare acronym; the agency filter is "DEFENSE".
@@ -253,3 +270,25 @@ def build_view_query(view_id: str) -> str:
     if not view:
         return ""
     return urlencode(view["filters"])
+
+
+def contract_search_url(category=None, state=None, agency=None, naics_code=None):
+    """Build a /contracts search URL from contract-level metadata.
+
+    Priority: category > agency > NAICS prefix. State is appended when
+    category or agency is set. Returns "/contracts" when no useful signals
+    are available so callers always get a valid URL.
+    """
+    params = {}
+    if category and str(category).strip().lower() not in ("", "other", "unknown"):
+        params["category"] = category.strip()
+        if state:
+            params["state"] = str(state).strip()
+    elif agency and str(agency).strip():
+        params["agency"] = agency.strip()
+    elif naics_code and str(naics_code).strip():
+        # 4-digit prefix catches related sub-sectors without over-filtering
+        params["naics_code"] = str(naics_code).strip()[:4]
+    if not params:
+        return "/contracts"
+    return "/contracts?" + urlencode(params)

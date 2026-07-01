@@ -469,6 +469,9 @@
               {% if r.action_signal is defined %}
               <span class="fmb-action-chip" data-testid="action-signal">{{ r.action_signal }}</span>
               {% endif %}
+              {% if r.search_url is defined and r.search_url %}
+              <a href="{{ r.search_url }}" style="font-size:11px;color:var(--text-muted);display:block;margin-top:4px" data-testid="explore-similar">Explore similar →</a>
+              {% endif %}
             </div>
             {% endfor %}
           </div>
@@ -498,7 +501,7 @@
               <tr>
                 <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
                 <td>{{ r.vendor or '&mdash;' }}</td>
-                <td>{{ r.agency or '&mdash;' }}</td>
+                <td>{% if r.search_url is defined and r.search_url %}<a href="{{ r.search_url }}" style="color:inherit" data-testid="agency-search-link">{{ r.agency or '&mdash;' }}</a>{% else %}{{ r.agency or '&mdash;' }}{% endif %}</td>
                 <td class="col-r">${{ "{:,.0f}".format(r.value or 0) }}</td>
                 <td class="col-r">{{ r.days_remaining if r.days_remaining is not none else '&mdash;' }}</td>
                 <td style="font-size:12px;color:var(--text-muted)">{{ r.suggestion_reason }}</td>
@@ -506,6 +509,11 @@
               {% endfor %}
             </tbody>
           </table>
+          {% if suggested_matches[0].search_url is defined %}
+          <div style="padding:8px 12px;font-size:12px;color:var(--text-muted)" data-testid="suggested-see-more">
+            <a href="{{ suggested_matches[0].search_url }}">See more contracts from similar agencies →</a>
+          </div>
+          {% endif %}
         </div>
         {% endif %}
       </div>{# /panel-my-contracts #}
@@ -637,6 +645,9 @@
           {% endfor %}
         </tbody>
       </table>
+      <div style="padding:8px 12px;font-size:12px;color:var(--text-muted)" data-testid="dash-actions-see-more">
+        <a href="/contracts?priority=CRITICAL&days=90">Browse critical expiring contracts →</a>
+      </div>
     </div>
     {% endif %}
 

@@ -800,6 +800,16 @@ def dashboard():
         contract_summary = my_current_contract_summary(user_id)
         suggested = get_suggested_matches(user_id)
         for_business = personalized_for_business(user_id, profile) if profile else []
+
+        from views import contract_search_url as _csu
+        for r in for_business:
+            r["search_url"] = _csu(
+                category=r.get("category"),
+                state=r.get("place_of_performance_state"),
+                agency=r.get("agency"),
+            )
+        for r in suggested:
+            r["search_url"] = _csu(agency=r.get("agency"))
         p_completion = profile_completeness(profile) if profile else 0
         p_hints = profile_completion_hints(profile) if profile and p_completion < 100 else []
 
