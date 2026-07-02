@@ -206,11 +206,12 @@
 
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:24px">
       <h2 style="margin-top:0;margin-bottom:12px;font-size:14px;font-weight:600">Set-Aside Certifications <span class="muted" style="font-weight:400">(optional)</span></h2>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:4px">
         {% for value, label in set_aside_options %}
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;padding:6px 0">
-          <input type="checkbox" name="set_asides" value="{{ value }}">
-          {{ label }}
+        <label class="cp-check-label">
+          <input class="cp-check" type="checkbox" name="set_asides" value="{{ value }}">
+          <span class="cp-check-box" aria-hidden="true"></span>
+          <span>{{ label }}</span>
         </label>
         {% endfor %}
       </div>

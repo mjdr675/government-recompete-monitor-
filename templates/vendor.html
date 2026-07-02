@@ -70,6 +70,9 @@
     <div style="font-weight:bold;margin-bottom:10px;font-size:14px;color:var(--text-primary)">Contracts Expiring per Month</div>
     <canvas id="chartMonthly" height="220"></canvas>
   </div>
+</div>
+
+<div class="cards" style="margin-bottom:16px">
   <div class="card">
     <div class="muted">Top Score</div>
     <div class="num">{{ profile.summary.max_score or 0 }}</div>
@@ -78,8 +81,7 @@
 
 <h2 id="active-contracts">Active Contracts</h2>
 {% if profile.active %}
-<div style="overflow-x:auto">
-<table>
+<div class="table-wrapper">
 <tr>
 <th>Priority</th>
 <th>Contract</th>
@@ -132,9 +134,9 @@
 <tr>
   <td>
     {% if e.change_type == 'NEW' %}
-      <span class="priority-badge" style="background:#16a34a">Won</span>
+      <span class="priority-badge event-badge-won">Won</span>
     {% else %}
-      <span class="priority-badge" style="background:#b00020">Ended</span>
+      <span class="priority-badge event-badge-lost">Ended</span>
     {% endif %}
   </td>
   <td>{{ e.run_date }}</td>

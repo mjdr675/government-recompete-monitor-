@@ -15,33 +15,27 @@
 
 {# Stage filter tabs — scrollable on mobile #}
 <div class="pipeline-stage-tabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
-  <a href="/pipeline" class="pipeline-stage-tab"
-     style="font-size:12.5px;padding:5px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);text-decoration:none;
-            {% if not current_stage %}background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600{% else %}background:var(--surface);color:var(--text-muted){% endif %}">
-    All
-  </a>
+  <a href="/pipeline" class="pipeline-tab {{ 'active' if not current_stage }}">All</a>
   {% for val, label in pipeline_stages %}
-  <a href="/pipeline?stage={{ val }}" class="pipeline-stage-tab"
-     style="font-size:12.5px;padding:5px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);text-decoration:none;
-            {% if current_stage == val %}background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600{% else %}background:var(--surface);color:var(--text-muted){% endif %}">
-    {{ label }}
-  </a>
+  <a href="/pipeline?stage={{ val }}" class="pipeline-tab {{ 'active' if current_stage == val }}">{{ label }}</a>
   {% endfor %}
 </div>
 
 {% if not opportunities %}
-<div style="text-align:center;padding:60px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
-  <svg width="40" height="40" viewBox="0 0 16 16" fill="none" stroke="var(--text-muted)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:12px">
-    <polyline points="1.5 11.5 5.5 7 9 10 14.5 4"/>
-    <circle cx="14.5" cy="4" r="1.2" fill="var(--text-muted)" stroke="none"/>
-  </svg>
+<div class="table-empty-state" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
+  <div class="empty-icon">
+    <svg width="40" height="40" viewBox="0 0 16 16" fill="none" stroke="var(--text-muted)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="1.5 11.5 5.5 7 9 10 14.5 4"/>
+      <circle cx="14.5" cy="4" r="1.2" fill="var(--text-muted)" stroke="none"/>
+    </svg>
+  </div>
   {% if current_stage %}
-  <div style="font-size:16px;font-weight:600;margin-bottom:6px">No {{ stage_labels.get(current_stage, current_stage) | lower }} opportunities</div>
-  <div class="muted" style="margin-bottom:18px">No pipeline opportunities match this stage filter.</div>
+  <p class="empty-title">No {{ stage_labels.get(current_stage, current_stage) | lower }} opportunities</p>
+  <p class="empty-desc">No pipeline opportunities match this stage filter.</p>
   <a href="/pipeline" class="btn btn-secondary">Clear filter</a>
   {% else %}
-  <div style="font-size:16px;font-weight:600;margin-bottom:6px">No opportunities in your pipeline yet</div>
-  <div class="muted" style="margin-bottom:18px">Add contracts you&rsquo;re actively pursuing to track them here. Open any contract and click <strong>Add to Pipeline</strong>.</div>
+  <p class="empty-title">No opportunities in your pipeline yet</p>
+  <p class="empty-desc">Add contracts you&rsquo;re actively pursuing to track them here. Open any contract and click <strong>Add to Pipeline</strong>.</p>
   <a href="/contracts" class="btn btn-primary">Browse contracts</a>
   {% endif %}
 </div>
@@ -95,8 +89,7 @@
         <a href="/pipeline/{{ opp['id'] }}" style="font-size:12px;margin-right:8px">Detail</a>
         <form method="post" action="/pipeline/remove/{{ opp['internal_id'] }}" style="display:inline;margin:0">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" onclick="return confirm('Remove from pipeline?')"
-                  style="font-size:12px;padding:2px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:transparent;color:var(--text-muted);cursor:pointer">Remove</button>
+          <button type="submit" onclick="return confirm('Remove from pipeline?')" class="btn btn-ghost" style="font-size:12px;padding:2px 8px">Remove</button>
         </form>
       </td>
     </tr>

@@ -115,7 +115,7 @@
         <span class="nav-icon">{{ icon_pipeline() }}</span>Pipeline
       </a>
       <a href="/lead-intelligence" class="{{ 'active' if p.startswith('/lead-intelligence') }}">
-        <span class="nav-icon">{{ icon_company() }}</span>Lead Intelligence
+        <span class="nav-icon">{{ icon_views() }}</span>Lead Intelligence
       </a>
       <a href="/company-profile" class="{{ 'active' if p == '/company-profile' }}">
         <span class="nav-icon">{{ icon_company() }}</span>Company Profile
@@ -186,9 +186,9 @@
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% for category, message in messages %}
         {% if category == 'error' %}
-          <div class="flash-error" style="background:#fee2e2;border-left:3px solid #ef4444;color:#991b1b">{{ message }}</div>
+          <div class="flash-error">{{ message }}</div>
         {% else %}
-          <div class="flash-success" style="background:#d1fae5;border-left:3px solid #10b981;color:#065f46">{{ message }}</div>
+          <div class="flash-success">{{ message }}</div>
         {% endif %}
       {% endfor %}
     {% endwith %}
@@ -207,9 +207,9 @@
 {% with messages = get_flashed_messages(with_categories=true) %}
   {% for category, message in messages %}
     {% if category == 'error' %}
-      <div class="flash-error" style="background:#fee2e2;border-left:3px solid #ef4444;color:#991b1b">{{ message }}</div>
+      <div class="flash-error">{{ message }}</div>
     {% else %}
-      <div class="flash-success" style="background:#d1fae5;border-left:3px solid #10b981;color:#065f46">{{ message }}</div>
+      <div class="flash-success">{{ message }}</div>
     {% endif %}
   {% endfor %}
 {% endwith %}
