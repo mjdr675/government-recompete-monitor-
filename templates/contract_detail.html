@@ -71,6 +71,26 @@
   <a href="/contract/{{ row['internal_id'] }}/apply" class="btn btn-primary" style="white-space:nowrap">How to apply &rarr;</a>
 </div>
 
+{# ── Quick brief: plain-language executive summary ───────────────────────── #}
+{% if plain_summary %}
+<div class="cd-section" data-testid="plain-summary" style="padding-bottom:10px">
+  <div class="cd-section-title">What is this contract?</div>
+  <p style="font-size:14px;line-height:1.65;margin:0;color:var(--text-primary)">{{ plain_summary }}</p>
+</div>
+{% endif %}
+
+{# ── Opportunity highlights: key fact chips ──────────────────────────────── #}
+{% if highlights %}
+<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;margin-bottom:4px" data-testid="opportunity-highlights">
+  {% for chip in highlights %}
+  <div style="display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600;border:1px solid {% if chip.signal == 'positive' %}#6ee7b7{% elif chip.signal == 'negative' %}#fca5a5{% else %}var(--border){% endif %};background:{% if chip.signal == 'positive' %}#d1fae5{% elif chip.signal == 'negative' %}#fee2e2{% else %}var(--surface){% endif %};color:{% if chip.signal == 'positive' %}#065f46{% elif chip.signal == 'negative' %}#991b1b{% else %}var(--text-primary){% endif %}">
+    <span style="color:{% if chip.signal == 'positive' %}#059669{% elif chip.signal == 'negative' %}#dc2626{% else %}var(--text-muted){% endif %};font-size:11px">{{ chip.label }}:</span>
+    {{ chip.value }}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
 {# ── Capture Brief: Pursue / Monitor / Pass verdict ──────────────────────── #}
 {% if capture %}
 {% set verdict_colors = {
@@ -255,6 +275,14 @@
     </div>
   </div>
 </div>
+
+{# ── Score rationale: why this score? ────────────────────────────────────── #}
+{% if score_headline %}
+<div style="margin-top:8px;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;color:var(--text-muted)" data-testid="score-headline">
+  {{ score_headline }}
+  <button type="button" onclick="openScoreModal()" style="background:none;border:none;padding:0;margin-left:6px;cursor:pointer;font-size:12px;color:var(--accent);text-decoration:underline">How is this calculated?</button>
+</div>
+{% endif %}
 
 {# ══ CONTEXT ════════════════════════════════════════════════════ #}
 
