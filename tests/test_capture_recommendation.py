@@ -287,7 +287,7 @@ class TestContractPlainSummary:
 
     def test_mentions_agency(self):
         s = contract_plain_summary(_contract(agency="DEPARTMENT OF DEFENSE"))
-        assert "DEPARTMENT OF DEFENSE" in s
+        assert "Defense" in s
 
     def test_mentions_vendor(self):
         s = contract_plain_summary(_contract(vendor="Acme Corp"))
@@ -295,15 +295,15 @@ class TestContractPlainSummary:
 
     def test_mentions_value(self):
         s = contract_plain_summary(_contract(value=2_500_000))
-        assert "2,500,000" in s
+        assert "2.5M" in s
 
     def test_end_date_formatted(self):
-        s = contract_plain_summary(_contract(end_date="2025-06-30"))
+        s = contract_plain_summary(_contract(end_date="2025-06-30", days_remaining=None))
         assert "June 2025" in s
 
     def test_competition_type_included(self):
         s = contract_plain_summary(_contract(competition_type="FULL AND OPEN COMPETITION"))
-        assert "full and open competition" in s.lower()
+        assert "full and open" in s.lower()
 
     def test_sol_id_included(self):
         s = contract_plain_summary(_contract(solicitation_id="SOL-2025-001"))

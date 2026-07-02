@@ -1142,75 +1142,256 @@ def incumbent_intelligence(row) -> dict:
 
 
 def contract_plain_summary(row) -> str:
-    """Two-to-three sentence plain-English capture brief from stored fields.
+    """Decision-oriented plain-English summary. 2-3 sentences, action frame.
 
-    Action-oriented framing for the contract detail page header. Pure
-    function — no AI calls. Falls back gracefully for sparse records.
+    Leads with the most important decision facts: what is this, who holds it,
+    and why does timing matter now. Pure function — no AI calls.
     """
     from datetime import date as _date
 
     agency = (row.get("agency") or "").strip()
     vendor = (row.get("vendor") or "").strip()
     value = float(row.get("value") or 0)
-    category = (row.get("category") or "").strip()
+    naics_desc = (row.get("naics_description") or "").strip()
     description = (row.get("description") or "").strip()
     end_raw = (row.get("end_date") or "").strip()
     days = _safe_int(row.get("days_remaining"))
-    comp_type = (row.get("competition_type") or "").strip()
+    comp_type = (row.get("competition_type") or "").strip().upper()
     sol_id = (row.get("solicitation_id") or "").strip()
-    sam_type = (row.get("sam_type") or "").strip()
+    sam_type = (row.get("sam_type") or "").strip().lower()
 
-    # Work label
-    work = category if (category and category.lower() not in ("other", "unknown")) else ""
+    # Shorten verbose agency names: "DEPARTMENT OF DEFENSE" → "Defense"
+    agency_short = agency
+    for prefix in ("DEPARTMENT OF THE ", "DEPARTMENT OF ", "OFFICE OF THE ", "OFFICE OF "):
+        if agency.upper().startswith(prefix):
+            agency_short = agency[len(prefix):].title()
+            break
+
+    # Work descriptor — prefer NAICS description over raw description
+    work = naics_desc
     if not work and description:
-        work = (description[:75].rsplit(" ", 1)[0] if len(description) > 75 else description)
+        work = description[:70].rsplit(" ", 1)[0] if len(description) > 70 else description
 
-    # Sentence 1: holder + agency + work + value
-    val_str = f"${value:,.0f}" if value else ""
-    parts = []
-    if agency and vendor:
-        s1 = f"{agency} has a contract with {vendor}"
-        s1 += f" for {work.lower()}" if work else ""
-        s1 += f", valued at {val_str}" if val_str else ""
-        s1 += "."
-    elif agency:
-        s1 = f"{agency} holds an active government contract"
-        s1 += f" for {work.lower()}" if work else ""
-        s1 += f" valued at {val_str}" if val_str else ""
-        s1 += "."
+    # Value string — use M/K shorthand for readability
+    if value >= 1_000_000:
+        val_str = f"${value / 1_000_000:.1f}M"
+    elif value:
+        val_str = f"${value:,.0f}"
     else:
-        s1 = f"Active government contract valued at {val_str}." if val_str else "Active government contract."
-    parts.append(s1)
+        val_str = ""
 
-    # Sentence 2: timing + competition
-    timing_parts = []
-    if end_raw:
+    # Competition descriptor
+    if "FULL AND OPEN" in comp_type:
+        comp_desc = "full and open"
+    elif "SMALL BUSINESS" in comp_type or "8(A)" in comp_type or "SET ASIDE" in comp_type:
+        comp_desc = "set-aside"
+    else:
+        comp_desc = ""
+
+    # Sentence 1: what the contract is + who holds it
+    parts = []
+    article = comp_desc.capitalize() if comp_desc else "A"
+    if val_str and work:
+        s1 = f"{article} {val_str} {work.lower()} contract"
+    elif val_str:
+        s1 = f"{article} {val_str} government contract"
+    else:
+        s1 = f"{article} government contract"
+
+    if agency_short and vendor:
+        s1 += f" with {agency_short}, currently held by {vendor}"
+    elif agency_short:
+        s1 += f" with {agency_short}"
+    elif vendor:
+        s1 += f" currently held by {vendor}"
+    parts.append(s1 + ".")
+
+    # Sentence 2: stage-specific timing angle
+    stage_key = pursuit_stage(days)["stage_key"] if days is not None else "unknown"
+    timing_map = {
+        "best_window": (
+            f"With {days} days remaining, this is in the ideal window to begin recompete positioning."
+        ),
+        "shape": (
+            f"With {days} days remaining, there is still time to shape requirements before the solicitation drops."
+        ),
+        "prepare": (
+            f"With {days} days remaining, proposal preparation should begin now."
+        ),
+        "active_pursuit": (
+            f"With {days} days remaining, competitive positioning should already be underway."
+        ),
+        "urgent": (
+            f"Only {days} days remain — this contract is late-stage for new challengers."
+        ),
+        "too_late": (
+            f"With only {days} days remaining, the recompete window has effectively closed."
+        ),
+        "expired": (
+            "This contract has expired; research the follow-on award on SAM.gov."
+        ),
+        "watch": (
+            f"With {days} days remaining, this is an early-watch opportunity — revisit in 6–12 months."
+        ),
+    }
+    if stage_key in timing_map:
+        parts.append(timing_map[stage_key])
+    elif end_raw:
         try:
             e = _date.fromisoformat(end_raw[:10])
-            timing_parts.append(f"runs through {e.strftime('%B %Y')}")
+            parts.append(f"The contract runs through {e.strftime('%B %Y')}.")
         except (ValueError, TypeError):
-            timing_parts.append(f"runs through {end_raw}")
-    if days is not None and days > 0:
-        timing_parts.append(f"{days} days remaining")
-    if comp_type:
-        timing_parts.append(f"awarded via {comp_type.lower()}")
+            pass
 
-    if timing_parts:
-        s2 = f"The contract {timing_parts[0]}"
-        if len(timing_parts) == 2:
-            s2 += f" ({timing_parts[1]})"
-        elif len(timing_parts) == 3:
-            s2 += f" ({timing_parts[1]}), {timing_parts[2]}"
-        s2 += "."
-        parts.append(s2)
-
-    # Sentence 3: solicitation status
-    if sol_id and sam_type:
-        parts.append(f"SAM.gov shows a {sam_type.lower()} record (solicitation {sol_id}).")
+    # Sentence 3: active solicitation status
+    if sam_type == "solicitation" and sol_id:
+        parts.append(f"A solicitation is open on SAM.gov ({sol_id}).")
+    elif sam_type == "presolicitation":
+        parts.append("A pre-solicitation notice is posted on SAM.gov.")
+    elif sam_type == "solicitation":
+        parts.append("A solicitation is open on SAM.gov.")
     elif sol_id:
         parts.append(f"Solicitation {sol_id} is on file.")
 
     return " ".join(parts)
+
+
+def opportunity_highlights(row) -> list[dict]:
+    """Key contract facts as compact chips for at-a-glance reading.
+
+    Returns list of {label, value, signal} where signal is "positive",
+    "negative", or "neutral". Maximum 6 chips, ordered by decision relevance.
+    """
+    chips = []
+    value = float(row.get("value") or 0)
+    days = _safe_int(row.get("days_remaining"))
+    comp_type = (row.get("competition_type") or "").strip().upper()
+    naics_desc = (row.get("naics_description") or "").strip()
+    psc_desc = (row.get("psc_description") or "").strip()
+    state = (row.get("place_of_performance_state") or "").strip()
+    sol_id = (row.get("solicitation_id") or "").strip()
+    sam_type = (row.get("sam_type") or "").strip().lower()
+
+    # Value
+    if value >= 1_000_000:
+        val_label = f"${value / 1_000_000:.1f}M"
+        chips.append({"label": "Value", "value": val_label,
+                      "signal": "positive" if value >= 5_000_000 else "neutral"})
+    elif value:
+        chips.append({"label": "Value", "value": f"${value:,.0f}", "signal": "neutral"})
+
+    # Competition type
+    if "FULL AND OPEN" in comp_type:
+        chips.append({"label": "Competition", "value": "Full & Open", "signal": "positive"})
+    elif "SMALL BUSINESS" in comp_type or "8(A)" in comp_type:
+        chips.append({"label": "Competition", "value": "Small Business Set-Aside", "signal": "neutral"})
+    elif "SET ASIDE" in comp_type:
+        chips.append({"label": "Competition", "value": "Set-Aside", "signal": "neutral"})
+    elif comp_type:
+        chips.append({"label": "Competition", "value": comp_type.title()[:22], "signal": "neutral"})
+
+    # Timing / stage
+    if days is not None:
+        stage_key = pursuit_stage(days)["stage_key"]
+        if days < 0:
+            chips.append({"label": "Timing", "value": "Expired", "signal": "negative"})
+        elif stage_key == "too_late":
+            chips.append({"label": "Timing", "value": f"{days}d — closing fast", "signal": "negative"})
+        elif stage_key == "urgent":
+            chips.append({"label": "Timing", "value": f"{days}d — urgent", "signal": "negative"})
+        elif stage_key == "active_pursuit":
+            chips.append({"label": "Timing", "value": f"{days}d — pursue now", "signal": "neutral"})
+        elif stage_key == "prepare":
+            chips.append({"label": "Timing", "value": f"{days}d — prepare", "signal": "neutral"})
+        elif stage_key in ("best_window", "shape"):
+            chips.append({"label": "Timing", "value": f"{days}d — ideal window", "signal": "positive"})
+        else:
+            chips.append({"label": "Timing", "value": f"{days}d remaining", "signal": "neutral"})
+
+    # Industry / category
+    industry = naics_desc or psc_desc
+    if industry:
+        label = (industry[:28] + "…") if len(industry) > 28 else industry
+        chips.append({"label": "Industry", "value": label, "signal": "neutral"})
+
+    # Location
+    if state:
+        chips.append({"label": "Location", "value": state, "signal": "neutral"})
+
+    # Active solicitation
+    if sam_type == "solicitation":
+        chips.append({"label": "SAM.gov", "value": "Solicitation open", "signal": "positive"})
+    elif sam_type == "presolicitation":
+        chips.append({"label": "SAM.gov", "value": "Pre-solicitation", "signal": "positive"})
+    elif sol_id:
+        chips.append({"label": "SAM.gov", "value": "Record on file", "signal": "neutral"})
+
+    return chips[:6]
+
+
+def score_rationale_headline(row) -> str:
+    """One sentence explaining why this contract has its recompete score.
+
+    Surfaces the top 2-3 scoring signals so users understand the number
+    without having to open the score explainer. Returns empty string if
+    the score is unknown.
+    """
+    score = _safe_int(row.get("recompete_score"))
+    if score is None:
+        return ""
+
+    comp_type = (row.get("competition_type") or "").upper()
+    days = _safe_int(row.get("days_remaining"))
+    value = float(row.get("value") or 0)
+    agency = (row.get("agency") or "").upper()
+
+    reasons = []
+
+    if "FULL AND OPEN" in comp_type:
+        reasons.append("full and open competition")
+    elif "SMALL BUSINESS" in comp_type or "8(A)" in comp_type:
+        reasons.append("small business set-aside")
+
+    if value >= 10_000_000:
+        reasons.append(f"very high contract value (${value / 1_000_000:.0f}M)")
+    elif value >= 1_000_000:
+        reasons.append(f"contract value ${value / 1_000_000:.1f}M")
+
+    if days is not None:
+        stage_key = pursuit_stage(days)["stage_key"]
+        timing_notes = {
+            "best_window": f"ideal recompete timing ({days}d out)",
+            "shape": f"requirements-shaping window ({days}d out)",
+            "prepare": f"proposal window open ({days}d out)",
+            "active_pursuit": f"active pursuit window ({days}d out)",
+            "urgent": f"limited runway ({days}d remaining)",
+            "too_late": f"closing fast ({days}d remaining)",
+        }
+        if stage_key in timing_notes:
+            reasons.append(timing_notes[stage_key])
+
+    if any(k in agency for k in ("DEFENSE", "ARMY", "NAVY", "AIR FORCE", "MARINE")):
+        reasons.append("DoD agency")
+    elif "VETERANS AFFAIRS" in agency:
+        reasons.append("VA agency")
+    elif "HOMELAND SECURITY" in agency:
+        reasons.append("DHS agency")
+
+    if not reasons:
+        if score >= 90:
+            return f"Scores {score}/100 — strong candidate across all dimensions."
+        elif score >= 75:
+            return f"Scores {score}/100 — high-potential opportunity."
+        else:
+            return f"Scores {score}/100 — moderate opportunity with mixed signals."
+
+    joined = ", ".join(reasons[:3])
+    if score >= 90:
+        return f"Scores {score}/100 — driven by {joined}."
+    elif score >= 75:
+        return f"Scores {score}/100 — strong signals for {joined}."
+    else:
+        return f"Scores {score}/100 — based on {joined}."
 
 
 # ---------------------------------------------------------------------------

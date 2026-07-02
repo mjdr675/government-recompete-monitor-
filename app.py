@@ -1582,6 +1582,7 @@ def contract_detail(internal_id):
         capture_recommendation, incumbent_intelligence,
         contract_plain_summary, score_data_confidence,
         why_now, estimated_solicitation_window, next_action_steps,
+        opportunity_highlights, score_rationale_headline,
     )
     guidance = next_step(row.get("days_remaining"), row.get("priority"))
     action = recommended_action(row)
@@ -1629,6 +1630,8 @@ def contract_detail(internal_id):
 
     capture = capture_recommendation(row, biz_match_score)
     action_steps = next_action_steps(row, incumbent)
+    highlights = opportunity_highlights(row)
+    score_headline = score_rationale_headline(row)
 
     return render_template("contract_detail.html", row=row, is_bookmarked=is_bookmarked,
                            notes=notes, next_step=guidance, action=action,
@@ -1655,7 +1658,9 @@ def contract_detail(internal_id):
                            data_confidence=data_confidence,
                            why_now=why_now_text,
                            solicitation_window=solicitation_window,
-                           action_steps=action_steps)
+                           action_steps=action_steps,
+                           highlights=highlights,
+                           score_headline=score_headline)
 
 
 @app.route("/contract/<internal_id>/apply")
