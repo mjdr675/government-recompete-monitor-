@@ -22,7 +22,14 @@
   <p class="mobile-greeting-text" id="mobile-greeting-text">Welcome back</p>
   <p class="mobile-greeting-sub">
     {%- if g.user -%}
-      {%- if contract_summary and contract_summary.count -%}
+      {%- if today_items is defined and today_items -%}
+        {%- set attn_count = today_items | selectattr("section","equalto","needs_attention") | list | length -%}
+        {%- if attn_count -%}
+          {{ attn_count }} item{{ 's' if attn_count != 1 }} need{{ '' if attn_count != 1 else 's' }} attention &mdash; {{ today_items | length }} total work item{{ 's' if today_items | length != 1 }}.
+        {%- else -%}
+          {{ today_items | length }} work item{{ 's' if today_items | length != 1 }} for today.
+        {%- endif -%}
+      {%- elif contract_summary and contract_summary.count -%}
         {{ contract_summary.count }} current contract{{ 's' if contract_summary.count != 1 }} matched to {{ contract_summary.match_term }}
         {%- if contract_summary.expiring_90 %}, {{ contract_summary.expiring_90 }} expiring soon{%- endif -%}.
       {%- elif analytics.platform.critical_contracts -%}
@@ -254,6 +261,274 @@
 
   {# Left: primary tables #}
   <div class="db-main">
+
+    {# ── Today's Work ───────────────────────────────────────────────────── #}
+    {% if g.user and today_items is defined %}
+    {% set tw_attention = today_items | selectattr("section","equalto","needs_attention") | list %}
+    {% set tw_capture   = today_items | selectattr("section","equalto","start_capture")   | list %}
+    {% set tw_revenue   = today_items | selectattr("section","equalto","revenue_opp")     | list %}
+    {% set tw_expiring  = today_items | selectattr("section","equalto","expiring")        | list %}
+    {% set tw_monitor   = today_items | selectattr("section","equalto","monitor")         | list %}
+    <div class="today-work">
+      <div class="today-work-head">
+        <span class="today-work-title">Today&rsquo;s Work</span>
+        <span class="today-work-date">{{ report.run_date if report else '' }}</span>
+        <div class="today-work-badges">
+          {% if tw_attention %}<span class="tw-badge badge-attention">{{ tw_attention | length }} Needs Attention</span>{% endif %}
+          {% if tw_capture   %}<span class="tw-badge badge-capture">{{ tw_capture | length }} Start Capture</span>{% endif %}
+          {% if tw_revenue   %}<span class="tw-badge badge-revenue">{{ tw_revenue | length }} Revenue Opp</span>{% endif %}
+          {% if tw_expiring  %}<span class="tw-badge badge-expiring">{{ tw_expiring | length }} Expiring</span>{% endif %}
+        </div>
+      </div>
+
+      {% if today_items %}
+
+      {# ── Needs Attention ── #}
+      {% if tw_attention %}
+      <div class="tw-section sec-attention">
+        <div class="tw-section-head">
+          <span class="tw-section-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+          </span>
+          <span class="tw-section-label">Needs Attention</span>
+          <span class="tw-section-count">{{ tw_attention | length }}</span>
+        </div>
+        <div class="tw-cards">
+          {% for item in tw_attention[:5] %}
+          {% set days = item.days_remaining %}
+          <div class="tw-card pri-{{ item.priority }}{% if item.too_late %} too-late{% endif %}">
+            <div class="tw-card-stripe"></div>
+            <div class="tw-card-inner">
+              <div class="tw-card-body">
+                <div class="tw-card-top">
+                  <span class="tw-priority pri-{{ item.priority }}">{{ item.priority }}</span>
+                  <span class="tw-card-id"><a href="/contract/{{ item.internal_id }}">{{ item.award_id or item.internal_id }}</a></span>
+                  {% if item.pipeline_stage %}<span style="font-size:11px;color:var(--text-faint)">{{ item.pipeline_stage | capitalize }}</span>{% endif %}
+                </div>
+                <div class="tw-card-vendor">{{ item.vendor or '' }}{% if item.vendor and item.agency %} &middot; {% endif %}{{ item.agency or '' }}</div>
+                <div class="tw-card-why">{{ item.why }}</div>
+                <div class="tw-card-action">{{ item.next_action }}</div>
+              </div>
+              <div class="tw-card-right">
+                {% if days is not none %}
+                <span class="tw-card-days{% if days <= 30 %} days-critical{% elif days <= 90 %} days-warning{% endif %}">{{ days }}d</span>
+                {% endif %}
+                {% if item.value %}<span style="font-size:11px;color:var(--text-faint)">${{ "{:,.0f}".format(item.value) }}</span>{% endif %}
+              </div>
+            </div>
+            <a href="/contract/{{ item.internal_id }}" class="tw-card-cta">View &rarr;</a>
+          </div>
+          {% endfor %}
+          {% if tw_attention | length > 5 %}
+          <div class="tw-section-more"><a href="/pipeline">{{ tw_attention | length - 5 }} more &rarr;</a></div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {# ── Start Capture ── #}
+      {% if tw_capture %}
+      <div class="tw-section sec-capture">
+        <div class="tw-section-head">
+          <span class="tw-section-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
+            </svg>
+          </span>
+          <span class="tw-section-label">Start Capture</span>
+          <span class="tw-section-count">{{ tw_capture | length }}</span>
+          <span class="tw-section-more">Best window to begin capture planning</span>
+        </div>
+        <div class="tw-cards">
+          {% for item in tw_capture[:5] %}
+          {% set days = item.days_remaining %}
+          <div class="tw-card pri-{{ item.priority }}">
+            <div class="tw-card-stripe"></div>
+            <div class="tw-card-inner">
+              <div class="tw-card-body">
+                <div class="tw-card-top">
+                  <span class="tw-priority pri-{{ item.priority }}">{{ item.priority }}</span>
+                  <span class="tw-card-id"><a href="/contract/{{ item.internal_id }}">{{ item.award_id or item.internal_id }}</a></span>
+                  {% if item.business_fit.score is not none %}<span style="font-size:11px;color:var(--accent)">{{ item.business_fit.score }}% fit</span>{% endif %}
+                </div>
+                <div class="tw-card-vendor">{{ item.vendor or '' }}{% if item.vendor and item.agency %} &middot; {% endif %}{{ item.agency or '' }}</div>
+                <div class="tw-card-why">{{ item.why }}</div>
+                <div class="tw-card-action">{{ item.next_action }}</div>
+              </div>
+              <div class="tw-card-right">
+                {% if days is not none %}
+                <span class="tw-card-days{% if days <= 30 %} days-critical{% elif days <= 90 %} days-warning{% endif %}">{{ days }}d</span>
+                {% endif %}
+                {% if item.value %}<span style="font-size:11px;color:var(--text-faint)">${{ "{:,.0f}".format(item.value) }}</span>{% endif %}
+              </div>
+            </div>
+            <a href="/contract/{{ item.internal_id }}" class="tw-card-cta">View &rarr;</a>
+          </div>
+          {% endfor %}
+          {% if tw_capture | length > 5 %}
+          <div class="tw-section-more"><a href="/contracts">{{ tw_capture | length - 5 }} more &rarr;</a></div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {# ── Revenue Opportunities ── #}
+      {% if tw_revenue %}
+      <div class="tw-section sec-revenue">
+        <div class="tw-section-head">
+          <span class="tw-section-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+            </svg>
+          </span>
+          <span class="tw-section-label">Revenue Opportunity</span>
+          <span class="tw-section-count">{{ tw_revenue | length }}</span>
+          <span class="tw-section-more">High-value contracts in an actionable window</span>
+        </div>
+        <div class="tw-cards">
+          {% for item in tw_revenue[:4] %}
+          {% set days = item.days_remaining %}
+          <div class="tw-card pri-{{ item.priority }}">
+            <div class="tw-card-stripe"></div>
+            <div class="tw-card-inner">
+              <div class="tw-card-body">
+                <div class="tw-card-top">
+                  <span class="tw-priority pri-{{ item.priority }}">{{ item.priority }}</span>
+                  <span class="tw-card-id"><a href="/contract/{{ item.internal_id }}">{{ item.award_id or item.internal_id }}</a></span>
+                  {% if item.value %}<span style="font-size:12px;font-weight:600;color:#15803d">${{ "{:,.0f}".format(item.value) }}</span>{% endif %}
+                </div>
+                <div class="tw-card-vendor">{{ item.vendor or '' }}{% if item.vendor and item.agency %} &middot; {% endif %}{{ item.agency or '' }}</div>
+                <div class="tw-card-why">{{ item.why }}</div>
+                <div class="tw-card-action">{{ item.next_action }}</div>
+              </div>
+              <div class="tw-card-right">
+                {% if days is not none %}
+                <span class="tw-card-days{% if days <= 30 %} days-critical{% elif days <= 90 %} days-warning{% endif %}">{{ days }}d</span>
+                {% endif %}
+                <span style="font-size:11px;color:var(--text-faint)">{{ item.pursuit_stage_label }}</span>
+              </div>
+            </div>
+            <a href="/contract/{{ item.internal_id }}" class="tw-card-cta">View &rarr;</a>
+          </div>
+          {% endfor %}
+          {% if tw_revenue | length > 4 %}
+          <div class="tw-section-more"><a href="/contracts">{{ tw_revenue | length - 4 }} more &rarr;</a></div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {# ── Expiring (watchlist) ── #}
+      {% if tw_expiring %}
+      <div class="tw-section sec-expiring">
+        <div class="tw-section-head">
+          <span class="tw-section-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+          </span>
+          <span class="tw-section-label">Expiring Soon</span>
+          <span class="tw-section-count">{{ tw_expiring | length }}</span>
+          <span class="tw-section-more">From your watchlist — track the follow-on</span>
+        </div>
+        <div class="tw-cards">
+          {% for item in tw_expiring[:5] %}
+          {% set days = item.days_remaining %}
+          <div class="tw-card pri-{{ item.priority }}">
+            <div class="tw-card-stripe"></div>
+            <div class="tw-card-inner">
+              <div class="tw-card-body">
+                <div class="tw-card-top">
+                  <span class="tw-priority pri-{{ item.priority }}">{{ item.priority }}</span>
+                  <span class="tw-card-id"><a href="/contract/{{ item.internal_id }}">{{ item.award_id or item.internal_id }}</a></span>
+                </div>
+                <div class="tw-card-vendor">{{ item.vendor or '' }}{% if item.vendor and item.agency %} &middot; {% endif %}{{ item.agency or '' }}</div>
+                <div class="tw-card-why">{{ item.why }}</div>
+                <div class="tw-card-action">{{ item.next_action }}</div>
+              </div>
+              <div class="tw-card-right">
+                {% if days is not none %}
+                <span class="tw-card-days{% if days <= 30 %} days-critical{% elif days <= 90 %} days-warning{% endif %}">{{ days }}d</span>
+                {% endif %}
+                {% if item.value %}<span style="font-size:11px;color:var(--text-faint)">${{ "{:,.0f}".format(item.value) }}</span>{% endif %}
+              </div>
+            </div>
+            <a href="/contract/{{ item.internal_id }}" class="tw-card-cta">View &rarr;</a>
+          </div>
+          {% endfor %}
+          {% if tw_expiring | length > 5 %}
+          <div class="tw-section-more"><a href="/watchlist">{{ tw_expiring | length - 5 }} more &rarr;</a></div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {# ── Monitor (remaining watchlist) ── #}
+      {% if tw_monitor %}
+      <div class="tw-section sec-monitor">
+        <div class="tw-section-head">
+          <span class="tw-section-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+            </svg>
+          </span>
+          <span class="tw-section-label">Watching</span>
+          <span class="tw-section-count">{{ tw_monitor | length }}</span>
+          <span class="tw-section-more">No urgent action needed</span>
+        </div>
+        <div class="tw-cards">
+          {% for item in tw_monitor[:3] %}
+          {% set days = item.days_remaining %}
+          <div class="tw-card pri-{{ item.priority }}">
+            <div class="tw-card-stripe"></div>
+            <div class="tw-card-inner">
+              <div class="tw-card-body">
+                <div class="tw-card-top">
+                  <span class="tw-card-id"><a href="/contract/{{ item.internal_id }}">{{ item.award_id or item.internal_id }}</a></span>
+                </div>
+                <div class="tw-card-vendor">{{ item.vendor or '' }}{% if item.vendor and item.agency %} &middot; {% endif %}{{ item.agency or '' }}</div>
+                <div class="tw-card-why">{{ item.why_now or item.why }}</div>
+              </div>
+              <div class="tw-card-right">
+                {% if days is not none %}
+                <span class="tw-card-days">{{ days }}d</span>
+                {% endif %}
+                {% if item.value %}<span style="font-size:11px;color:var(--text-faint)">${{ "{:,.0f}".format(item.value) }}</span>{% endif %}
+              </div>
+            </div>
+            <a href="/contract/{{ item.internal_id }}" class="tw-card-cta">View &rarr;</a>
+          </div>
+          {% endfor %}
+          {% if tw_monitor | length > 3 %}
+          <div class="tw-section-more" style="text-align:right;padding:4px 0"><a href="/watchlist">View all {{ tw_monitor | length }} watched &rarr;</a></div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% else %}
+      {# Empty state #}
+      <div class="today-empty">
+        <div class="today-empty-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <p class="today-empty-title">No work items for today</p>
+        <p class="today-empty-desc">
+          {% if not has_profile %}Add contracts to your watchlist or set up your company profile to see personalized work items here.
+          {% else %}Bookmark contracts from the <a href="/contracts">contract list</a> or add items to your <a href="/pipeline">pipeline</a> to track them here.
+          {% endif %}
+        </p>
+        <a href="/contracts" class="btn btn-primary" style="font-size:13px">Browse Contracts</a>
+      </div>
+      {% endif %}
+
+    </div>{# /today-work #}
+    {% endif %}
 
     {# ── My Contracts / Discover tab bar ───────────────────────────────── #}
     {% if g.user %}
