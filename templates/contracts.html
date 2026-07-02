@@ -13,8 +13,8 @@
 <form method="get" class="filter-bar">
   <div class="filter-row">
     <div class="filter-field grow">
-      <label>Search</label>
-      <input name="q" value="{{ q }}" placeholder="Vendor, agency, work type, state&hellip;">
+      <label>Search <span style="font-size:11px;font-weight:400;color:var(--text-muted)">— try "cleaning Virginia" or "IT contracts DOD"</span></label>
+      <input name="q" value="{{ q }}" placeholder="Vendor, agency, keyword, or natural-language query&hellip;">
     </div>
     <div class="filter-field grow">
       <label>Agency</label>
@@ -139,7 +139,7 @@
 {% if g.user %}
 <div style="margin:-8px 0 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
   {% if for_my_business %}
-    <a href="/contracts?q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if in_pipeline %}&in_pipeline=1{% endif %}"
+    <a href="/contracts?q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}{% if not applyable %}&applyable=0{% endif %}"
        class="btn btn-primary" style="padding:5px 14px;font-size:13px">&#10003; For My Business</a>
     <a href="/contracts" class="muted" style="font-size:12px;text-decoration:underline">Show all contracts</a>
     {% if not has_profile %}
@@ -147,26 +147,26 @@
     {% endif %}
   {% else %}
     {% if not has_profile %}
-    <a href="/contracts?for_my_business=1&q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}"
+    <a href="/contracts?for_my_business=1&q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}{% if not applyable %}&applyable=0{% endif %}"
        class="btn btn-ghost" style="padding:5px 14px;font-size:13px" title="Filter using your Company Profile">For My Business</a>
     <span class="muted" style="font-size:12px">— <a href="/company-profile">Set up your Company Profile</a> first</span>
     {% else %}
-    <a href="/contracts?for_my_business=1&q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}"
+    <a href="/contracts?for_my_business=1&q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}{% if not applyable %}&applyable=0{% endif %}"
        class="btn btn-ghost" style="padding:5px 14px;font-size:13px" title="Filter using your Company Profile">For My Business</a>
     {% endif %}
   {% endif %}
   {% if in_pipeline %}
-    <a href="/contracts?q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}"
+    <a href="/contracts?q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}{% if discover %}&discover=1{% endif %}{% if not applyable %}&applyable=0{% endif %}"
        class="btn btn-primary" style="padding:5px 14px;font-size:13px">&#10003; In My Pipeline</a>
   {% elif pipeline_map %}
-    <a href="/contracts?in_pipeline=1&q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}"
+    <a href="/contracts?in_pipeline=1&q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}{% if not applyable %}&applyable=0{% endif %}"
        class="btn btn-ghost" style="padding:5px 14px;font-size:13px" title="Show only contracts in your pipeline">In My Pipeline</a>
   {% endif %}
   {% if discover %}
-    <a href="/contracts?q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}"
+    <a href="/contracts?q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if not applyable %}&applyable=0{% endif %}"
        class="btn btn-primary" style="padding:5px 14px;font-size:13px">&#10003; Discover Mode</a>
   {% elif pipeline_map %}
-    <a href="/contracts?discover=1&q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}"
+    <a href="/contracts?discover=1&q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}{% if not applyable %}&applyable=0{% endif %}"
        class="btn btn-ghost" style="padding:5px 14px;font-size:13px" title="Show only contracts not yet in your pipeline">Discover</a>
   {% endif %}
 </div>
@@ -200,7 +200,7 @@
 {% macro sort_link(col, label) %}
   {% set next_dir = "asc" if (sort == col and direction == "desc") else "desc" %}
   {% set arrow = " ↓" if (sort == col and direction == "desc") else (" ↑" if sort == col else "") %}
-  <a href="/contracts?q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&state={{ state }}&category={{ category }}&sort={{ col }}&dir={{ next_dir }}{% if for_my_business %}&for_my_business=1{% endif %}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}">{{ label }}{{ arrow }}</a>
+  <a href="/contracts?q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&state={{ state }}&category={{ category }}&sort={{ col }}&dir={{ next_dir }}{% if for_my_business %}&for_my_business=1{% endif %}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}{% if not applyable %}&applyable=0{% endif %}">{{ label }}{{ arrow }}</a>
 {% endmacro %}
 
 {# ── Desktop table (hidden on mobile) ──────────────────────── #}
@@ -273,8 +273,19 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="{{ 13 if for_my_business else 12 }}" style="text-align:center;padding:40px 20px;color:var(--text-muted)">
-          No contracts match your current filters. <a href="/contracts">Clear all filters</a> to see the full list.
+        <td colspan="{{ 13 if for_my_business else 12 }}" style="text-align:center;padding:32px 20px;color:var(--text-muted)">
+          <div style="font-size:15px;margin-bottom:10px">No contracts match your current filters.</div>
+          <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+            {% if q %}<a href="/contracts?{{ request.query_string.decode().replace('q=' + q|urlencode, 'q=') }}" class="btn btn-ghost" style="font-size:12px;padding:3px 10px">Clear keyword "{{ q }}"</a>{% endif %}
+            {% if category %}<a href="/contracts?{{ request.query_string.decode().replace('category=' + category|urlencode, 'category=') }}" class="btn btn-ghost" style="font-size:12px;padding:3px 10px">Clear category</a>{% endif %}
+            {% if state %}<a href="/contracts?{{ request.query_string.decode().replace('state=' + state|urlencode, 'state=') }}" class="btn btn-ghost" style="font-size:12px;padding:3px 10px">Clear state</a>{% endif %}
+            <a href="/contracts" class="btn btn-ghost" style="font-size:12px;padding:3px 10px">Clear all filters</a>
+          </div>
+          {% if quick_views %}
+          <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Or try a quick view:
+            {% for v in quick_views[:4] %}<a href="/views/{{ v.id }}" style="color:var(--accent);margin-left:6px">{{ v.label }}</a>{% if not loop.last %} &middot;{% endif %}{% endfor %}
+          </div>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}
@@ -324,15 +335,16 @@
     </div>
   </div>
   {% else %}
-  <div class="mobile-card" style="text-align:center;padding:40px 16px;color:var(--text-muted)">
-    No contracts match your current filters.<br>
-    <a href="/contracts" style="color:var(--accent);font-size:14px;margin-top:8px;display:inline-block">Clear filters</a>
+  <div class="mobile-card" style="text-align:center;padding:32px 16px;color:var(--text-muted)">
+    <div style="font-size:15px;margin-bottom:10px">No contracts match your filters.</div>
+    {% if q %}<a href="/contracts?{{ request.query_string.decode().replace('q=' + q|urlencode, 'q=') }}" style="color:var(--accent);font-size:13px;display:block;margin-bottom:6px">Clear keyword "{{ q }}"</a>{% endif %}
+    <a href="/contracts" style="color:var(--accent);font-size:13px;display:inline-block">Clear all filters</a>
   </div>
   {% endfor %}
 </div>
 
 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px">
-  {% set base_qs %}q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}{% endset %}
+  {% set base_qs %}q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}{% if not applyable %}&applyable=0{% endif %}{% endset %}
 
   {% if has_prev %}
     <a href="/contracts?{{ base_qs }}&page=1" class="btn btn-ghost" style="padding:5px 10px">First</a>

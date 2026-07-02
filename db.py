@@ -2218,7 +2218,9 @@ def list_saved_searches(user_id):
 
 
 def search_tokens(q, limit=8):
-    return re.findall(r"[a-z0-9]+", (q or "").lower())[:limit]
+    tokens = re.findall(r"[a-z0-9]+", (q or "").lower())
+    filtered = [t for t in tokens if t not in _NL_STOPWORDS and len(t) > 1]
+    return (filtered or tokens)[:limit]
 
 
 _STATE_NAME_TO_CODE = {
@@ -2433,16 +2435,17 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
 
     col = sort if sort in _SORTABLE else "recompete_score"
     order = "ASC" if direction == "asc" else "DESC"
+    secondary = "" if col == "recompete_score" else ", COALESCE(c.recompete_score, 0) DESC"
 
     with engine.connect() as conn:
         total = conn.execute(text(f"SELECT COUNT(*) {base}"), params).scalar()
         if all_rows:
             rows = conn.execute(
-                text(f"SELECT c.* {base} ORDER BY c.{col} {order}"), params,
+                text(f"SELECT c.* {base} ORDER BY c.{col} {order}{secondary}"), params,
             ).mappings().fetchall()
         else:
             rows = conn.execute(
-                text(f"SELECT c.* {base} ORDER BY c.{col} {order} LIMIT :limit OFFSET :offset"),
+                text(f"SELECT c.* {base} ORDER BY c.{col} {order}{secondary} LIMIT :limit OFFSET :offset"),
                 {**params, "limit": limit, "offset": (page - 1) * limit},
             ).mappings().fetchall()
 

@@ -1573,3 +1573,148 @@ class TestDashboardSearchUrlEnrichment:
         url = contract_search_url(agency="Department of Defense")
         assert "agency=" in url
         assert url.startswith("/contracts")
+
+
+# ---------------------------------------------------------------------------
+# TestSearchTokens — S-04 stopword filtering
+# ---------------------------------------------------------------------------
+
+class TestSearchTokens:
+    def test_filters_stopword_services(self):
+        from db import search_tokens
+        tokens = search_tokens("cleaning services")
+        assert "services" not in tokens
+        assert "cleaning" in tokens
+
+    def test_filters_stopword_contracts(self):
+        from db import search_tokens
+        tokens = search_tokens("IT contracts DOD")
+        assert "contracts" not in tokens
+        assert "it" in tokens
+        assert "dod" in tokens
+
+    def test_filters_stopword_in(self):
+        from db import search_tokens
+        tokens = search_tokens("cleaning services in Virginia")
+        assert "in" not in tokens
+        assert "services" not in tokens
+        assert "cleaning" in tokens
+        assert "virginia" in tokens
+
+    def test_filters_single_char_tokens(self):
+        from db import search_tokens
+        tokens = search_tokens("a b cleaning")
+        assert "a" not in tokens
+        assert "b" not in tokens
+        assert "cleaning" in tokens
+
+    def test_fallback_when_all_stopwords(self):
+        from db import search_tokens
+        tokens = search_tokens("contracts and services")
+        # All are stopwords — fallback to unfiltered to avoid empty query
+        assert len(tokens) > 0
+
+    def test_empty_returns_empty(self):
+        from db import search_tokens
+        assert search_tokens("") == []
+        assert search_tokens(None) == []
+
+    def test_respects_limit(self):
+        from db import search_tokens
+        tokens = search_tokens("alpha bravo charlie delta echo foxtrot golf hotel india", limit=4)
+        assert len(tokens) <= 4
+
+
+# ---------------------------------------------------------------------------
+# TestSecondarySortTiebreaker — S-04 stable ordering
+# ---------------------------------------------------------------------------
+
+class TestSecondarySortTiebreaker:
+    def test_sort_by_value_secondary_score(self, tmp_path, monkeypatch):
+        import db as _db
+        db_path = str(tmp_path / "sort_test.db")
+        monkeypatch.setattr(_db, "DB_PATH", db_path)
+        _db._cached_engine.cache_clear()
+        _db.init_db()
+        # Two contracts with identical value but different scores
+        _db.upsert_contract({
+            "internal_id": "SORT-A", "award_id": "AW-SORT-A",
+            "vendor": "Alpha", "agency": "DOD", "value": 1_000_000,
+            "days_remaining": 200, "recompete_score": 90, "priority": "HIGH",
+        })
+        _db.upsert_contract({
+            "internal_id": "SORT-B", "award_id": "AW-SORT-B",
+            "vendor": "Beta", "agency": "DOD", "value": 1_000_000,
+            "days_remaining": 150, "recompete_score": 40, "priority": "LOW",
+        })
+        result = _db.get_contracts(sort="value", direction="desc", applyable=False)
+        rows = result["contracts"]
+        assert len(rows) == 2
+        # Higher recompete_score should come first when value is tied
+        assert rows[0]["internal_id"] == "SORT-A"
+        assert rows[1]["internal_id"] == "SORT-B"
+
+    def test_sort_by_score_no_tiebreaker_needed(self, tmp_path, monkeypatch):
+        import db as _db
+        db_path = str(tmp_path / "sort_score_test.db")
+        monkeypatch.setattr(_db, "DB_PATH", db_path)
+        _db._cached_engine.cache_clear()
+        _db.init_db()
+        _db.upsert_contract({
+            "internal_id": "SC-A", "award_id": "AW-SC-A",
+            "vendor": "Alpha", "agency": "DOD", "value": 500_000,
+            "days_remaining": 200, "recompete_score": 80, "priority": "HIGH",
+        })
+        _db.upsert_contract({
+            "internal_id": "SC-B", "award_id": "AW-SC-B",
+            "vendor": "Beta", "agency": "DOD", "value": 500_000,
+            "days_remaining": 150, "recompete_score": 50, "priority": "MEDIUM",
+        })
+        result = _db.get_contracts(sort="recompete_score", direction="desc", applyable=False)
+        rows = result["contracts"]
+        assert rows[0]["internal_id"] == "SC-A"
+
+
+# ---------------------------------------------------------------------------
+# TestContractsRouteApplyable — S-04 applyable preservation
+# ---------------------------------------------------------------------------
+
+class TestContractsRouteApplyable:
+    def test_applyable_zero_shows_all_contracts(self, tmp_path, monkeypatch):
+        import db as _db
+        import users as _users
+        db_path = str(tmp_path / "applyable_test.db")
+        monkeypatch.setattr(_db, "DB_PATH", db_path)
+        _db._cached_engine.cache_clear()
+        _db.init_db()
+        _users.create_user("ap@example.com", "pass123")
+        # Contract far outside the normal applyable window
+        _db.upsert_contract({
+            "internal_id": "AP-FAR", "award_id": "AW-AP-FAR",
+            "vendor": "FarOut Vendor", "agency": "NASA",
+            "value": 100_000, "days_remaining": 900,
+            "recompete_score": 50, "priority": "LOW",
+        })
+        # applyable=False should return the contract
+        result = _db.get_contracts(applyable=False)
+        ids = [r["internal_id"] for r in result["contracts"]]
+        assert "AP-FAR" in ids
+
+    def test_applyable_default_filters_far_contracts(self, tmp_path, monkeypatch):
+        import db as _db
+        import users as _users
+        db_path = str(tmp_path / "applyable_def_test.db")
+        monkeypatch.setattr(_db, "DB_PATH", db_path)
+        _db._cached_engine.cache_clear()
+        _db.init_db()
+        _users.create_user("ap2@example.com", "pass123")
+        _db.upsert_contract({
+            "internal_id": "AP-FAR2", "award_id": "AW-AP-FAR2",
+            "vendor": "FarOut2", "agency": "NASA",
+            "value": 100_000, "days_remaining": 900,
+            "recompete_score": 50, "priority": "LOW",
+        })
+        # applyable=True (default) should exclude it (> APPLY_MAX_DAYS)
+        result = _db.get_contracts(applyable=True)
+        ids = [r["internal_id"] for r in result["contracts"]]
+        assert "AP-FAR2" not in ids
