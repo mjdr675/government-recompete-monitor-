@@ -2293,3 +2293,95 @@ tbody tr:hover > th { background: var(--accent-light) !important; }
   font-weight: 600;
   font-size: 13px;
 }
+
+/* ── Pipeline stage tabs ──────────────────────────────────────── */
+.pipeline-tab {
+  font-size: 12.5px;
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  text-decoration: none;
+  background: var(--surface);
+  color: var(--text-muted);
+  white-space: nowrap;
+  transition: background .1s, color .1s, border-color .1s;
+}
+.pipeline-tab:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+.pipeline-tab.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+/* ── Profile / form section cards ────────────────────────────── */
+.profile-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.profile-section h2 {
+  margin-top: 0;
+  margin-bottom: 4px;
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--accent);
+}
+
+/* ── Custom checkboxes (shared: company profile + onboarding) ── */
+.cp-check-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  transition: background 0.1s;
+  user-select: none;
+}
+.cp-check-label:hover { background: var(--accent-light, rgba(37,99,235,0.07)); }
+.cp-check {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.cp-check-box {
+  flex-shrink: 0;
+  width: 17px;
+  height: 17px;
+  border: 2px solid var(--border-strong, var(--border));
+  border-radius: 4px;
+  background: var(--bg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+.cp-check-label:hover .cp-check-box { border-color: var(--accent); }
+.cp-check:checked + .cp-check-box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.cp-check:checked + .cp-check-box::after {
+  content: "";
+  display: block;
+  width: 9px;
+  height: 5px;
+  border-left: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(-45deg) translate(1px, -1px);
+}
+.cp-check:focus-visible + .cp-check-box {
+  outline: 2px solid var(--accent-ring, rgba(37,99,235,0.4));
+  outline-offset: 2px;
+}
+
+/* ── Event badges (vendor win/loss history) ───────────────────── */
+.event-badge-won  { background: #16a34a; }
+.event-badge-lost { background: #b00020; }

@@ -26,10 +26,10 @@
 {% endif %}
 
 {% if error %}
-<div style="padding:10px 14px;background:#fee2e2;border-left:3px solid #ef4444;color:#991b1b;border-radius:var(--radius-sm);margin-bottom:16px">{{ error }}</div>
+<div class="flash-error" style="margin-bottom:16px">{{ error }}</div>
 {% endif %}
 {% if success %}
-<div style="padding:10px 14px;background:#d1fae5;border-left:3px solid #10b981;color:#065f46;border-radius:var(--radius-sm);margin-bottom:16px">{{ success }}</div>
+<div class="flash-success" style="margin-bottom:16px">{{ success }}</div>
 {% endif %}
 
 {% if not profile and not success %}
@@ -45,7 +45,7 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
   {# ── Company Identity ─────────────────────────────────────────────────── #}
-  <div id="company-identity" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
+  <div id="company-identity" class="profile-section">
     <h2 style="margin-top:0;margin-bottom:4px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)">Company Identity</h2>
     <p class="muted" style="font-size:12px;margin:0 0 16px">
       Your company name and logo appear throughout your Recompete workspace.
@@ -102,7 +102,7 @@
   </div>
 
   {# ── Contract Import Details ───────────────────────────────────────────── #}
-  <div id="import-contracts" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
+  <div id="import-contracts" class="profile-section">
     <h2 style="margin-top:0;margin-bottom:4px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)">Contract Import Details</h2>
     <p class="muted" style="font-size:12px;margin:0 0 16px">
       Recompete uses these details to find contracts your business already holds in federal award data.
@@ -156,7 +156,7 @@
   </div>
 
   {# ── NAICS Codes ──────────────────────────────────────────────────────── #}
-  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
+  <div class="profile-section">
     <h2 style="margin-top:0;margin-bottom:4px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)">Industry (NAICS Codes)</h2>
     <div class="muted" style="font-size:12px;margin-bottom:10px">Enter one or more NAICS codes, one per line or comma-separated.</div>
     <textarea name="naics_codes" rows="4"
@@ -165,7 +165,7 @@
   </div>
 
   {# ── PSC Codes ────────────────────────────────────────────────────────── #}
-  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
+  <div class="profile-section">
     <h2 style="margin-top:0;margin-bottom:4px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)">Service Categories (PSC Codes)</h2>
     <div class="muted" style="font-size:12px;margin-bottom:10px">Enter PSC (Product/Service Codes) your company delivers, one per line or comma-separated. Use a prefix (e.g. <code>R</code> for Professional Services, <code>D</code> for IT) to match an entire category, or a full 4-character code (e.g. <code>R499</code>) for a specific service.</div>
     <textarea name="psc_codes" rows="3"
@@ -174,7 +174,7 @@
   </div>
 
   {# ── Geographic Coverage ───────────────────────────────────────────────── #}
-  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
+  <div class="profile-section">
     <h2 style="margin-top:0;margin-bottom:12px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)">Geographic Coverage</h2>
     {% set geo = profile.geo_coverage if profile else 'nationwide' %}
     <div style="display:flex;gap:24px;margin-bottom:12px">
@@ -214,7 +214,7 @@
   </div>
 
   {# ── Contract Size ────────────────────────────────────────────────────── #}
-  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
+  <div class="profile-section">
     <h2 style="margin-top:0;margin-bottom:12px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)">Preferred Contract Size</h2>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div>
@@ -241,7 +241,7 @@
   </div>
 
   {# ── Preferred Agencies ───────────────────────────────────────────────── #}
-  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
+  <div class="profile-section">
     <h2 style="margin-top:0;margin-bottom:4px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)">Preferred Agencies</h2>
     {% if all_agencies %}
     {# Native select for progressive enhancement; hidden by JS when picker initialises #}
@@ -270,14 +270,14 @@
   </div>
 
   {# ── Keywords ─────────────────────────────────────────────────────────── #}
-  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:20px">
+  <div class="profile-section">
     <h2 style="margin-top:0;margin-bottom:8px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)">Keywords</h2>
     <div class="muted" style="font-size:13px;margin-bottom:10px">Plain-language descriptions of your services — used to find matching contracts. Enter one per line or comma-separated.<br>Examples: janitorial, lawn care, IT support, facilities management</div>
     <textarea name="keywords" rows="3" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:14px;resize:vertical">{% if profile and profile.keywords %}{{ profile.keywords | join(', ') }}{% endif %}</textarea>
   </div>
 
   {# ── Set-Aside Preferences ────────────────────────────────────────────── #}
-  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:20px">
+  <div class="profile-section">
     <h2 style="margin-top:0;margin-bottom:12px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)">Set-Aside Preferences</h2>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:4px">
       {% for value, label in set_aside_options %}
@@ -301,67 +301,7 @@
   </div>
 </form>
 
-{# ── Company Profile: custom checkbox + logo-upload styles/script ── #}
 <style>
-/* Custom checkboxes (Set-Aside Preferences) */
-.cp-check-label {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  font-size: 14px;
-  padding: 7px 10px;
-  border-radius: var(--radius-sm);
-  transition: background 0.1s;
-  user-select: none;
-}
-.cp-check-label:hover { background: var(--accent-light, rgba(37,99,235,0.07)); }
-
-/* Hide native checkbox; keep it accessible */
-.cp-check {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
-  pointer-events: none;
-}
-
-/* Custom box */
-.cp-check-box {
-  flex-shrink: 0;
-  width: 17px;
-  height: 17px;
-  border: 2px solid var(--border-strong, var(--border));
-  border-radius: 4px;
-  background: var(--bg);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: border-color 0.15s, background 0.15s;
-}
-.cp-check-label:hover .cp-check-box {
-  border-color: var(--accent);
-}
-/* Checked state */
-.cp-check:checked + .cp-check-box {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-.cp-check:checked + .cp-check-box::after {
-  content: "";
-  display: block;
-  width: 9px;
-  height: 5px;
-  border-left: 2px solid #fff;
-  border-bottom: 2px solid #fff;
-  transform: rotate(-45deg) translate(1px, -1px);
-}
-/* Focus ring */
-.cp-check:focus-visible + .cp-check-box {
-  outline: 2px solid var(--accent-ring, rgba(37,99,235,0.4));
-  outline-offset: 2px;
-}
-
 /* Logo upload zone tweak — compact horizontal row */
 #logo-upload-zone { min-height: 0; }
 </style>
