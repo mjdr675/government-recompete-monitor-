@@ -65,9 +65,11 @@ def test_save_empty_name_returns_400(client):
     assert rv.status_code == 400
 
 
-def test_save_unauthenticated_returns_401(anon_client):
+def test_save_unauthenticated_redirects_to_login(anon_client):
+    # Hardened (Gate 1): rejected by require_login (302 -> /login) before the handler.
     rv = anon_client.post("/searches/save", json={"name": "X", "params": {}})
-    assert rv.status_code == 401
+    assert rv.status_code == 302
+    assert "/login" in rv.headers["Location"]
 
 
 def test_save_multiple_searches_get_distinct_ids(client):
@@ -94,9 +96,11 @@ def test_delete_nonexistent_is_idempotent(client):
     assert rv.get_json()["ok"] is True
 
 
-def test_delete_unauthenticated_returns_401(anon_client):
+def test_delete_unauthenticated_redirects_to_login(anon_client):
+    # Hardened (Gate 1): rejected by require_login (302 -> /login) before the handler.
     rv = anon_client.delete("/searches/1")
-    assert rv.status_code == 401
+    assert rv.status_code == 302
+    assert "/login" in rv.headers["Location"]
 
 
 # ---------------------------------------------------------------------------

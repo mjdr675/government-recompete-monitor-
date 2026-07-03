@@ -417,10 +417,6 @@ _PUBLIC_PATHS = frozenset({
     "/demo",
     "/early-access",
     "/stripe/webhook",
-    "/watchlist/add",
-    "/watchlist/remove",
-    "/watchlist/add-by-award-id",
-    "/searches/save",
     "/api/data-freshness",
     "/ingest/run",
     "/feedback",
@@ -449,10 +445,6 @@ def require_login():
     # Static assets and the favicon must never require auth, otherwise logged-out
     # visitors get unstyled public pages (no CSS/JS loads).
     if request.path.startswith("/static/") or request.path == "/favicon.ico":
-        return None
-    if request.method == "DELETE" and request.path.startswith("/searches/"):
-        return None
-    if request.method == "POST" and request.path.endswith("/note"):
         return None
     if request.path.startswith("/api/health/"):
         return None
