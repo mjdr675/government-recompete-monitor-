@@ -64,9 +64,12 @@ def test_add_missing_internal_id_returns_400(client):
     assert rv.get_json()["ok"] is False
 
 
-def test_add_unauthenticated_returns_401(anon_client):
+def test_add_unauthenticated_redirects_to_login(anon_client):
+    # Hardened (Gate 1): anonymous writes are rejected by require_login with a
+    # 302 -> /login BEFORE reaching the handler, not by the handler's 401 guard.
     rv = anon_client.post("/watchlist/add", json={"internal_id": "C001"})
-    assert rv.status_code == 401
+    assert rv.status_code == 302
+    assert "/login" in rv.headers["Location"]
 
 
 # ---------------------------------------------------------------------------
@@ -86,9 +89,11 @@ def test_remove_nonexistent_is_idempotent(client):
     assert rv.get_json()["ok"] is True
 
 
-def test_remove_unauthenticated_returns_401(anon_client):
+def test_remove_unauthenticated_redirects_to_login(anon_client):
+    # Hardened (Gate 1): rejected by require_login (302 -> /login) before the handler.
     rv = anon_client.post("/watchlist/remove", json={"internal_id": "C001"})
-    assert rv.status_code == 401
+    assert rv.status_code == 302
+    assert "/login" in rv.headers["Location"]
 
 
 def test_add_then_remove_clears_bookmark(client, auth_db):
