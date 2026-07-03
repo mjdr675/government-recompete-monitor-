@@ -1,8 +1,13 @@
 name: Deploy Recompete
 
+# Auto-deploy trigger disabled 2026-07-03 (Gate 2 O4.2): this workflow
+# duplicated Railway's own auto-deploy (the actual canonical prod path --
+# see DEPLOYMENT.md) by also SSHing into a separate, non-production VPS on
+# every push to main. Kept as a manual-only escape hatch (workflow_dispatch)
+# rather than deleted, per approved scope. See DEPLOYMENT.md for the full
+# canonical-path rationale.
 on:
-  push:
-    branches: [ "main" ]
+  workflow_dispatch: {}
 
 # Serialize deploys so two pushes to main cannot run overlapping
 # `git reset --hard` + `systemctl restart` sequences against the same VPS.
