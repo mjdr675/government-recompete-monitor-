@@ -127,10 +127,10 @@ def forgot_password():
             reset_url = f"{app_url}/reset-password?token={token}"
             try:
                 html_body = render_template(
-                    "email/password_reset.html", reset_url=reset_url, app_url=app_url
+                    "email/reset_password.html", reset_url=reset_url, app_url=app_url
                 )
                 text_body = render_template(
-                    "email/password_reset.txt", reset_url=reset_url, app_url=app_url
+                    "email/reset_password.txt", reset_url=reset_url, app_url=app_url
                 )
             except Exception:
                 html_body = (
