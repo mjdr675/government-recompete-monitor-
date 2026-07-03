@@ -22,6 +22,7 @@ before it reaches `origin/main`.
 | Contract Intelligence | `lane/contract-intel`     | `/home/michael/recompete-worktrees/contract-intel`     | scoring, comparison, summaries, `contract_summary.py`  |
 | UI/Product            | `lane/ui-polish`          | `/home/michael/recompete-worktrees/ui-polish`          | branding, templates, pricing, visual polish            |
 | Bugfix                | `lane/bugfix`             | `/home/michael/recompete-worktrees/bugfix`             | isolated regressions, pre-existing test failures       |
+| Lead Intelligence     | `lane/lead-intelligence`  | `/home/michael/recompete-worktrees/lead-intelligence`  | internal sales prospecting: lead import/scoring, outreach workbench, `lead_intelligence.py` |
 
 ---
 
