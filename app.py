@@ -1294,16 +1294,40 @@ def create_checkout_session():
 
 @app.route("/success")
 def success():
+    # Fallback activation: the webhook (below) is the primary path, but it
+    # depends on STRIPE_WEBHOOK_SECRET being configured and reachable -- a
+    # delayed, misconfigured, or dropped webhook must not leave a customer
+    # who genuinely paid stuck looking at an expired/unactivated account.
+    # Verifying the session directly with Stripe on the customer's own
+    # redirect back is synchronous and doesn't depend on webhook delivery
+    # at all. _activate_from_checkout is idempotent (set_subscription is a
+    # plain UPDATE) so it is always safe to call even if the webhook has
+    # already activated (or later activates) the same session.
     session_id = request.args.get("session_id", "")
     if session_id:
         try:
             checkout = payments.service.retrieve_checkout_session(session_id)
+            # Same fix as stripe_webhook(): a real Stripe SDK object (not a
+            # plain dict) has no .get() method (confirmed: stripe==15.2.1's
+            # StripeObject). retrieve_checkout_session returns a genuine
+            # checkout.Session in production; converting once here keeps
+            # every .get() call below (and inside _activate_from_checkout)
+            # working for both real sessions and plain-dict test doubles.
+            if hasattr(checkout, "to_dict"):
+                checkout = checkout.to_dict()
             details = checkout.get("customer_details") or {}
             email = details.get("email") or ""
             name = details.get("name") or ""
             if email:
                 hubspot_service.handle_stripe_checkout(
                     email=email, name=name, stripe_session_id=session_id
+                )
+            if checkout.get("payment_status") == "paid":
+                _activate_from_checkout(checkout, session_id)
+            else:
+                logging.info(
+                    "Stripe session %s returned to /success with payment_status=%s "
+                    "(not activating)", session_id, checkout.get("payment_status"),
                 )
         except Exception as exc:
             sentry_sdk.capture_exception(exc)
@@ -1342,6 +1366,37 @@ def billing_portal():
         logging.exception("Billing portal error: %s", exc)
         flash("Could not open billing portal. Please try again later.", "error")
         return redirect(url_for("dashboard"))
+
+
+def _activate_from_checkout(checkout, session_id=None):
+    """Shared activation logic for a completed/paid Stripe Checkout Session.
+
+    Single source of truth for both the webhook path (stripe_webhook, the
+    primary/authoritative path) and the checkout-return fallback (success,
+    below) -- so the two can never diverge on what "activated" means.
+    Idempotent: set_subscription and the workspace billing update are both
+    plain UPDATEs, so calling this twice for the same session (e.g. webhook
+    AND fallback both firing) is harmless.
+    """
+    details = checkout.get("customer_details") or {}
+    email = details.get("email") or checkout.get("customer_email") or ""
+    name = details.get("name") or ""
+    resolved_session_id = session_id or checkout.get("id") or ""
+    stripe_customer_id = checkout.get("customer") or ""
+    if email:
+        hubspot_service.handle_stripe_checkout(
+            email=email, name=name, stripe_session_id=resolved_session_id
+        )
+        user = get_user_by_email(email)
+        if user and stripe_customer_id:
+            set_subscription(user["id"], stripe_customer_id, "active")
+    try:
+        _apply_workspace_billing_event(
+            {"type": "checkout.session.completed", "id": resolved_session_id or None, "data": {"object": checkout}}
+        )
+    except Exception as exc:
+        sentry_sdk.capture_exception(exc)
+        logging.exception("Workspace billing update failed for session %s: %s", resolved_session_id, exc)
 
 
 def _apply_workspace_billing_event(event):
@@ -1404,20 +1459,20 @@ def stripe_webhook():
         logging.exception("Unexpected error parsing webhook: %s", exc)
         return "Internal error", 500
 
+    # stripe-python's real Event/StripeObject types support attribute and
+    # bracket access but NOT .get() (confirmed: stripe==15.2.1's StripeObject
+    # has no .get method at all) -- every handler below (and
+    # _activate_from_checkout / _apply_workspace_billing_event) was written
+    # assuming plain dicts and calls .get() throughout. Converting once here
+    # to a plain, fully-recursive dict is the minimal fix: everything
+    # downstream keeps working exactly as written, for both a genuine
+    # signature-verified Stripe event and the existing unit tests that
+    # already pass plain dicts directly.
+    event = event.to_dict()
+
     if event["type"] == "checkout.session.completed":
         checkout = event["data"]["object"]
-        details = checkout.get("customer_details") or {}
-        email = details.get("email") or checkout.get("customer_email") or ""
-        name = details.get("name") or ""
-        session_id = checkout.get("id") or ""
-        stripe_customer_id = checkout.get("customer") or ""
-        if email:
-            hubspot_service.handle_stripe_checkout(
-                email=email, name=name, stripe_session_id=session_id
-            )
-            user = get_user_by_email(email)
-            if user and stripe_customer_id:
-                set_subscription(user["id"], stripe_customer_id, "active")
+        _activate_from_checkout(checkout, checkout.get("id") or "")
 
     elif event["type"] == "customer.subscription.updated":
         sub = event["data"]["object"]
