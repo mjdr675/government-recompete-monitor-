@@ -1,0 +1,47 @@
+{# ── Public/legal footer ─────────────────────────────────────────────────
+   Rendered on every page (logged in and logged out) via the include in
+   base.html — sits inside `.content` (logged in) or `.anon-content`
+   (logged out). Links to the four Gate 2 pages: /pricing, /terms,
+   /privacy, /refund.
+   ──────────────────────────────────────────────────────────────────────── #}
+<footer class="site-footer" role="contentinfo">
+  <nav class="site-footer-links" aria-label="Legal and pricing">
+    <a href="/pricing">Pricing</a>
+    <a href="/terms">Terms of Service</a>
+    <a href="/privacy">Privacy Policy</a>
+    <a href="/refund">Refund Policy</a>
+    <a href="mailto:hello@recompete.us">Contact</a>
+  </nav>
+  <div class="site-footer-meta">
+    &copy; <span>Recompete</span> &middot; recompete.us
+  </div>
+</footer>
+
+<style>
+  .site-footer {
+    margin-top: 48px;
+    padding: 24px 16px 20px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+  }
+  .site-footer-links {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px 22px;
+    margin-bottom: 10px;
+  }
+  .site-footer-links a {
+    color: var(--text-muted);
+    font-size: 13px;
+    text-decoration: none;
+  }
+  .site-footer-links a:hover {
+    color: var(--accent);
+    text-decoration: underline;
+  }
+  .site-footer-meta {
+    font-size: 12px;
+    color: var(--text-faint, var(--text-muted));
+  }
+</style>

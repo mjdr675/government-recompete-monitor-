@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Refund Policy — Recompete.{% endblock %}
+{% block content %}
+
+<div class="legal-page">
+  <header class="legal-head">
+    <h1>Refund Policy</h1>
+    <p class="legal-meta">
+      Last updated: <time datetime="2026-07-05">July 5, 2026</time>
+      &middot; Effective date: <time datetime="2026-07-05">July 5, 2026</time>
+    </p>
+  </header>
+
+  <div class="legal-note">
+    <strong>Plain-English summary.</strong> Cancel any time, keep access
+    until your period ends, and we do not automatically prorate. If
+    you cancel within 14 days of your first paid charge and have not
+    heavily used the product, email us and we will refund it. After that
+    we handle refunds case by case.
+  </div>
+
+  <section>
+    <h2>1. Cancellation</h2>
+    <p>
+      You can cancel your Recompete subscription at any time from the
+      <a href="/settings/billing">billing settings page</a> or by opening
+      the Stripe billing portal from that page. Cancellation takes effect
+      at the end of your current billing period; you will not be charged
+      again after that.
+    </p>
+    <p>
+      You keep access to the Service for the remainder of the paid
+      period. We do not automatically prorate partial periods.
+    </p>
+  </section>
+
+  <section>
+    <h2>2. Free trial</h2>
+    <p>
+      Where offered, our free trial gives you full access for
+      <strong>seven (7) days on annual Payment Links</strong> without
+      charge. Cancel before the trial ends to avoid being billed. If we
+      bill you because you did not cancel in time, see Section 3 below.
+    </p>
+  </section>
+
+  <section>
+    <h2>3. 14-day refund window (first paid charge)</h2>
+    <p>
+      Recompete offers a good-faith refund on your <em>first</em> paid
+      subscription charge if all of the following apply:
+    </p>
+    <ul>
+      <li>You request the refund within <strong>14 days</strong> of the
+        charge.</li>
+      <li>Your account has not been used to export more than
+        <strong>500</strong> contract records or to materially process a
+        full watchlist cycle.</li>
+      <li>The account is in good standing under our
+        <a href="/terms">Terms of Service</a>.</li>
+    </ul>
+    <p>
+      To request a refund, email
+      <a href="mailto:billing@recompete.us">billing@recompete.us</a>
+      from the address on your account and reference your workspace name.
+      We aim to respond within <strong>two (2) business days</strong>.
+    </p>
+  </section>
+
+  <section>
+    <h2>4. Renewals and yearly plans</h2>
+    <p>
+      Yearly subscriptions renew automatically at the end of the term at
+      the then-current rate. To avoid renewal, cancel before your renewal
+      date. Once a yearly renewal has been charged, we offer a
+      <strong>7-day</strong> refund window on that renewal charge if you
+      email <a href="mailto:billing@recompete.us">billing@recompete.us</a>
+      before the 7-day window closes.
+    </p>
+  </section>
+
+  <section>
+    <h2>5. Failed payments</h2>
+    <p>
+      If a scheduled payment fails, Stripe will retry per its dunning
+      schedule. If retries fail, we will suspend paid features and notify
+      you by email. You can update your payment method any time from the
+      billing portal. Suspended accounts are not eligible for refunds for
+      the suspended period.
+    </p>
+  </section>
+
+  <section>
+    <h2>6. Chargebacks</h2>
+    <p>
+      Please contact us before initiating a chargeback with your card
+      issuer. Most billing disputes can be resolved directly and faster
+      than a chargeback. We reserve the right to suspend accounts with
+      unresolved chargebacks pending investigation.
+    </p>
+  </section>
+
+  <section>
+    <h2>7. Exceptional circumstances</h2>
+    <p>
+      If you experienced a material Service outage or a bug that
+      prevented you from using the product for an extended period, email
+      us — we handle those cases individually and may offer a partial
+      refund or a service credit even outside the 14-day window.
+    </p>
+  </section>
+
+  <section>
+    <h2>8. Contact</h2>
+    <p>
+      Billing questions?
+      <a href="mailto:billing@recompete.us">billing@recompete.us</a>.
+      We respond within <strong>one (1) business day</strong>.
+    </p>
+  </section>
+</div>
+
+<style>
+  .legal-page { max-width: 760px; margin: 0 auto; padding: 24px 8px 64px; }
+  .legal-head { margin-bottom: 24px; }
+  .legal-head h1 { font-size: 32px; font-weight: 700; margin: 0 0 4px; color: var(--text-primary); }
+  .legal-meta { font-size: 13px; color: var(--text-muted); margin: 0; }
+  .legal-note {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-size: 14px;
+    color: var(--text-primary);
+    line-height: 1.55;
+    margin-bottom: 28px;
+  }
+  .legal-page section { margin-bottom: 24px; }
+  .legal-page h2 {
+    font-size: 18px; font-weight: 700; margin: 0 0 8px;
+    color: var(--text-primary);
+  }
+  .legal-page p, .legal-page li {
+    font-size: 15px; line-height: 1.65; color: var(--text-primary);
+    margin: 0 0 6px;
+  }
+  .legal-page ul { margin: 0 0 10px; padding-left: 22px; }
+  .legal-page a { color: var(--accent); }
+</style>
+{% endblock %}
