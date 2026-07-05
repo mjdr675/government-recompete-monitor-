@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}Pricing — Recompete.{% endblock %}
+{% block content %}
+
+{# ── Stripe Payment Link (live) ──────────────────────────────────────────
+   Single-plan pricing surface. Uses the SAME live Payment Link that the
+   Pro monthly CTA on /subscribe uses (templates/subscribe.html) — do NOT
+   create a new Payment Link here. Public buy.stripe.com URLs are safe to
+   embed in the frontend. Do NOT add STRIPE_SECRET_KEY here.
+   ──────────────────────────────────────────────────────────────────────── #}
+{% set PRO_MONTHLY_LINK = "https://buy.stripe.com/9B6aEY0lkejy51bcq828800" %}
+{% set PRO_YEARLY_LINK  = "https://buy.stripe.com/3cIdRa9VU8ZectD0Hq28801" %}
+
+{# ── Per-user Payment Link reference ─────────────────────────────────────
+   client_reference_id carries the workspace id so the
+   checkout.session.completed webhook (app.py:1408) can resolve the
+   workspace and mark it active; the empty fallback is intentional.
+   prefilled_email pre-fills the Stripe checkout form. Guarded on g.user so
+   logged-out visitors get bare links (no empty params). Mirrors the block
+   in templates/subscribe.html and templates/settings_billing.html.
+   ──────────────────────────────────────────────────────────────────────── #}
+{% set _ref_qs = "" %}
+{% if g.user and workspace and workspace.id %}
+  {% set _ref_qs = "?client_reference_id=" ~ (workspace.id | string | urlencode) ~ "&prefilled_email=" ~ (g.user.email | urlencode if g.user.email else "") %}
+{% endif %}
+
+<div class="pricing-page">
+
+  <header class="pricing-head">
+    <h1>Simple, predictable pricing</h1>
+    <p class="pricing-subtitle">
+      One plan. Full contract intelligence for U.S. government-contracting
+      professionals. Cancel anytime.
+    </p>
+  </header>
+
+  <div class="pricing-card">
+    <div class="pricing-plan-badge">Pro plan</div>
+    <h2>$49<span class="pricing-per">/ month</span></h2>
+    <p class="pricing-annual">or $490/year &mdash; save $98 (~2 months free)</p>
+
+    <ul class="pricing-features">
+      <li>Unlimited tracked contracts</li>
+      <li>Daily watchlist expiry alerts</li>
+      <li>Full recompete scoring on every contract</li>
+      <li>Agency and vendor intelligence profiles</li>
+      <li>My Current Contracts dashboard</li>
+      <li>Pipeline tracking</li>
+      <li>Unlimited saved searches and custom views</li>
+      <li>Export contracts to CSV</li>
+      <li>Contract notes and annotations</li>
+    </ul>
+
+    <a href="{{ PRO_MONTHLY_LINK }}{{ _ref_qs }}" class="btn-cta-primary" target="_blank" rel="noopener">
+      Subscribe &mdash; $49/month
+    </a>
+    <a href="{{ PRO_YEARLY_LINK }}{{ _ref_qs }}" class="btn-cta-outline" target="_blank" rel="noopener">
+      Subscribe yearly &mdash; $490/year
+    </a>
+
+    <div class="pricing-trust">
+      <span>&#128274; Secure payment via Stripe</span>
+      <span>&#128274; Cancel anytime</span>
+      <span>&#128274; 7-day free trial on yearly plans</span>
+    </div>
+  </div>
+
+  <div class="pricing-fine-print">
+    <p>
+      Looking for other options? See our
+      <a href="/subscribe">Basic and Enterprise plans</a>, or read the
+      <a href="/refund">Refund Policy</a> before you subscribe.
+    </p>
+  </div>
+
+</div>
+
+<style>
+  .pricing-page { max-width: 640px; margin: 0 auto; padding: 24px 12px 64px; }
+  .pricing-head { text-align: center; margin-bottom: 28px; }
+  .pricing-head h1 {
+    font-size: 30px; font-weight: 700; margin: 0 0 8px;
+    color: var(--text-primary);
+  }
+  .pricing-subtitle {
+    font-size: 15px; color: var(--text-muted);
+    margin: 0 auto; max-width: 440px; line-height: 1.55;
+  }
+
+  .pricing-card {
+    background: var(--surface);
+    border: 2px solid var(--accent);
+    border-radius: 14px;
+    box-shadow: var(--shadow-md), 0 0 0 1px var(--accent);
+    padding: 30px 28px 24px;
+    text-align: center;
+  }
+  .pricing-plan-badge {
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    padding: 3px 12px;
+    border-radius: 999px;
+    margin-bottom: 14px;
+  }
+  .pricing-card h2 {
+    font-size: 48px; font-weight: 700; margin: 0 0 4px;
+    color: var(--text-primary); line-height: 1;
+  }
+  .pricing-per { font-size: 17px; color: var(--text-muted); font-weight: 500; margin-left: 4px; }
+  .pricing-annual { font-size: 13px; color: #059669; font-weight: 600; margin: 0 0 20px; }
+
+  .pricing-features {
+    list-style: none; padding: 0; margin: 0 0 22px;
+    text-align: left; max-width: 380px; margin-left: auto; margin-right: auto;
+  }
+  .pricing-features li {
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    color: var(--text-primary);
+    display: flex; align-items: flex-start; gap: 8px; line-height: 1.4;
+  }
+  .pricing-features li:last-child { border-bottom: none; }
+  .pricing-features li::before { content: "✓"; color: #16a34a; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+
+  .btn-cta-primary {
+    display: block; text-align: center;
+    padding: 14px; border-radius: 6px;
+    font-size: 15px; font-weight: 700; text-decoration: none;
+    background: var(--accent); color: #fff;
+    border: 2px solid transparent;
+    margin-bottom: 10px;
+    transition: background .15s;
+  }
+  .btn-cta-primary:hover { background: var(--accent-hover); color: #fff; text-decoration: none; }
+
+  .btn-cta-outline {
+    display: block; text-align: center;
+    padding: 12px; border-radius: 6px;
+    font-size: 14px; font-weight: 600; text-decoration: none;
+    background: transparent; color: var(--accent);
+    border: 2px solid var(--accent);
+    transition: background .12s, color .12s;
+  }
+  .btn-cta-outline:hover { background: var(--accent-light); color: var(--accent); text-decoration: none; }
+
+  .pricing-trust {
+    display: flex; gap: 14px; flex-wrap: wrap; justify-content: center;
+    margin-top: 16px; font-size: 12.5px; color: var(--text-muted);
+  }
+
+  .pricing-fine-print { text-align: center; margin-top: 20px; }
+  .pricing-fine-print p { font-size: 13px; color: var(--text-muted); margin: 0; }
+  .pricing-fine-print a { color: var(--accent); }
+
+  @media (max-width: 520px) {
+    .pricing-card { padding: 24px 18px 20px; }
+    .pricing-card h2 { font-size: 38px; }
+  }
+</style>
+{% endblock %}

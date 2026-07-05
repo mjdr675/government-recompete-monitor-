@@ -420,6 +420,10 @@ _PUBLIC_PATHS = frozenset({
     "/api/data-freshness",
     "/ingest/run",
     "/feedback",
+    "/pricing",
+    "/terms",
+    "/privacy",
+    "/refund",
 })
 
 
@@ -1352,6 +1356,34 @@ def subscribe():
             ws["logo_url"] = _logo_url(ws.get("logo_path"))
             workspace = ws
     return render_template("subscribe.html", expired=expired, workspace=workspace)
+
+
+@app.route("/pricing")
+def pricing():
+    workspace = None
+    user = g.get("user")
+    if user:
+        ws = get_or_create_workspace_for_user(user["id"])
+        if ws:
+            ws = dict(ws)
+            ws["logo_url"] = _logo_url(ws.get("logo_path"))
+            workspace = ws
+    return render_template("pricing.html", workspace=workspace)
+
+
+@app.route("/terms")
+def terms():
+    return render_template("terms.html")
+
+
+@app.route("/privacy")
+def privacy():
+    return render_template("privacy.html")
+
+
+@app.route("/refund")
+def refund():
+    return render_template("refund.html")
 
 
 @app.route("/billing/portal", methods=["POST"])
