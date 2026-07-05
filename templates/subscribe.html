@@ -12,6 +12,17 @@
 {% set PRO_MONTHLY_LINK   = "https://buy.stripe.com/9B6aEY0lkejy51bcq828800" %}
 {% set PRO_YEARLY_LINK    = "https://buy.stripe.com/3cIdRa9VU8ZectD0Hq28801" %}
 
+{# ── Per-user Payment Link reference ─────────────────────────────────────────
+   client_reference_id carries the workspace id so the checkout.session.completed
+   webhook (app.py:1408) can resolve the workspace and mark it active; the empty
+   fallback is intentional. prefilled_email pre-fills the Stripe checkout form.
+   Guarded on g.user so logged-out visitors get bare links (no empty params).
+   ───────────────────────────────────────────────────────────────────────── #}
+{% set _ref_qs = "" %}
+{% if g.user and workspace and workspace.id %}
+  {% set _ref_qs = "?client_reference_id=" ~ (workspace.id | string | urlencode) ~ "&prefilled_email=" ~ (g.user.email | urlencode if g.user.email else "") %}
+{% endif %}
+
 <style>
   /* ── Page shell ── */
   .sub-page { max-width: 960px; margin: 0 auto; padding: 0 0 48px; }
@@ -195,10 +206,10 @@
         <li>Search and filter by agency, NAICS, and state</li>
         <li>Up to 3 saved searches</li>
       </ul>
-      <a href="{{ BASIC_MONTHLY_LINK }}" class="btn-cta-primary" target="_blank" rel="noopener">
+      <a href="{{ BASIC_MONTHLY_LINK }}{{ _ref_qs }}" class="btn-cta-primary" target="_blank" rel="noopener">
         Start Basic &mdash; $29/month
       </a>
-      <a href="{{ BASIC_YEARLY_LINK }}" class="btn-cta-outline" target="_blank" rel="noopener">
+      <a href="{{ BASIC_YEARLY_LINK }}{{ _ref_qs }}" class="btn-cta-outline" target="_blank" rel="noopener">
         Start Basic yearly &mdash; $290/year
       </a>
       <div class="trust-row" style="margin-top:12px">
@@ -228,10 +239,10 @@
         <li>Export contracts to CSV</li>
         <li>Contract notes and annotations</li>
       </ul>
-      <a href="{{ PRO_MONTHLY_LINK }}" class="btn-cta-primary" target="_blank" rel="noopener">
+      <a href="{{ PRO_MONTHLY_LINK }}{{ _ref_qs }}" class="btn-cta-primary" target="_blank" rel="noopener">
         Subscribe now &mdash; $49/month
       </a>
-      <a href="{{ PRO_YEARLY_LINK }}" class="btn-cta-outline" target="_blank" rel="noopener">
+      <a href="{{ PRO_YEARLY_LINK }}{{ _ref_qs }}" class="btn-cta-outline" target="_blank" rel="noopener">
         Subscribe yearly &mdash; $490/year
       </a>
       <div class="trust-row">
