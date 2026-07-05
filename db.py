@@ -383,6 +383,23 @@ def _ensure_ci_columns():
         ]:
             if col not in existing:
                 conn.execute(text(f"ALTER TABLE contracts ADD COLUMN {col} {coltype}"))
+        # One-time backfill: normalize any pre-existing recipient_uei values
+        # that were stored raw (mixed case or with surrounding whitespace)
+        # before save_snapshot/upsert_contract started normalizing on write.
+        # Uses the same strip-all-whitespace + upper() rule as the Python
+        # normalizer. Idempotent — after the first pass no rows differ from
+        # their normalized form, so subsequent startups are a no-op query.
+        raw_rows = conn.execute(text(
+            "SELECT rowid, recipient_uei FROM contracts "
+            "WHERE recipient_uei IS NOT NULL AND recipient_uei <> ''"
+        )).fetchall()
+        for rowid, raw in raw_rows:
+            norm = "".join((raw or "").split()).upper()
+            if norm != raw:
+                conn.execute(
+                    text("UPDATE contracts SET recipient_uei = :n WHERE rowid = :r"),
+                    {"n": norm, "r": rowid},
+                )
 
 
 def _ensure_description_column():
@@ -1735,8 +1752,11 @@ def save_snapshot(run_date, rows):
                 "sam_url": row.get("sam_url") or "",
                 "sam_type": row.get("sam_type") or "",
                 "sam_due_date": row.get("sam_due_date") or "",
-                # normalize_uei() in analytics.py does the same strip/uppercase; not
-                # imported here to avoid a circular import (analytics.py imports db.py).
+                # Strip all whitespace + upper-case so my_current_contracts()
+                # can do exact recipient_uei matching against a normalized
+                # profile UEI. Matches the inline normalization in
+                # upsert_contract (db.py:1519) and normalize_uei() in
+                # analytics.py; kept inline here to avoid a circular import.
                 "recipient_uei": "".join((row.get("recipient_uei") or "").split()).upper(),
                 "cage_code": row.get("cage_code") or "",
             })
