@@ -1343,7 +1343,15 @@ def cancel():
 @app.route("/subscribe")
 def subscribe():
     expired = request.args.get("expired") == "1"
-    return render_template("subscribe.html", expired=expired)
+    workspace = None
+    user = g.get("user")
+    if user:
+        ws = get_or_create_workspace_for_user(user["id"])
+        if ws:
+            ws = dict(ws)
+            ws["logo_url"] = _logo_url(ws.get("logo_path"))
+            workspace = ws
+    return render_template("subscribe.html", expired=expired, workspace=workspace)
 
 
 @app.route("/billing/portal", methods=["POST"])

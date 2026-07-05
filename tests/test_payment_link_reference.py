@@ -123,6 +123,29 @@ def test_subscribe_links_carry_reference_for_user_with_workspace(logged_in):
 
 
 # ---------------------------------------------------------------------------
+# Fallback — logged-in user with NO workspace still gets parameterized links
+# ---------------------------------------------------------------------------
+
+def test_subscribe_creates_workspace_for_logged_in_user_without_one(logged_in):
+    """A logged-in user who never visited /settings/billing must still get
+    parameterized links from /subscribe. The route uses
+    get_or_create_workspace_for_user so first-visit checkout carries the ref.
+    """
+    # Sanity: registration does not create a workspace. Confirm the user has
+    # none, then hit /subscribe directly (skipping /settings/billing).
+    assert db_module.get_workspace_for_user(1) is None
+    rv = logged_in.get("/subscribe")
+    assert rv.status_code == 200
+    html = rv.data.decode()
+    assert "buy.stripe.com" in html
+    assert "?client_reference_id=" in html
+    assert "prefilled_email=" in html
+    assert EXPECTED_EMAIL_ENC in html
+    # And the workspace now exists.
+    assert db_module.get_workspace_for_user(1) is not None
+
+
+# ---------------------------------------------------------------------------
 # Guard — logged-out visitor gets BARE links (no empty params)
 # ---------------------------------------------------------------------------
 
