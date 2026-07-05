@@ -482,49 +482,6 @@ def _ensure_sam_enrichment_columns():
                 conn.execute(text(f"ALTER TABLE contracts ADD COLUMN {col}"))
 
 
-def _normalize_existing_uei_values():
-    """Normalize recipient_uei in existing rows (SQLite dev only, one-time backfill).
-
-    Matches the normalization logic used at write time: strip all whitespace,
-    uppercase. PostgreSQL/Railway runs the equivalent backfill via migration 024.
-    Uses a marker table to ensure this only runs once per SQLite database.
-    """
-    engine = get_engine()
-    with engine.begin() as conn:
-        # Check if backfill already completed
-        conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS data_backfills (
-            name TEXT PRIMARY KEY,
-            applied_at TEXT NOT NULL
-        )
-        """))
-        already_done = conn.execute(text(
-            "SELECT COUNT(*) FROM data_backfills WHERE name = 'normalize_uei'"
-        )).scalar()
-        if already_done:
-            return
-
-        # Fetch all contracts with non-empty UEI
-        rows = conn.execute(text(
-            "SELECT internal_id, recipient_uei FROM contracts "
-            "WHERE recipient_uei IS NOT NULL AND recipient_uei <> ''"
-        )).fetchall()
-
-        # Normalize and update if needed
-        for internal_id, raw_uei in rows:
-            normalized = "".join((raw_uei or "").split()).upper()
-            if normalized != raw_uei:
-                conn.execute(text(
-                    "UPDATE contracts SET recipient_uei = :normalized "
-                    "WHERE internal_id = :id"
-                ), {"normalized": normalized, "id": internal_id})
-
-        # Mark as complete
-        conn.execute(text(
-            "INSERT INTO data_backfills(name, applied_at) VALUES ('normalize_uei', :now)"
-        ), {"now": datetime.now(timezone.utc).isoformat()})
-
-
 def init_db():
     database_url = os.environ.get("DATABASE_URL", "")
     if database_url:
@@ -537,7 +494,6 @@ def init_db():
     _ensure_sam_enrichment_columns()
     _ensure_psc_description_column()
     _ensure_richer_location_columns()
-    _normalize_existing_uei_values()
 
     engine = get_engine()
     with engine.begin() as conn:
