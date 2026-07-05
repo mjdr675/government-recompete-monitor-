@@ -86,25 +86,26 @@ def test_footer_links_present(anon_client, path):
 
 
 # ---------------------------------------------------------------------------
-# Content sanity — legal pages carry the [REVIEW] markers and expected sections
+# Content sanity — legal pages render the expected heading and no [REVIEW]
+# markers leak to visitors (the pages are legally reviewed and final).
 # ---------------------------------------------------------------------------
 
-def test_terms_marks_review_placeholders(anon_client):
+def test_terms_renders_expected_heading_and_no_review_markers(anon_client):
     html = anon_client.get("/terms").data.decode()
-    assert "[REVIEW" in html, "terms.html must expose [REVIEW] markers for legal judgment"
     assert "Terms of Service" in html
+    assert "[REVIEW" not in html, "terms.html leaked a [REVIEW] marker to public HTML"
 
 
-def test_privacy_marks_review_placeholders(anon_client):
+def test_privacy_renders_expected_heading_and_no_review_markers(anon_client):
     html = anon_client.get("/privacy").data.decode()
-    assert "[REVIEW" in html
     assert "Privacy Policy" in html
+    assert "[REVIEW" not in html, "privacy.html leaked a [REVIEW] marker to public HTML"
 
 
-def test_refund_marks_review_placeholders(anon_client):
+def test_refund_renders_expected_heading_and_no_review_markers(anon_client):
     html = anon_client.get("/refund").data.decode()
-    assert "[REVIEW" in html
     assert "Refund Policy" in html
+    assert "[REVIEW" not in html, "refund.html leaked a [REVIEW] marker to public HTML"
 
 
 # ---------------------------------------------------------------------------
