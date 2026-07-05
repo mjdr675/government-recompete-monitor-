@@ -1,6 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Billing — Recompete{% endblock %}
 {% block content %}
+{# ── Per-user Payment Link reference ─────────────────────────────────────────
+   client_reference_id carries the workspace id so the checkout.session.completed
+   webhook (app.py:1408) can resolve the workspace and mark it active;
+   prefilled_email pre-fills the Stripe checkout form. Guarded on g.user (this
+   page requires login, but stay defensive) so no empty params are emitted. #}
+{% set _ref_qs = "" %}
+{% if g.user and workspace and workspace.id %}
+  {% set _ref_qs = "?client_reference_id=" ~ (workspace.id | string | urlencode) ~ "&prefilled_email=" ~ (g.user.email | urlencode if g.user.email else "") %}
+{% endif %}
 <h1>Billing &amp; Subscription</h1>
 <div class="page-meta" style="margin-bottom:20px">Manage your Recompete subscription.</div>
 
@@ -61,13 +70,13 @@
         <div style="font-weight:600;margin-bottom:4px">Basic</div>
         <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px">
           $49/mo &nbsp;·&nbsp;
-          <a href="{{ payment_links.basic_yearly }}" target="_blank" rel="noopener"
+          <a href="{{ payment_links.basic_yearly }}{{ _ref_qs }}" target="_blank" rel="noopener"
              style="color:var(--text-muted)">$470/yr (7-day trial)</a>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <a href="{{ payment_links.basic_monthly }}" target="_blank" rel="noopener"
+          <a href="{{ payment_links.basic_monthly }}{{ _ref_qs }}" target="_blank" rel="noopener"
              class="btn btn-secondary" style="font-size:13px">Subscribe monthly →</a>
-          <a href="{{ payment_links.basic_yearly }}" target="_blank" rel="noopener"
+          <a href="{{ payment_links.basic_yearly }}{{ _ref_qs }}" target="_blank" rel="noopener"
              class="btn btn-primary" style="font-size:13px">Subscribe yearly (trial) →</a>
         </div>
       </div>
@@ -77,13 +86,13 @@
         <div style="font-weight:600;margin-bottom:4px">Pro</div>
         <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px">
           $99/mo &nbsp;·&nbsp;
-          <a href="{{ payment_links.pro_yearly }}" target="_blank" rel="noopener"
+          <a href="{{ payment_links.pro_yearly }}{{ _ref_qs }}" target="_blank" rel="noopener"
              style="color:var(--text-muted)">$950/yr (7-day trial)</a>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <a href="{{ payment_links.pro_monthly }}" target="_blank" rel="noopener"
+          <a href="{{ payment_links.pro_monthly }}{{ _ref_qs }}" target="_blank" rel="noopener"
              class="btn btn-secondary" style="font-size:13px">Subscribe monthly →</a>
-          <a href="{{ payment_links.pro_yearly }}" target="_blank" rel="noopener"
+          <a href="{{ payment_links.pro_yearly }}{{ _ref_qs }}" target="_blank" rel="noopener"
              class="btn btn-primary" style="font-size:13px">Subscribe yearly (trial) →</a>
         </div>
       </div>
