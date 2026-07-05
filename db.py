@@ -482,47 +482,35 @@ def _ensure_sam_enrichment_columns():
                 conn.execute(text(f"ALTER TABLE contracts ADD COLUMN {col}"))
 
 
-def _normalize_existing_uei_values():
-    """Normalize recipient_uei in existing rows (SQLite dev only, one-time backfill).
+def _normalize_recipient_uei_sqlite():
+    """Normalize recipient_uei in SQLite dev databases (one-time backfill).
 
-    Matches the normalization logic used at write time: strip all whitespace,
-    uppercase. PostgreSQL/Railway runs the equivalent backfill via migration 024.
-    Uses a marker table to ensure this only runs once per SQLite database.
+    Strips all whitespace and uppercases UEI values for consistent matching in
+    my_current_contracts(). New writes already normalize via upsert_contract()
+    and save_snapshot(), so this only fixes legacy rows. Idempotent.
     """
     engine = get_engine()
     with engine.begin() as conn:
-        # Check if backfill already completed
         conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS data_backfills (
-            name TEXT PRIMARY KEY,
-            applied_at TEXT NOT NULL
-        )
+            UPDATE contracts
+            SET recipient_uei = UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                recipient_uei,
+                ' ', ''),
+                char(9), ''),
+                char(10), ''),
+                char(13), ''),
+                char(12), ''),
+                char(11), ''))
+            WHERE recipient_uei != ''
+              AND recipient_uei != UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                  recipient_uei,
+                  ' ', ''),
+                  char(9), ''),
+                  char(10), ''),
+                  char(13), ''),
+                  char(12), ''),
+                  char(11), ''))
         """))
-        already_done = conn.execute(text(
-            "SELECT COUNT(*) FROM data_backfills WHERE name = 'normalize_uei'"
-        )).scalar()
-        if already_done:
-            return
-
-        # Fetch all contracts with non-empty UEI
-        rows = conn.execute(text(
-            "SELECT internal_id, recipient_uei FROM contracts "
-            "WHERE recipient_uei IS NOT NULL AND recipient_uei <> ''"
-        )).fetchall()
-
-        # Normalize and update if needed
-        for internal_id, raw_uei in rows:
-            normalized = "".join((raw_uei or "").split()).upper()
-            if normalized != raw_uei:
-                conn.execute(text(
-                    "UPDATE contracts SET recipient_uei = :normalized "
-                    "WHERE internal_id = :id"
-                ), {"normalized": normalized, "id": internal_id})
-
-        # Mark as complete
-        conn.execute(text(
-            "INSERT INTO data_backfills(name, applied_at) VALUES ('normalize_uei', :now)"
-        ), {"now": datetime.now(timezone.utc).isoformat()})
 
 
 def init_db():
@@ -537,7 +525,7 @@ def init_db():
     _ensure_sam_enrichment_columns()
     _ensure_psc_description_column()
     _ensure_richer_location_columns()
-    _normalize_existing_uei_values()
+    _normalize_recipient_uei_sqlite()
 
     engine = get_engine()
     with engine.begin() as conn:
