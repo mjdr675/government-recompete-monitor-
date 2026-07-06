@@ -99,3 +99,4 @@ it fails **closed** and only opens when `/home/michael/.gate_approval` exists.
   `gh api repos/{owner}/{repo}/pulls/<N>/comments`). Include a severity-tagged
   summary of the findings in the STOP report. **Never act on findings without
   explicit Discord approval.**
+- Final STOP reports: max 15 lines. Format: one line per fact — SHAs, test numbers (exact), files changed (+/- counts), flags. No prose paragraphs, no tables, no explanation of how. One "FLAG:" line per open issue. Assume the report will be read on a phone.
