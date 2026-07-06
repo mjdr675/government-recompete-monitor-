@@ -95,3 +95,48 @@ def test_connection_error_returns_none(caplog):
         with caplog.at_level(logging.WARNING, logger="ingest"):
             assert sam_lookup.lookup_solicitation("SOL-1") is None
     assert any("connection error" in r.message for r in caplog.records)
+
+
+def test_connection_error_redacts_api_key(caplog):
+    """A requests exception carrying the api_key in its URL must not leak it."""
+    leak = "HTTPSConnectionPool: Max retries with url: "
+    leak += "/opportunities/v2/search?api_key=test-key&solnum=SOL-1"
+    with patch("sam_lookup.requests.get", side_effect=Exception(leak)):
+        with caplog.at_level(logging.WARNING, logger="ingest"):
+            assert sam_lookup.lookup_solicitation("SOL-1") is None
+    msgs = "\n".join(r.getMessage() for r in caplog.records)
+    assert "api_key=test-key" not in msgs
+    assert "test-key" not in msgs
+    assert "***REDACTED***" in msgs
+
+
+def test_response_error_redacts_api_key(caplog):
+    """raise_for_status HTTPError embeds the full URL (with key) — redact it."""
+    leak = "500 Server Error for url: https://api.sam.gov/opportunities/v2/"
+    leak += "search?api_key=test-key&solnum=SOL-1"
+
+    class _BoomResp(_Resp):
+        def raise_for_status(self):
+            raise Exception(leak)
+
+    with patch("sam_lookup.requests.get", return_value=_BoomResp(500)):
+        with caplog.at_level(logging.WARNING, logger="ingest"):
+            assert sam_lookup.lookup_solicitation("SOL-1") is None
+    msgs = "\n".join(r.getMessage() for r in caplog.records)
+    assert "test-key" not in msgs
+    assert "***REDACTED***" in msgs
+
+
+def test_redacts_url_encoded_api_key(caplog, monkeypatch):
+    """A key with chars requests percent-encodes must not leak in encoded form."""
+    key = "a+b/c=d"  # url-encodes to a%2Bb%2Fc%3Dd in the query string
+    monkeypatch.setenv("SAM_API_KEY", key)
+    from urllib.parse import quote
+    leak = f"Max retries with url: /search?api_key={quote(key, safe='')}&solnum=SOL-1"
+    with patch("sam_lookup.requests.get", side_effect=Exception(leak)):
+        with caplog.at_level(logging.WARNING, logger="ingest"):
+            assert sam_lookup.lookup_solicitation("SOL-1") is None
+    msgs = "\n".join(r.getMessage() for r in caplog.records)
+    assert quote(key, safe="") not in msgs
+    assert key not in msgs
+    assert "***REDACTED***" in msgs
