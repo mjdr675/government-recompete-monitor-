@@ -125,3 +125,18 @@ def test_response_error_redacts_api_key(caplog):
     msgs = "\n".join(r.getMessage() for r in caplog.records)
     assert "test-key" not in msgs
     assert "***REDACTED***" in msgs
+
+
+def test_redacts_url_encoded_api_key(caplog, monkeypatch):
+    """A key with chars requests percent-encodes must not leak in encoded form."""
+    key = "a+b/c=d"  # url-encodes to a%2Bb%2Fc%3Dd in the query string
+    monkeypatch.setenv("SAM_API_KEY", key)
+    from urllib.parse import quote
+    leak = f"Max retries with url: /search?api_key={quote(key, safe='')}&solnum=SOL-1"
+    with patch("sam_lookup.requests.get", side_effect=Exception(leak)):
+        with caplog.at_level(logging.WARNING, logger="ingest"):
+            assert sam_lookup.lookup_solicitation("SOL-1") is None
+    msgs = "\n".join(r.getMessage() for r in caplog.records)
+    assert quote(key, safe="") not in msgs
+    assert key not in msgs
+    assert "***REDACTED***" in msgs

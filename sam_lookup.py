@@ -2,6 +2,7 @@ import logging
 import os
 import time
 from datetime import date, timedelta
+from urllib.parse import quote
 
 import requests
 
@@ -26,11 +27,16 @@ def _redact(text, secret):
     requests exceptions (connection errors, HTTPError from raise_for_status)
     embed the full request URL — including the ``api_key`` query param — in
     their string form. Logging that verbatim leaks the key in cleartext, so
-    replace any occurrence of the key value with a redaction marker.
+    replace any occurrence of the key value with a redaction marker. Because
+    the key rides in a query string, it may appear percent-encoded in the URL
+    (e.g. ``+``/``/``/``=``/unicode), so mask the URL-encoded form as well.
     """
     s = str(text)
     if secret:
         s = s.replace(secret, _REDACTED)
+        encoded = quote(secret, safe="")
+        if encoded != secret:
+            s = s.replace(encoded, _REDACTED)
     return s
 
 
