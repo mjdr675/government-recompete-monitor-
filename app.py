@@ -465,12 +465,12 @@ def require_login():
                 if datetime.now(timezone.utc) > trial_end:
                     log_access_decision(
                         user.get("id"), None, "expired",
-                        "/subscribe?expired=1", "legacy", request.path,
+                        "/settings/billing?expired=1", "legacy", request.path,
                     )
-                    return redirect(url_for("subscribe", expired="1"))
+                    return redirect("/settings/billing?expired=1")
 
 
-_WORKSPACE_GATED_PREFIXES = ("/dashboard", "/contracts", "/compare", "/pipeline")
+_WORKSPACE_GATED_PREFIXES = ("/dashboard", "/contracts", "/compare", "/pipeline", "/watchlist", "/lead-intelligence")
 
 
 @app.before_request

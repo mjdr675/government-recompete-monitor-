@@ -180,7 +180,8 @@ class TestFlagOffParity:
         assert resp.status_code == 302
         assert "/settings/billing" in resp.headers["Location"]
 
-    def test_legacy_user_gate_still_redirects_to_subscribe(self, client, pdb, monkeypatch):
+    def test_legacy_user_gate_redirects_to_billing(self, client, pdb, monkeypatch):
+        # Legacy expired-trial redirect now targets /settings/billing (FLAG-C).
         import app as app_module
         monkeypatch.setattr(app_module, "UNIFIED_ACCESS_ENABLED", False)
         uid = _uid(pdb)
@@ -191,7 +192,7 @@ class TestFlagOffParity:
         _login(client, uid)
         resp = client.get("/contracts")
         assert resp.status_code == 302
-        assert "/subscribe" in resp.headers["Location"]
+        assert "/settings/billing" in resp.headers["Location"]
 
 
 class TestFlagOnMatrix:

@@ -119,7 +119,8 @@ def test_expired_trial_blocks_access_before_activation(client, trial_user):
     _login(client, trial_user)
     resp = client.get("/dashboard", follow_redirects=False)
     assert resp.status_code == 302
-    assert "/subscribe" in resp.headers["Location"]
+    # Legacy expired-trial redirect now targets /settings/billing (FLAG-C).
+    assert "/settings/billing" in resp.headers["Location"]
 
 
 # --------------------------------------------------------------------------
