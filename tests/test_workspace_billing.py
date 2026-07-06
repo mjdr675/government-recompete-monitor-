@@ -167,6 +167,16 @@ class TestAccessEnforcement:
         assert resp.status_code == 302
         assert "/settings/billing" in resp.headers["Location"]
 
+    def test_expired_workspace_redirects_watchlist(self, client, pdb):
+        # /watchlist is now a workspace-gated prefix (FLAG-B).
+        uid = _uid(pdb)
+        ws = get_or_create_workspace_for_user(uid)
+        _set_workspace_trial_end(ws["id"], datetime.now(timezone.utc) - timedelta(days=1))
+        _login(client, uid)
+        resp = client.get("/watchlist")
+        assert resp.status_code == 302
+        assert "/settings/billing" in resp.headers["Location"]
+
     def test_active_subscription_allows_access(self, client, pdb):
         uid = _uid(pdb)
         ws = get_or_create_workspace_for_user(uid)
@@ -279,8 +289,9 @@ class TestWebhookWorkspaceUpdates:
 # ---------------------------------------------------------------------------
 
 class TestExistingUserGateUnbroken:
-    def test_expired_user_trial_still_redirects_to_subscribe(self, client, pdb):
+    def test_expired_user_trial_still_redirects_to_billing(self, client, pdb):
         # No workspace created → user-level gate (registered first) wins.
+        # Legacy expired-trial redirect now targets /settings/billing (FLAG-C).
         uid = _uid(pdb)
         past = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
         with db_module.get_engine().begin() as conn:
@@ -289,4 +300,4 @@ class TestExistingUserGateUnbroken:
         _login(client, uid)
         resp = client.get("/contracts")
         assert resp.status_code == 302
-        assert "/subscribe" in resp.headers["Location"]
+        assert "/settings/billing" in resp.headers["Location"]

@@ -47,13 +47,13 @@ class TestTrialGate:
         # Not redirected to /subscribe
         assert "/subscribe" not in (resp.headers.get("Location") or "")
 
-    def test_expired_trial_redirects_to_subscribe(self, client, db):
+    def test_expired_trial_redirects_to_billing(self, client, db):
         user = users_module.create_user("expired@example.com", "pass123")
         _set_trial_expired(user["id"])
         _login(client, user["id"])
         resp = client.get("/contracts")
         assert resp.status_code == 302
-        assert "/subscribe" in resp.headers["Location"]
+        assert "/settings/billing" in resp.headers["Location"]
         assert "expired=1" in resp.headers["Location"]
 
     def test_active_subscription_bypasses_trial_gate(self, client, db):
