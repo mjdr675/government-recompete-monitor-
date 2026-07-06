@@ -508,6 +508,13 @@ def _normalize_existing_uei_values():
     """
     engine = get_engine()
     with engine.begin() as conn:
+        # Fresh DB: init_db() calls this before CREATE TABLE contracts, so
+        # the table doesn't exist on first init. Skip harmlessly — same
+        # guard pattern used by _ensure_ci_columns and the other _ensure_*
+        # migration helpers above.
+        contracts_cols = conn.execute(text("PRAGMA table_info(contracts)")).fetchall()
+        if not contracts_cols:
+            return
         # Check if backfill already completed
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS data_backfills (
