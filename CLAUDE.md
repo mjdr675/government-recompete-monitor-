@@ -17,7 +17,7 @@ and a contracts database backed by SQLite (dev) / PostgreSQL (prod).
 
 ## How to run (dev)
 ```bash
-source /home/michael/autonomous-engineering/.venv/bin/activate
+source venv/bin/activate       # project venv: Flask, gunicorn, pytest (./venv)
 python app.py          # Flask dev server
 # Redis + Celery are optional; app degrades gracefully without them
 ```
@@ -25,7 +25,7 @@ python app.py          # Flask dev server
 ## Tests
 ```bash
 cd /home/michael/government-recompete-monitor-
-.venv/bin/pytest                      # full suite (~1681 tests, ~2 min)
+venv/bin/pytest                       # full suite (~1681 tests, ~2 min)
 python3 -m compileall . -q            # compile smoke check
 ```
 
@@ -75,3 +75,27 @@ This role is reserved for Michael Robinson's direct administrative sessions and 
 - Never commit `.env` or secrets
 - Always run `pytest tests/ -x -q` before committing
 - Send Discord notifications at task start and completion via `scripts/notify.sh`
+
+## Standing Rules (automation loop)
+
+These are hard operating rules for automated/lane work in this repo. A PreToolUse
+gate (`.claude/hooks/gate_guard.py`) enforces the destructive-action rules below;
+it fails **closed** and only opens when `/home/michael/.gate_approval` exists.
+
+- **Working venv is `./venv`** — never `integration/.venv`. Verify you are using
+  the right interpreter before running anything.
+- **Restore `ai_agent/REVIEW.md` after every `pytest` run** — the test suite
+  mutates it; put it back before staging or moving on.
+- **Never stage `integration/recompete_report.csv`** — it must not enter the index.
+- **Full test suite green before any PR** — no PR opens on a red or partial suite.
+- **No `git merge`, push to `main`, deploy, or force-push without explicit Discord
+  approval.** These are blocked by the gate hook unless the approval file exists.
+- **Lane merges happen one at a time** — never merge two lanes concurrently.
+- **Verify `cwd` is the repo root** (`/home/michael/government-recompete-monitor-`)
+  before doing any lane work.
+- **Lane branches live under `lane/<name>`.**
+- **After pushing commits to an open PR**, wait ~3 min, then fetch CodeRabbit
+  review comments via `gh` (`gh pr view <N> --comments` **and**
+  `gh api repos/{owner}/{repo}/pulls/<N>/comments`). Include a severity-tagged
+  summary of the findings in the STOP report. **Never act on findings without
+  explicit Discord approval.**
