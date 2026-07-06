@@ -72,10 +72,17 @@ def main():
         # Cannot see the command at all -> cannot certify it safe. Fail closed.
         _emit_deny("gate-guard: unparseable PreToolUse payload; failing closed.")
 
+    # Ensure data is a dict; json.loads can return array, string, number, null, bool.
+    if not isinstance(data, dict):
+        _emit_deny("gate-guard: PreToolUse payload is not a dict; failing closed.")
+
     if data.get("tool_name") != "Bash":
         _passthrough()
 
-    command = (data.get("tool_input") or {}).get("command")
+    tool_input = data.get("tool_input")
+    if not isinstance(tool_input, dict):
+        tool_input = {}
+    command = tool_input.get("command")
     if not isinstance(command, str):
         _emit_deny("gate-guard: missing/malformed Bash command; failing closed.")
 
