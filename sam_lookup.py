@@ -17,6 +17,22 @@ API_URL = "https://api.sam.gov/opportunities/v2/search"
 RATE_LIMIT_COOLDOWN_SECONDS = int(os.getenv("SAM_RATE_LIMIT_COOLDOWN", "300"))
 _rate_limited_until = 0.0
 
+_REDACTED = "***REDACTED***"
+
+
+def _redact(text, secret):
+    """Strip the SAM API key from text before it reaches the logs.
+
+    requests exceptions (connection errors, HTTPError from raise_for_status)
+    embed the full request URL — including the ``api_key`` query param — in
+    their string form. Logging that verbatim leaks the key in cleartext, so
+    replace any occurrence of the key value with a redaction marker.
+    """
+    s = str(text)
+    if secret:
+        s = s.replace(secret, _REDACTED)
+    return s
+
 
 def lookup_solicitation(solnum):
     """Look up a SAM.gov solicitation by number.
@@ -48,7 +64,9 @@ def lookup_solicitation(solnum):
     try:
         r = requests.get(API_URL, params=params, timeout=20)
     except Exception as e:
-        logger.warning("sam lookup solnum=%s connection error: %s", solnum, e)
+        logger.warning(
+            "sam lookup solnum=%s connection error: %s", solnum, _redact(e, api_key)
+        )
         return None
 
     if r.status_code == 429:
@@ -72,7 +90,9 @@ def lookup_solicitation(solnum):
         r.raise_for_status()
         data = r.json()
     except Exception as e:
-        logger.warning("sam lookup solnum=%s response error: %s", solnum, e)
+        logger.warning(
+            "sam lookup solnum=%s response error: %s", solnum, _redact(e, api_key)
+        )
         return None
 
     opportunities = data.get("opportunitiesData") or data.get("data") or []
