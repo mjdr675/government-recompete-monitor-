@@ -85,16 +85,16 @@ Set these in the Railway project dashboard under **Variables**.
 
 ```bash
 cd /home/michael/government-recompete-monitor-
-source .venv/bin/activate   # or: .venv/bin/python
+source venv/bin/activate   # or: venv/bin/python
 # no DATABASE_URL set → app uses contracts.db (SQLite) automatically
 ```
 
 ### Run tests
 
 ```bash
-.venv/bin/pytest                    # full suite (~1681 tests, ~2 min)
-.venv/bin/pytest tests/test_health.py -v   # health endpoint only
-.venv/bin/pytest tests/test_mobile_first.py -v  # mobile tests only
+venv/bin/pytest                    # full suite (~1681 tests, ~2 min)
+venv/bin/pytest tests/test_health.py -v   # health endpoint only
+venv/bin/pytest tests/test_mobile_first.py -v  # mobile tests only
 ```
 
 ### Compile smoke check
@@ -112,7 +112,7 @@ python app.py                       # Flask dev server on http://localhost:8000
 ### Run app locally (gunicorn — matches production)
 
 ```bash
-PORT=8000 .venv/bin/gunicorn app:app --bind 127.0.0.1:8000 --workers 1
+PORT=8000 venv/bin/gunicorn app:app --bind 127.0.0.1:8000 --workers 1
 curl http://127.0.0.1:8000/health   # should return {"status": "ok"}
 ```
 
@@ -195,7 +195,7 @@ Traffic switches to new deployment
 
 Before pushing any commit to `main` for production:
 
-- [ ] `1681/1681` tests pass locally: `.venv/bin/pytest`
+- [ ] `1681/1681` tests pass locally: `venv/bin/pytest`
 - [ ] Compile clean: `python3 -m compileall . -q`
 - [ ] No `.env` files, secrets, or `contracts.db` accidentally staged
 - [ ] `git status` shows only intended files
@@ -278,7 +278,7 @@ Steps:
    git rev-parse HEAD && git rev-parse origin/main
 
 2. Run local tests:
-   .venv/bin/pytest
+   venv/bin/pytest
    python3 -m compileall . -q
 
 3. Check the production health endpoint:
