@@ -4,7 +4,23 @@
 [[services]]
   name = "web"
   [services.deploy]
-    startCommand = "gunicorn app:app --bind 0.0.0.0:$PORT"
+    # Fail-closed DB snapshot (local + R2 upload/restore-verify) run at the START
+    # of the web container — the only place the SQLite volume is actually mounted.
+    #
+    # This is deliberately NOT a preDeployCommand: Railway runs pre-deploy commands
+    # in a SEPARATE container with no volumes mounted
+    # (https://docs.railway.com/guides/pre-deploy-command), so a pre-deploy backup
+    # could never read the live DB — it would silently snapshot nothing. Railway's
+    # own guidance is to do volume work in the start command instead.
+    #
+    # The `&&` makes it fail-closed: if the snapshot or its R2 upload/verify exits
+    # non-zero, gunicorn never starts, so init_db()'s migrations (which run when
+    # gunicorn imports the app) never execute without a verified backup.
+    # Tradeoff vs the old per-deploy hook: this runs on every web container start
+    # (deploys, restarts, replica scale-ups) — more backup points, same guarantee.
+    # Requires awscli (see nixpacks.toml) and the R2_* env vars; point
+    # RECOMPETE_BACKUP_DIR at the mounted volume for a persistent local copy.
+    startCommand = "bash scripts/backup_db.sh predeploy && gunicorn app:app --bind 0.0.0.0:$PORT"
 
 # Daily contract ingest cron — canonical production schedule.
 # Fires at 06:00 UTC every day and POSTs to /ingest/run.
@@ -19,3 +35,11 @@
   [services.deploy]
     cronSchedule = "0 6 * * *"
     startCommand = "curl -sf -X POST https://recompete.us/ingest/run -H \"Authorization: Bearer $CRON_SECRET\" -H \"Content-Type: application/json\" -d '{}'"
+
+# NOTE: there is intentionally no `daily-backup` cron *service* here.
+# A Railway volume binds to a single service, and the SQLite DB volume must stay
+# on `web`, so a separate cron service would have no DB file and would no-op
+# permanently. Daily backups are a FOLLOW-UP that must reuse the ingest-cron
+# pattern: a cron service that curls a CRON_SECRET-protected endpoint on `web`
+# (which shells out to `scripts/backup_db.sh daily` in the container that owns the
+# DB volume). See docs/DEPLOYMENT.md. Pre-deploy backup above is already live.

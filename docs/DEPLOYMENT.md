@@ -77,6 +77,22 @@ Set these in the Railway project dashboard under **Variables**.
 | `RAILWAY_VOLUME_NAME` | Set automatically by Railway when a volume is attached |
 | `PORT` | Set automatically by Railway — do not set manually |
 
+### Off-site backup — Cloudflare R2 (all four required to enable)
+
+`scripts/backup_db.sh` uploads every successful snapshot to Cloudflare R2 when
+these are present. All four must be set together (a partial config fails closed
+and aborts the deploy). Credentials are read from the environment only and are
+never logged. Requires the `aws` CLI (awscli) in the backup environment.
+
+| Variable | Description |
+|---|---|
+| `R2_ENDPOINT` | R2 S3-compatible endpoint URL (e.g. `https://<acct>.r2.cloudflarestorage.com`) |
+| `R2_ACCESS_KEY_ID` | R2 access key id |
+| `R2_SECRET_ACCESS_KEY` | R2 secret access key |
+| `R2_BUCKET` | R2 bucket name for backups |
+| `R2_REGION` | S3 region label (optional; default `auto`) |
+| `RECOMPETE_R2_RETAIN_DAYS` | Delete R2 snapshots older than N days (optional; default `14`) |
+
 ---
 
 ## 4. Local Development
@@ -231,6 +247,77 @@ git push origin main
 ```
 
 **Never** use `git push --force` on `main` — it will confuse Railway and may cause a failed deploy.
+
+---
+
+## 8a. Database Backups (local + off-site R2)
+
+`scripts/backup_db.sh` is the hard safety layer. It writes a gzip-compressed,
+integrity-verified snapshot to a persistent local directory
+(`RECOMPETE_BACKUP_DIR`, default `/var/backups/recompete`) and — when the `R2_*`
+env vars are set — also uploads it to Cloudflare R2 and re-downloads it to prove
+it is restorable before the run is considered successful.
+
+**Fail-closed:** if the snapshot, its integrity check, the R2 upload, or the R2
+restore-verification fails, the script exits non-zero. Because it is chained
+ahead of `gunicorn` with `&&` in the start command, a non-zero exit means the web
+process never starts, so `init_db()`'s migrations never run without a good backup.
+
+**Retention:** local = newest `RECOMPETE_BACKUP_RETAIN` (default 15) by count;
+R2 = delete objects older than `RECOMPETE_R2_RETAIN_DAYS` (default 14) days
+(best-effort — a prune failure never aborts a deploy).
+
+### Two schedules
+
+- **Pre-start** (wired on Railway): the `web` service's start command is
+  `bash scripts/backup_db.sh predeploy && gunicorn app:app --bind 0.0.0.0:$PORT`
+  (`railway.toml`). The backup runs at container start, where the SQLite volume
+  **is** mounted, and `&&` makes it fail-closed — gunicorn (and therefore
+  `init_db()`'s migrations) never starts without a verified backup. This is
+  **not** a `preDeployCommand`: Railway runs pre-deploy commands in a separate
+  container with **no volumes mounted**
+  ([docs](https://docs.railway.com/guides/pre-deploy-command)), so a pre-deploy
+  backup could not read the live DB. Tradeoff: the backup now runs on every web
+  container start (deploys, restarts, replica scale-ups), not only per deploy.
+  (The disabled `.github/workflows/deploy.yml` VPS path still calls
+  `backup_db.sh predeploy` before restart, where a local volume is present.)
+- **Daily** (NOT yet wired — follow-up): a standalone Railway cron **service**
+  cannot back up the live DB, because a Railway volume binds to a single service
+  and the SQLite volume must stay on `web`; a separate service would see no DB and
+  no-op permanently. So there is intentionally **no `daily-backup` cron service**
+  in `railway.toml`. The daily backup must instead reuse the **ingest-cron
+  pattern**: add a `CRON_SECRET`-protected endpoint on `web` (e.g. `POST
+  /backup/run`) that shells out to `scripts/backup_db.sh daily` inside the
+  container that owns the DB volume, then add a cron service that `curl`s it —
+  exactly like the existing `daily-ingest` service. This endpoint work is a
+  separate, approved-scope follow-up (not implemented here).
+- **`aws` CLI**: provided by `nixpacks.toml` (`aptPkgs = ["...", "awscli"]`), so it
+  is on PATH in the deploy image for the start-command backup (and any future
+  endpoint-triggered daily run).
+
+### Restore
+
+```bash
+# Local backups
+scripts/restore_db.sh --list                 # newest first (local dir)
+scripts/restore_db.sh --yes <backup_file>    # restore a specific local snapshot
+
+# Off-site (Cloudflare R2) — scripted, fail-closed (needs R2_* env + awscli)
+scripts/restore_db.sh --r2-list                        # list R2 snapshots
+scripts/restore_db.sh --from-r2 --latest --verify-only # RESTORE REHEARSAL:
+#   download latest snapshot to a scratch dir, run gzip + PRAGMA integrity_check
+#   + table/row sanity vs the live DB, and STOP without touching the live DB.
+scripts/restore_db.sh --from-r2 --latest --yes         # download, validate, then restore
+scripts/restore_db.sh --from-r2 <key> --yes            # restore a specific R2 key
+```
+
+The `--from-r2` path is fail-closed: any download, gzip, or `integrity_check`
+failure exits non-zero. Run `--from-r2 --latest --verify-only` periodically as a
+restore rehearsal to prove the off-site backups are recoverable. Credentials are
+read from the environment only and are never logged.
+
+Prerequisite for R2 in any environment: **`awscli` on PATH** and the four `R2_*`
+variables set. Never commit these values.
 
 ---
 

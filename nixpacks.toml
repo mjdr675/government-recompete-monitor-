@@ -1,5 +1,16 @@
+# awscli is required at runtime by scripts/backup_db.sh to upload database
+# snapshots to Cloudflare R2 over the S3-compatible API. It is currently exercised
+# only by the fail-closed start-command backup on the web service (see
+# railway.toml / docs/DEPLOYMENT.md); a daily-backup cron is an unimplemented
+# follow-up. The "..." spread preserves Nixpacks' auto-detected apt packages; we
+# only append awscli.
+[phases.setup]
+aptPkgs = ["...", "awscli"]
+
 [phases.build]
 cmds = []
 
 [start]
-cmd = "gunicorn app:app --bind 0.0.0.0:$PORT"
+# Mirror railway.toml's fail-closed start command so the pre-start backup runs
+# regardless of which start command Railway honors.
+cmd = "bash scripts/backup_db.sh predeploy && gunicorn app:app --bind 0.0.0.0:$PORT"
