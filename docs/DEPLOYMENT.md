@@ -77,6 +77,22 @@ Set these in the Railway project dashboard under **Variables**.
 | `RAILWAY_VOLUME_NAME` | Set automatically by Railway when a volume is attached |
 | `PORT` | Set automatically by Railway — do not set manually |
 
+### Off-site backup — Cloudflare R2 (all four required to enable)
+
+`scripts/backup_db.sh` uploads every successful snapshot to Cloudflare R2 when
+these are present. All four must be set together (a partial config fails closed
+and aborts the deploy). Credentials are read from the environment only and are
+never logged. Requires the `aws` CLI (awscli) in the backup environment.
+
+| Variable | Description |
+|---|---|
+| `R2_ENDPOINT` | R2 S3-compatible endpoint URL (e.g. `https://<acct>.r2.cloudflarestorage.com`) |
+| `R2_ACCESS_KEY_ID` | R2 access key id |
+| `R2_SECRET_ACCESS_KEY` | R2 secret access key |
+| `R2_BUCKET` | R2 bucket name for backups |
+| `R2_REGION` | S3 region label (optional; default `auto`) |
+| `RECOMPETE_R2_RETAIN_DAYS` | Delete R2 snapshots older than N days (optional; default `14`) |
+
 ---
 
 ## 4. Local Development
@@ -231,6 +247,48 @@ git push origin main
 ```
 
 **Never** use `git push --force` on `main` — it will confuse Railway and may cause a failed deploy.
+
+---
+
+## 8a. Database Backups (local + off-site R2)
+
+`scripts/backup_db.sh` is the hard safety layer. It writes a gzip-compressed,
+integrity-verified snapshot to a persistent local directory
+(`RECOMPETE_BACKUP_DIR`, default `/var/backups/recompete`) and — when the `R2_*`
+env vars are set — also uploads it to Cloudflare R2 and re-downloads it to prove
+it is restorable before the run is considered successful.
+
+**Fail-closed:** if the snapshot, its integrity check, the R2 upload, or the R2
+restore-verification fails, the script exits non-zero. In the deploy pipeline
+(`set -e`) that aborts the deploy so migrations never run without a good backup.
+
+**Retention:** local = newest `RECOMPETE_BACKUP_RETAIN` (default 15) by count;
+R2 = delete objects older than `RECOMPETE_R2_RETAIN_DAYS` (default 14) days
+(best-effort — a prune failure never aborts a deploy).
+
+### Two schedules
+
+- **Pre-deploy** (already wired): the deploy runs `bash scripts/backup_db.sh predeploy`
+  after pulling code and before restart (see `.github/workflows/deploy.yml`, the
+  manual VPS path). On Railway's canonical path, run the same command as a
+  pre-restart hook where the DB volume is mounted.
+- **Daily** (scheduled): run `bash scripts/backup_db.sh daily` once a day. It must
+  run where the SQLite DB volume is mounted and where `aws` (awscli) is available.
+  See `railway.toml` for the commented `daily-backup` cron block and its
+  prerequisites (attach the DB volume to that service and install `awscli`).
+
+### Restore
+
+```bash
+scripts/restore_db.sh --list                 # newest first (local dir)
+scripts/restore_db.sh --yes <backup_file>    # restore a specific snapshot
+# From R2: download the object first, then restore it:
+#   aws --endpoint-url "$R2_ENDPOINT" s3 cp "s3://$R2_BUCKET/<key>" ./<key>
+#   scripts/restore_db.sh --yes ./<key>
+```
+
+Prerequisite for R2 in any environment: **`awscli` on PATH** and the four `R2_*`
+variables set. Never commit these values.
 
 ---
 

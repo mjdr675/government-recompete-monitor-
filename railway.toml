@@ -19,3 +19,18 @@
   [services.deploy]
     cronSchedule = "0 6 * * *"
     startCommand = "curl -sf -X POST https://recompete.us/ingest/run -H \"Authorization: Bearer $CRON_SECRET\" -H \"Content-Type: application/json\" -d '{}'"
+
+# Daily off-site database backup to Cloudflare R2.
+# Commented out until its two prerequisites are met on this service:
+#   1. Attach the SAME persistent volume that holds the SQLite DB (so DB_PATH
+#      resolves to the live database — a separate service has its own empty disk).
+#   2. Install the `aws` CLI in the build (e.g. nixpacks aptPkgs = ["awscli"],
+#      or `pip install awscli`), since backup_db.sh uploads via the S3 API.
+# Required env vars (set on this service): DB_PATH, R2_ENDPOINT, R2_ACCESS_KEY_ID,
+# R2_SECRET_ACCESS_KEY, R2_BUCKET (and optional R2_REGION / RECOMPETE_R2_RETAIN_DAYS).
+# The script is fail-closed and idempotent, so a daily run is safe.
+# [[services]]
+#   name = "daily-backup"
+#   [services.deploy]
+#     cronSchedule = "30 5 * * *"
+#     startCommand = "bash scripts/backup_db.sh daily"
