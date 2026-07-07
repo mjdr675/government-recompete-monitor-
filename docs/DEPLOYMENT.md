@@ -291,12 +291,23 @@ R2 = delete objects older than `RECOMPETE_R2_RETAIN_DAYS` (default 14) days
 ### Restore
 
 ```bash
+# Local backups
 scripts/restore_db.sh --list                 # newest first (local dir)
-scripts/restore_db.sh --yes <backup_file>    # restore a specific snapshot
-# From R2: download the object first, then restore it:
-#   aws --endpoint-url "$R2_ENDPOINT" s3 cp "s3://$R2_BUCKET/<key>" ./<key>
-#   scripts/restore_db.sh --yes ./<key>
+scripts/restore_db.sh --yes <backup_file>    # restore a specific local snapshot
+
+# Off-site (Cloudflare R2) — scripted, fail-closed (needs R2_* env + awscli)
+scripts/restore_db.sh --r2-list                        # list R2 snapshots
+scripts/restore_db.sh --from-r2 --latest --verify-only # RESTORE REHEARSAL:
+#   download latest snapshot to a scratch dir, run gzip + PRAGMA integrity_check
+#   + table/row sanity vs the live DB, and STOP without touching the live DB.
+scripts/restore_db.sh --from-r2 --latest --yes         # download, validate, then restore
+scripts/restore_db.sh --from-r2 <key> --yes            # restore a specific R2 key
 ```
+
+The `--from-r2` path is fail-closed: any download, gzip, or `integrity_check`
+failure exits non-zero. Run `--from-r2 --latest --verify-only` periodically as a
+restore rehearsal to prove the off-site backups are recoverable. Credentials are
+read from the environment only and are never logged.
 
 Prerequisite for R2 in any environment: **`awscli` on PATH** and the four `R2_*`
 variables set. Never commit these values.
