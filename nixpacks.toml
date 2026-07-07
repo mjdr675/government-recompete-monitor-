@@ -10,10 +10,16 @@
 # apt installation candidate, which broke the Railway build for PR #45
 # (`E: Package 'awscli' has no installation candidate`, build 7852b515). Instead
 # we pip-install the AWS CLI into its OWN isolated virtualenv in the build phase
-# and symlink the `aws` entrypoint onto PATH. Isolating it keeps awscli's
-# transitive pins (botocore / urllib3 / PyYAML …) from ever conflicting with the
-# app's fully-pinned requirements.txt, and /usr/local/bin is on PATH for the
-# start command with no env changes required.
+# and symlink the `aws` entrypoint onto the RUNTIME PATH. Isolating it keeps
+# awscli's transitive pins (botocore / urllib3 / PyYAML …) from ever conflicting
+# with the app's fully-pinned requirements.txt.
+#
+# The link MUST land in /opt/venv/bin: Railway/Nixpacks runs the start command
+# with /opt/venv/bin on PATH (that is the app venv where `gunicorn` lives) but
+# NOT /usr/local/bin. Deploy 3ebd98ed symlinked only into /usr/local/bin, so at
+# runtime `scripts/backup_db.sh` failed with "'aws' CLI not on PATH", the
+# fail-closed `&&` blocked gunicorn, and the container crash-looped. We link into
+# /opt/venv/bin (on PATH) and also /usr/local/bin as a harmless extra.
 [phases.setup]
 # "..." preserves Nixpacks' auto-detected apt packages; we no longer append any.
 aptPkgs = ["..."]
@@ -22,6 +28,7 @@ aptPkgs = ["..."]
 cmds = [
   "python3 -m venv /opt/awscli",
   "/opt/awscli/bin/pip install --no-cache-dir awscli",
+  "ln -sf /opt/awscli/bin/aws /opt/venv/bin/aws",
   "ln -sf /opt/awscli/bin/aws /usr/local/bin/aws",
 ]
 
