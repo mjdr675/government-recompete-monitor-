@@ -6,6 +6,7 @@ are involved. The stub honors FAKE_S3_FAIL to simulate upload/download failures
 and lists "old" objects by mtime so retention can be exercised.
 """
 import os
+import sqlite3
 import subprocess
 import time
 from pathlib import Path
@@ -67,7 +68,13 @@ exit 0
 def env_setup(tmp_path):
     """A tmp SQLite 'db', a local backup dir, a fake-S3 dir, and a stub `aws`."""
     db = tmp_path / "contracts.db"
-    db.write_bytes(b"SQLite format 3\x00" + b"\x00" * 512)  # any file; sqlite3 may be absent
+    # A REAL, valid SQLite database so verify_backup's PRAGMA integrity_check
+    # (now run via python3 when the sqlite3 CLI is absent) returns "ok".
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE contracts (id INTEGER PRIMARY KEY, name TEXT)")
+    con.executemany("INSERT INTO contracts (name) VALUES (?)", [(f"c{i}",) for i in range(5)])
+    con.commit()
+    con.close()
     backup_dir = tmp_path / "backups"
     fake_s3 = tmp_path / "s3"
     fake_s3.mkdir()
@@ -162,6 +169,31 @@ def test_r2_download_verify_failure_aborts(env_setup):
     r = run_backup(env, cwd=env_setup["tmp"])
     assert r.returncode == 1
     assert "re-download failed" in (r.stdout + r.stderr)
+
+
+# ── integrity_check runs even without the sqlite3 CLI (python3 fallback) ──────
+def test_backup_runs_integrity_check_without_sqlite3_cli(env_setup):
+    # sqlite3 CLI is absent in the Railway image; verify_backup must fall back to
+    # python3 and actually run PRAGMA integrity_check — not just the gzip layer.
+    env = r2_env(env_setup["env"])
+    r = run_backup(env, cwd=env_setup["tmp"])
+    assert r.returncode == 0, r.stderr + r.stdout
+    out = r.stdout + r.stderr
+    assert "PRAGMA integrity_check=ok" in out
+    assert "verified gzip layer only" not in out
+
+
+def test_corrupt_db_fails_integrity_check_closed(env_setup):
+    # A corrupt DB must FAIL the integrity_check (via the python3 fallback) and
+    # abort BEFORE any R2 upload — not silently pass on the gzip layer alone.
+    env_setup["db"].write_bytes(b"SQLite format 3\x00" + b"\x00" * 512)  # not a real DB
+    env = r2_env(env_setup["env"])
+    r = run_backup(env, cwd=env_setup["tmp"])
+    assert r.returncode == 1, r.stderr + r.stdout
+    assert "integrity_check failed" in (r.stdout + r.stderr)
+    # nothing was uploaded to R2 (verification runs before the upload)
+    bucket = env_setup["fake_s3"] / "recompete-backups"
+    assert not (bucket.exists() and list(bucket.glob("backup_*.gz")))
 
 
 # ── retention: objects older than the window are pruned from R2 ───────────────
