@@ -292,10 +292,12 @@ R2 = delete objects older than `RECOMPETE_R2_RETAIN_DAYS` (default 14) days
   exactly like the existing `daily-ingest` service. This endpoint work is a
   separate, approved-scope follow-up (not implemented here).
 - **`aws` CLI**: installed by `nixpacks.toml`'s build phase — pip-installed into
-  an isolated venv (`/opt/awscli`) and symlinked to `/usr/local/bin/aws`, so it
-  is on PATH in the deploy image for the start-command backup (and any future
-  endpoint-triggered daily run) without polluting the app's pinned deps. (It is
-  **not** an apt package: Ubuntu noble has no `awscli` apt candidate.)
+  an isolated venv (`/opt/awscli`) and symlinked into **`/opt/venv/bin/aws`**, the
+  app venv that is on Railway's runtime PATH (where `gunicorn` lives), so it is
+  found by the start-command backup without polluting the app's pinned deps. It
+  is **not** symlinked only into `/usr/local/bin` — that dir is not on Railway's
+  runtime PATH, which crashed deploy `3ebd98ed` (`'aws' CLI not on PATH`). (It is
+  also **not** an apt package: Ubuntu noble has no `awscli` apt candidate.)
 
 ### Restore
 

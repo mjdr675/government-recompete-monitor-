@@ -43,9 +43,14 @@ def test_awscli_installed_via_build_phase(cfg):
     assert "pip install" in joined and "awscli" in joined, (
         "awscli should be pip-installed in the build phase"
     )
-    # And it must land on PATH (symlinked or installed into a PATH dir).
-    assert "/usr/local/bin/aws" in joined or "ensurepath" in joined, (
-        "the aws entrypoint must be placed on PATH (e.g. symlink into /usr/local/bin)"
+    # It must land on the RUNTIME PATH. Railway/Nixpacks runs the start command
+    # with /opt/venv/bin on PATH (the app venv, where gunicorn lives) but NOT
+    # /usr/local/bin. Deploy 3ebd98ed symlinked only into /usr/local/bin and
+    # crashed with "'aws' CLI not on PATH", so require the venv location.
+    assert "/opt/venv/bin/aws" in joined, (
+        "aws must be linked/installed into /opt/venv/bin (on Railway's runtime "
+        "PATH); /usr/local/bin alone is NOT on the runtime PATH (deploy 3ebd98ed "
+        "crash)"
     )
 
 
