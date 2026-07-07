@@ -268,14 +268,21 @@ R2 = delete objects older than `RECOMPETE_R2_RETAIN_DAYS` (default 14) days
 
 ### Two schedules
 
-- **Pre-deploy** (already wired): the deploy runs `bash scripts/backup_db.sh predeploy`
-  after pulling code and before restart (see `.github/workflows/deploy.yml`, the
-  manual VPS path). On Railway's canonical path, run the same command as a
-  pre-restart hook where the DB volume is mounted.
-- **Daily** (scheduled): run `bash scripts/backup_db.sh daily` once a day. It must
-  run where the SQLite DB volume is mounted and where `aws` (awscli) is available.
-  See `railway.toml` for the commented `daily-backup` cron block and its
-  prerequisites (attach the DB volume to that service and install `awscli`).
+- **Pre-deploy** (wired on Railway): the `web` service runs
+  `preDeployCommand = "bash scripts/backup_db.sh predeploy"` (`railway.toml`). It
+  executes after build and before the new deployment goes live, in the web
+  container where the SQLite volume is mounted; a non-zero exit **halts the
+  deploy** so migrations never run without a verified backup. (The disabled
+  `.github/workflows/deploy.yml` VPS path also calls `backup_db.sh predeploy`.)
+- **Daily** (wired on Railway): the `daily-backup` cron service runs
+  `bash scripts/backup_db.sh daily` at 05:30 UTC (`railway.toml`).
+  **Operator action required:** a Railway volume binds to one service, so the
+  volume holding the SQLite DB must be mounted on the `daily-backup` service at
+  `DB_PATH`. Until it is, the cron finds no DB and no-ops safely (it does **not**
+  back up the live DB). If the DB volume must stay on `web`, switch daily backups
+  to an authenticated endpoint the `web` service exposes instead.
+- **`aws` CLI**: provided to both by `nixpacks.toml` (`aptPkgs = ["...", "awscli"]`),
+  so it is on PATH in the deploy image.
 
 ### Restore
 

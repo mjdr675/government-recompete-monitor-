@@ -1,3 +1,10 @@
+# awscli is required at runtime by scripts/backup_db.sh to upload database
+# snapshots to Cloudflare R2 over the S3-compatible API (web pre-deploy backup
+# and the daily-backup cron — see railway.toml / docs/DEPLOYMENT.md). The "..."
+# spread preserves Nixpacks' auto-detected apt packages; we only append awscli.
+[phases.setup]
+aptPkgs = ["...", "awscli"]
+
 [phases.build]
 cmds = []
 

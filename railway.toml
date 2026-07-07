@@ -4,6 +4,12 @@
 [[services]]
   name = "web"
   [services.deploy]
+    # Fail-closed pre-deploy DB snapshot (local + R2 upload/restore-verify).
+    # Runs after the build and BEFORE the new deployment goes live, inside the
+    # web container where the SQLite volume is mounted. A non-zero exit HALTS the
+    # deploy, so migrations (run at startup via init_db()) never execute without
+    # a verified backup. Requires awscli (see nixpacks.toml) and the R2_* env vars.
+    preDeployCommand = "bash scripts/backup_db.sh predeploy"
     startCommand = "gunicorn app:app --bind 0.0.0.0:$PORT"
 
 # Daily contract ingest cron — canonical production schedule.
@@ -20,17 +26,20 @@
     cronSchedule = "0 6 * * *"
     startCommand = "curl -sf -X POST https://recompete.us/ingest/run -H \"Authorization: Bearer $CRON_SECRET\" -H \"Content-Type: application/json\" -d '{}'"
 
-# Daily off-site database backup to Cloudflare R2.
-# Commented out until its two prerequisites are met on this service:
-#   1. Attach the SAME persistent volume that holds the SQLite DB (so DB_PATH
-#      resolves to the live database — a separate service has its own empty disk).
-#   2. Install the `aws` CLI in the build (e.g. nixpacks aptPkgs = ["awscli"],
-#      or `pip install awscli`), since backup_db.sh uploads via the S3 API.
-# Required env vars (set on this service): DB_PATH, R2_ENDPOINT, R2_ACCESS_KEY_ID,
-# R2_SECRET_ACCESS_KEY, R2_BUCKET (and optional R2_REGION / RECOMPETE_R2_RETAIN_DAYS).
-# The script is fail-closed and idempotent, so a daily run is safe.
-# [[services]]
-#   name = "daily-backup"
-#   [services.deploy]
-#     cronSchedule = "30 5 * * *"
-#     startCommand = "bash scripts/backup_db.sh daily"
+# Daily off-site database backup to Cloudflare R2 (05:30 UTC, before ingest).
+# Runs backup_db.sh with the `daily` label; the script is fail-closed and
+# idempotent, so a daily run is safe. awscli is provided by nixpacks.toml.
+# Required env vars on this service: DB_PATH, R2_ENDPOINT, R2_ACCESS_KEY_ID,
+# R2_SECRET_ACCESS_KEY, R2_BUCKET (optional: R2_REGION, RECOMPETE_R2_RETAIN_DAYS).
+#
+# VOLUME REQUIREMENT (operator action): this cron must see the live SQLite file,
+# so the persistent volume holding the DB must be mounted on THIS service at the
+# same path DB_PATH points to. Railway binds a volume to a single service, so if
+# the DB volume currently lives on `web`, either move/share it to this service or
+# switch daily backups to an authenticated endpoint the `web` service exposes.
+# Until the volume is attached here, this cron will find no DB and no-op safely.
+[[services]]
+  name = "daily-backup"
+  [services.deploy]
+    cronSchedule = "30 5 * * *"
+    startCommand = "bash scripts/backup_db.sh daily"
