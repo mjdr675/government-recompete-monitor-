@@ -274,15 +274,19 @@ R2 = delete objects older than `RECOMPETE_R2_RETAIN_DAYS` (default 14) days
   container where the SQLite volume is mounted; a non-zero exit **halts the
   deploy** so migrations never run without a verified backup. (The disabled
   `.github/workflows/deploy.yml` VPS path also calls `backup_db.sh predeploy`.)
-- **Daily** (wired on Railway): the `daily-backup` cron service runs
-  `bash scripts/backup_db.sh daily` at 05:30 UTC (`railway.toml`).
-  **Operator action required:** a Railway volume binds to one service, so the
-  volume holding the SQLite DB must be mounted on the `daily-backup` service at
-  `DB_PATH`. Until it is, the cron finds no DB and no-ops safely (it does **not**
-  back up the live DB). If the DB volume must stay on `web`, switch daily backups
-  to an authenticated endpoint the `web` service exposes instead.
-- **`aws` CLI**: provided to both by `nixpacks.toml` (`aptPkgs = ["...", "awscli"]`),
-  so it is on PATH in the deploy image.
+- **Daily** (NOT yet wired — follow-up): a standalone Railway cron **service**
+  cannot back up the live DB, because a Railway volume binds to a single service
+  and the SQLite volume must stay on `web`; a separate service would see no DB and
+  no-op permanently. So there is intentionally **no `daily-backup` cron service**
+  in `railway.toml`. The daily backup must instead reuse the **ingest-cron
+  pattern**: add a `CRON_SECRET`-protected endpoint on `web` (e.g. `POST
+  /backup/run`) that shells out to `scripts/backup_db.sh daily` inside the
+  container that owns the DB volume, then add a cron service that `curl`s it —
+  exactly like the existing `daily-ingest` service. This endpoint work is a
+  separate, approved-scope follow-up (not implemented here).
+- **`aws` CLI**: provided by `nixpacks.toml` (`aptPkgs = ["...", "awscli"]`), so it
+  is on PATH in the deploy image for the pre-deploy backup (and any future
+  endpoint-triggered daily run).
 
 ### Restore
 
