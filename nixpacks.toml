@@ -1,16 +1,33 @@
-# awscli is required at runtime by scripts/backup_db.sh to upload database
-# snapshots to Cloudflare R2 over the S3-compatible API. It is currently exercised
-# only by the fail-closed start-command backup on the web service (see
-# railway.toml / docs/DEPLOYMENT.md); a daily-backup cron is an unimplemented
-# follow-up. The "..." spread preserves Nixpacks' auto-detected apt packages; we
-# only append awscli.
+# Deploy image build config (Railway / Nixpacks).
+#
+# AWS CLI is required at runtime by scripts/backup_db.sh to upload database
+# snapshots to Cloudflare R2 over the S3-compatible API. It is currently
+# exercised only by the fail-closed start-command backup on the web service
+# (see railway.toml / docs/DEPLOYMENT.md); a daily-backup cron is an
+# unimplemented follow-up.
+#
+# It is deliberately NOT an apt package: Ubuntu "noble" (24.04) has no `awscli`
+# apt installation candidate, which broke the Railway build for PR #45
+# (`E: Package 'awscli' has no installation candidate`, build 7852b515). Instead
+# we pip-install the AWS CLI into its OWN isolated virtualenv in the build phase
+# and symlink the `aws` entrypoint onto PATH. Isolating it keeps awscli's
+# transitive pins (botocore / urllib3 / PyYAML …) from ever conflicting with the
+# app's fully-pinned requirements.txt, and /usr/local/bin is on PATH for the
+# start command with no env changes required.
 [phases.setup]
-aptPkgs = ["...", "awscli"]
+# "..." preserves Nixpacks' auto-detected apt packages; we no longer append any.
+aptPkgs = ["..."]
 
 [phases.build]
-cmds = []
+cmds = [
+  "python3 -m venv /opt/awscli",
+  "/opt/awscli/bin/pip install --no-cache-dir awscli",
+  "ln -sf /opt/awscli/bin/aws /usr/local/bin/aws",
+]
 
 [start]
 # Mirror railway.toml's fail-closed start command so the pre-start backup runs
-# regardless of which start command Railway honors.
+# regardless of which start command Railway honors. The `&&` keeps it
+# fail-closed: gunicorn (and init_db()'s migrations) never start unless
+# scripts/backup_db.sh predeploy exits 0.
 cmd = "bash scripts/backup_db.sh predeploy && gunicorn app:app --bind 0.0.0.0:$PORT"
