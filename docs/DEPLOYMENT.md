@@ -291,9 +291,11 @@ R2 = delete objects older than `RECOMPETE_R2_RETAIN_DAYS` (default 14) days
   container that owns the DB volume, then add a cron service that `curl`s it —
   exactly like the existing `daily-ingest` service. This endpoint work is a
   separate, approved-scope follow-up (not implemented here).
-- **`aws` CLI**: provided by `nixpacks.toml` (`aptPkgs = ["...", "awscli"]`), so it
+- **`aws` CLI**: installed by `nixpacks.toml`'s build phase — pip-installed into
+  an isolated venv (`/opt/awscli`) and symlinked to `/usr/local/bin/aws`, so it
   is on PATH in the deploy image for the start-command backup (and any future
-  endpoint-triggered daily run).
+  endpoint-triggered daily run) without polluting the app's pinned deps. (It is
+  **not** an apt package: Ubuntu noble has no `awscli` apt candidate.)
 
 ### Restore
 
