@@ -259,8 +259,9 @@ env vars are set — also uploads it to Cloudflare R2 and re-downloads it to pro
 it is restorable before the run is considered successful.
 
 **Fail-closed:** if the snapshot, its integrity check, the R2 upload, or the R2
-restore-verification fails, the script exits non-zero. In the deploy pipeline
-(`set -e`) that aborts the deploy so migrations never run without a good backup.
+restore-verification fails, the script exits non-zero. Because it is chained
+ahead of `gunicorn` with `&&` in the start command, a non-zero exit means the web
+process never starts, so `init_db()`'s migrations never run without a good backup.
 
 **Retention:** local = newest `RECOMPETE_BACKUP_RETAIN` (default 15) by count;
 R2 = delete objects older than `RECOMPETE_R2_RETAIN_DAYS` (default 14) days
@@ -268,12 +269,18 @@ R2 = delete objects older than `RECOMPETE_R2_RETAIN_DAYS` (default 14) days
 
 ### Two schedules
 
-- **Pre-deploy** (wired on Railway): the `web` service runs
-  `preDeployCommand = "bash scripts/backup_db.sh predeploy"` (`railway.toml`). It
-  executes after build and before the new deployment goes live, in the web
-  container where the SQLite volume is mounted; a non-zero exit **halts the
-  deploy** so migrations never run without a verified backup. (The disabled
-  `.github/workflows/deploy.yml` VPS path also calls `backup_db.sh predeploy`.)
+- **Pre-start** (wired on Railway): the `web` service's start command is
+  `bash scripts/backup_db.sh predeploy && gunicorn app:app --bind 0.0.0.0:$PORT`
+  (`railway.toml`). The backup runs at container start, where the SQLite volume
+  **is** mounted, and `&&` makes it fail-closed — gunicorn (and therefore
+  `init_db()`'s migrations) never starts without a verified backup. This is
+  **not** a `preDeployCommand`: Railway runs pre-deploy commands in a separate
+  container with **no volumes mounted**
+  ([docs](https://docs.railway.com/guides/pre-deploy-command)), so a pre-deploy
+  backup could not read the live DB. Tradeoff: the backup now runs on every web
+  container start (deploys, restarts, replica scale-ups), not only per deploy.
+  (The disabled `.github/workflows/deploy.yml` VPS path still calls
+  `backup_db.sh predeploy` before restart, where a local volume is present.)
 - **Daily** (NOT yet wired — follow-up): a standalone Railway cron **service**
   cannot back up the live DB, because a Railway volume binds to a single service
   and the SQLite volume must stay on `web`; a separate service would see no DB and
@@ -285,7 +292,7 @@ R2 = delete objects older than `RECOMPETE_R2_RETAIN_DAYS` (default 14) days
   exactly like the existing `daily-ingest` service. This endpoint work is a
   separate, approved-scope follow-up (not implemented here).
 - **`aws` CLI**: provided by `nixpacks.toml` (`aptPkgs = ["...", "awscli"]`), so it
-  is on PATH in the deploy image for the pre-deploy backup (and any future
+  is on PATH in the deploy image for the start-command backup (and any future
   endpoint-triggered daily run).
 
 ### Restore

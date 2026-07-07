@@ -4,13 +4,23 @@
 [[services]]
   name = "web"
   [services.deploy]
-    # Fail-closed pre-deploy DB snapshot (local + R2 upload/restore-verify).
-    # Runs after the build and BEFORE the new deployment goes live, inside the
-    # web container where the SQLite volume is mounted. A non-zero exit HALTS the
-    # deploy, so migrations (run at startup via init_db()) never execute without
-    # a verified backup. Requires awscli (see nixpacks.toml) and the R2_* env vars.
-    preDeployCommand = "bash scripts/backup_db.sh predeploy"
-    startCommand = "gunicorn app:app --bind 0.0.0.0:$PORT"
+    # Fail-closed DB snapshot (local + R2 upload/restore-verify) run at the START
+    # of the web container — the only place the SQLite volume is actually mounted.
+    #
+    # This is deliberately NOT a preDeployCommand: Railway runs pre-deploy commands
+    # in a SEPARATE container with no volumes mounted
+    # (https://docs.railway.com/guides/pre-deploy-command), so a pre-deploy backup
+    # could never read the live DB — it would silently snapshot nothing. Railway's
+    # own guidance is to do volume work in the start command instead.
+    #
+    # The `&&` makes it fail-closed: if the snapshot or its R2 upload/verify exits
+    # non-zero, gunicorn never starts, so init_db()'s migrations (which run when
+    # gunicorn imports the app) never execute without a verified backup.
+    # Tradeoff vs the old per-deploy hook: this runs on every web container start
+    # (deploys, restarts, replica scale-ups) — more backup points, same guarantee.
+    # Requires awscli (see nixpacks.toml) and the R2_* env vars; point
+    # RECOMPETE_BACKUP_DIR at the mounted volume for a persistent local copy.
+    startCommand = "bash scripts/backup_db.sh predeploy && gunicorn app:app --bind 0.0.0.0:$PORT"
 
 # Daily contract ingest cron — canonical production schedule.
 # Fires at 06:00 UTC every day and POSTs to /ingest/run.

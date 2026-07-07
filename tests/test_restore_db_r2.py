@@ -36,6 +36,7 @@ if [ "$svc" = "s3" ]; then
       else fp="$(s3fs "$dst")"; mkdir -p "$(dirname "$fp")"; cp "$src" "$fp"; fi ;;
   esac
 elif [ "$svc" = "s3api" ]; then
+  [ "${FAKE_S3_FAIL:-}" = "list" ] && { echo "fake list-objects failure" >&2; exit 1; }
   bucket=""; while [ $# -gt 0 ]; do case "$1" in --bucket) bucket="$2"; shift 2 ;; *) shift ;; esac; done
   bdir="$root/$bucket"; [ -d "$bdir" ] || exit 0
   # newest first, one key per line (stands in for the reverse(sort_by(LastModified)) query)
@@ -131,6 +132,47 @@ def test_corrupt_snapshot_fails_closed(env_setup):
     assert r.returncode != 0
     assert "gzip integrity check failed" in (r.stdout + r.stderr)
     assert env_setup["live"].exists()  # live DB untouched
+
+
+def test_verify_only_without_from_r2_is_rejected(env_setup):
+    # --verify-only is an R2 rehearsal flag; used for a LOCAL restore it must fail
+    # early and never fall through to the destructive overwrite, even with --yes.
+    bdir = env_setup["tmp"] / "local-backups"
+    bdir.mkdir()
+    make_sqlite_gz(bdir / "backup_2026-07-07_000000_x.db.gz", rows=3)
+    env = dict(env_setup["env"])
+    env["RECOMPETE_BACKUP_DIR"] = str(bdir)
+    before = env_setup["live"].read_bytes()
+    r = run(env, "--verify-only", "--yes", cwd=env_setup["tmp"])
+    assert r.returncode != 0
+    assert "--verify-only is only valid together with --from-r2" in (r.stdout + r.stderr)
+    # live DB untouched; no restore and no pre-restore safety copy occurred
+    assert env_setup["live"].read_bytes() == before
+    assert not list(env_setup["tmp"].glob("contracts.db.pre-restore.*"))
+
+
+def test_r2_list_failure_fails_closed(env_setup):
+    # A failed `aws s3api list-objects-v2` must NOT be reported as an empty bucket.
+    make_sqlite_gz(env_setup["bucket"] / "backup_2026-07-07_000000_x.db.gz")
+    env = dict(env_setup["env"])
+    env["FAKE_S3_FAIL"] = "list"
+    r = run(env, "--r2-list", cwd=env_setup["tmp"])
+    assert r.returncode != 0
+    out = r.stdout + r.stderr
+    assert "(none found)" not in out
+    assert "R2 listing failed" in out
+
+
+def test_from_r2_latest_list_failure_fails_closed(env_setup):
+    # Latest-key selection must distinguish a listing failure from an empty bucket.
+    make_sqlite_gz(env_setup["bucket"] / "backup_2026-07-07_000000_x.db.gz")
+    env = dict(env_setup["env"])
+    env["FAKE_S3_FAIL"] = "list"
+    r = run(env, "--from-r2", "--latest", "--verify-only", cwd=env_setup["tmp"])
+    assert r.returncode != 0
+    out = r.stdout + r.stderr
+    assert "R2 listing failed" in out
+    assert "no backups found" not in out  # must not misreport as empty
 
 
 def test_from_r2_restore_overwrites_with_yes(env_setup):

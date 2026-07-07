@@ -64,10 +64,16 @@ r2() {
     "${R2_CLI:-aws}" --endpoint-url "$R2_ENDPOINT" "$@"
 }
 
-r2_list_keys() {  # newest first
-    r2 s3api list-objects-v2 --bucket "$R2_BUCKET" --prefix backup_ \
-        --query 'reverse(sort_by(Contents,&LastModified))[].Key' --output text 2>/dev/null \
-        | tr '\t' '\n' | sed '/^$/d;/^None$/d'
+r2_list_keys() {  # newest first; RETURNS NON-ZERO if the R2 listing call fails
+    # Capture the listing first so a failed `aws s3api list-objects-v2` (auth /
+    # network / bad bucket) can never be massaged by the downstream pipe into a
+    # successful-looking "empty" result. stderr is left attached so the real
+    # error is visible. A genuinely empty bucket yields "None" (exit 0) → the
+    # sed below strips it to an empty list, which is a real "no backups".
+    local raw
+    raw="$(r2 s3api list-objects-v2 --bucket "$R2_BUCKET" --prefix backup_ \
+        --query 'reverse(sort_by(Contents,&LastModified))[].Key' --output text)" || return 1
+    printf '%s' "$raw" | tr '\t' '\n' | sed '/^$/d;/^None$/d'
 }
 
 # Validate a gzipped SQLite snapshot end-to-end. Fail-closed on gzip/integrity
@@ -153,15 +159,26 @@ for arg in "$@"; do
     esac
 done
 
+# --verify-only is a RESTORE REHEARSAL of an R2 snapshot (download + validate,
+# never touch the live DB). It has no meaning for a local restore, and must NEVER
+# be accepted there and fall through to the destructive overwrite path below.
+if [ "$verify_only" -eq 1 ] && [ "$from_r2" -ne 1 ]; then
+    fail "--verify-only is only valid together with --from-r2"
+fi
+
 list_backups() { ls -1t "$BACKUP_DIR"/backup_*.gz 2>/dev/null || true; }
 
 # ── Mode: list R2 objects ─────────────────────────────────────────────────────
 if [ "$do_r2_list" -eq 1 ]; then
     r2_require
     log "R2 backups in bucket '$R2_BUCKET' (newest first):"
-    found=0
-    while IFS= read -r k; do [ -n "$k" ] && { printf '  %s\n' "$k"; found=1; }; done < <(r2_list_keys)
-    [ "$found" -eq 1 ] || log "(none found)"
+    # Fail-closed: a listing error must surface as an error, never as "(none found)".
+    keys="$(r2_list_keys)" || fail "R2 listing failed for bucket '$R2_BUCKET' (see error above)"
+    if [ -n "$keys" ]; then
+        while IFS= read -r k; do [ -n "$k" ] && printf '  %s\n' "$k"; done <<< "$keys"
+    else
+        log "(none found)"
+    fi
     exit 0
 fi
 
@@ -179,7 +196,10 @@ if [ "$from_r2" -eq 1 ]; then
     r2_require
     key="$target"
     if [ -z "$key" ]; then
-        key="$(r2_list_keys | head -1)"
+        # Fail-closed: distinguish a listing failure from a genuinely empty bucket
+        # so an auth/network error can never be misread as "no backups found".
+        keys="$(r2_list_keys)" || fail "R2 listing failed for bucket '$R2_BUCKET' (see error above)"
+        key="$(printf '%s\n' "$keys" | head -1)"
         [ -n "$key" ] || fail "no backups found in R2 bucket '$R2_BUCKET'"
         log "No key given — selecting latest R2 object: $key"
     fi
