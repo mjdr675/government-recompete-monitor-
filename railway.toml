@@ -21,8 +21,17 @@
     # Requires awscli (see nixpacks.toml) and the R2_* env vars; point
     # RECOMPETE_BACKUP_DIR at the mounted volume for a persistent local copy.
     startCommand = "bash scripts/backup_db.sh predeploy && gunicorn app:app --bind 0.0.0.0:$PORT"
+  # Shared datastore (Postgres) + broker (Redis) references. The LIVE Railway
+  # services are dashboard-managed and named differently (government-recompete-
+  # monitor-, Redis, Postgres), so these SAME references must also be set on
+  # those services in the dashboard — see docs/DEPLOYMENT.md §8b.
+  [services.variables]
+    DATABASE_URL = "${{Postgres.DATABASE_URL}}"
+    REDIS_URL = "${{Redis.REDIS_URL}}"
 
-# Daily contract ingest cron — canonical production schedule.
+# Daily contract ingest cron — canonical production schedule and the SOLE owner
+# of the nightly ingest. Celery beat no longer schedules run_ingest (see
+# tasks.py) so ingest never runs twice.
 # Fires at 06:00 UTC every day and POSTs to /ingest/run.
 # Required Railway env vars:
 #   CRON_SECRET — shared secret that authenticates the cron caller
@@ -45,28 +54,31 @@
 # DB volume). See docs/DEPLOYMENT.md. Pre-deploy backup above is already live.
 
 # ─────────────────────────────────────────────────────────────────────────────
-# O5 / Gate 3 — Celery worker + beat services (DRAFT, INTENTIONALLY INACTIVE)
+# O5 / Gate 3 — Celery worker + beat services (ACTIVE on this branch).
 #
-# These are the service definitions to activate once a shared PostgreSQL is
-# provisioned and DATABASE_URL is set on web + worker + beat. They are COMMENTED
-# OUT ON PURPOSE: uncommenting (and merging/deploying) creates them on the next
-# deploy, and until Postgres is the SHARED datastore each worker/beat service
-# would run against its own empty per-service volume — Railway volumes are
-# service-bound, so the SQLite file on `web` is NOT visible to them. That would
-# execute scheduled jobs (watchlist alerts, trial emails) against empty/wrong data.
+# Postgres and Redis are now provisioned in the Railway project. worker and beat
+# run the Procfile commands and reference the SHARED Postgres + Redis so they
+# operate on the same data as web. The broker is REDIS_URL (already live).
 #
-# DO NOT UNCOMMENT until the human-only cutover in
-# docs/O5_POSTGRES_MIGRATION_PLAN.md is complete (provision Postgres → migrate
-# data → verify → set DATABASE_URL on all three services). The broker is already
-# available (REDIS_URL / the live Redis service); commands mirror the Procfile.
-#
-# [[services]]
-#   name = "worker"
-#   [services.deploy]
-#     startCommand = "celery -A tasks worker --loglevel=info"
-#
-# [[services]]
-#   name = "beat"
-#   [services.deploy]
-#     startCommand = "celery -A tasks beat --loglevel=info --scheduler celery.beat.PersistentScheduler"
+# ⚠️  DO NOT MERGE OR DEPLOY THIS BRANCH until the human-only Postgres data
+# cutover in docs/O5_POSTGRES_MIGRATION_PLAN.md is complete: set DATABASE_URL on
+# the live `web`/government-recompete-monitor- service, build the schema, migrate
+# SQLite→Postgres data, and pass the integrity gate. Deploying before that points
+# every service at an EMPTY Postgres and would run scheduled jobs against no data.
+# Activating the service definitions here is repo-side groundwork only.
+[[services]]
+  name = "worker"
+  [services.deploy]
+    startCommand = "celery -A tasks worker --loglevel=info"
+  [services.variables]
+    DATABASE_URL = "${{Postgres.DATABASE_URL}}"
+    REDIS_URL = "${{Redis.REDIS_URL}}"
+
+[[services]]
+  name = "beat"
+  [services.deploy]
+    startCommand = "celery -A tasks beat --loglevel=info --scheduler celery.beat.PersistentScheduler"
+  [services.variables]
+    DATABASE_URL = "${{Postgres.DATABASE_URL}}"
+    REDIS_URL = "${{Redis.REDIS_URL}}"
 # ─────────────────────────────────────────────────────────────────────────────

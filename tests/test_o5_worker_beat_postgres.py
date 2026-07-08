@@ -76,19 +76,23 @@ def test_beat_schedule_has_required_automation_jobs():
         assert sched[key]["task"] == task_name
 
 
-# ── railway.toml: worker/beat drafted but INACTIVE (SQLite behavior preserved) ─
-def test_railway_worker_beat_are_drafted_but_not_active():
+# ── railway.toml: worker/beat ACTIVE and wired to shared Postgres + Redis ─────
+def test_railway_worker_beat_active_and_wired_to_shared_postgres():
     with open(RAILWAY_TOML, "rb") as fh:
         cfg = tomllib.load(fh)
-    active = {s.get("name") for s in cfg.get("services", [])}
-    # Must NOT be active yet — activating before Postgres is provisioned would run
-    # scheduled jobs against empty per-service volumes.
-    assert "worker" not in active and "beat" not in active
-    assert {"web", "daily-ingest"} <= active
+    services = {s.get("name"): s for s in cfg.get("services", [])}
+    # worker + beat are now activated alongside web + daily-ingest.
+    assert {"web", "daily-ingest", "worker", "beat"} <= set(services)
+    # They run the Procfile commands.
+    assert "celery -A tasks worker" in services["worker"]["deploy"]["startCommand"]
+    assert "celery -A tasks beat" in services["beat"]["deploy"]["startCommand"]
+    # web/worker/beat reference the SHARED Postgres + Redis (not per-service state).
+    for name in ("web", "worker", "beat"):
+        vars_ = services[name].get("variables", {})
+        assert vars_.get("DATABASE_URL") == "${{Postgres.DATABASE_URL}}", name
+        assert vars_.get("REDIS_URL") == "${{Redis.REDIS_URL}}", name
 
     raw = RAILWAY_TOML.read_text()
-    # …but the cutover draft (commented) must be present and clearly gated.
-    assert "celery -A tasks worker" in raw
-    assert "celery -A tasks beat" in raw
-    assert "DO NOT UNCOMMENT" in raw
+    # The human deploy cutover gate must remain referenced and loud.
     assert "O5_POSTGRES_MIGRATION_PLAN.md" in raw
+    assert "DO NOT MERGE OR DEPLOY" in raw

@@ -34,7 +34,7 @@ beat:    celery -A tasks beat --loglevel=info --scheduler celery.beat.Persistent
 | `release` | Runs before web starts; initialises DB schema idempotently |
 | `web` | Flask app served by Gunicorn; Railway assigns `$PORT` |
 | `worker` | Celery task worker (email, ingest, webhooks) |
-| `beat` | Celery periodic scheduler (nightly ingest at 02:00 UTC, beat health check every 10 min) |
+| `beat` | Celery periodic scheduler (watchlist alerts 07:00 UTC, trial emails 09:00 UTC, heartbeat every 5 min, beat health check every 10 min). **Does not run the nightly ingest** — that is owned solely by the `daily-ingest` cron (see §8b). |
 
 ---
 
@@ -322,6 +322,62 @@ read from the environment only and are never logged.
 
 Prerequisite for R2 in any environment: **`awscli` on PATH** and the four `R2_*`
 variables set. Never commit these values.
+
+---
+
+## 8b. Celery worker/beat on shared Postgres (O5)
+
+`railway.toml` defines four services: `web`, `daily-ingest` (cron), `worker`, and
+`beat`. `worker` and `beat` run the Celery Procfile commands and must operate on
+the **same data as `web`**, which requires a **shared network Postgres** (a Railway
+volume binds to one service, so a per-service SQLite file is invisible to the
+others). The app selects Postgres automatically when `DATABASE_URL` is set
+(`db.get_engine()` / `db.get_connection()`).
+
+### Live services vs. repo config
+The **live** Railway services are dashboard-managed and named
+`government-recompete-monitor-` (web), `Redis`, `ingest-cron`, and `Postgres`.
+The service names in `railway.toml` (`web`/`worker`/`beat`) are the config-as-code
+representation; the dashboard is authoritative. The `${{Postgres.DATABASE_URL}}`
+and `${{Redis.REDIS_URL}}` references in `railway.toml` must therefore **also be
+set as reference variables on the live services**.
+
+### Manual Railway steps (human-only, before deploy)
+1. Confirm `Postgres` and `Redis` are provisioned (done).
+2. Set `DATABASE_URL=${{Postgres.DATABASE_URL}}` and `REDIS_URL=${{Redis.REDIS_URL}}`
+   on the live `government-recompete-monitor-` (web) service.
+3. Redeploy web so `init_db()` builds the schema on Postgres; confirm no migration
+   errors.
+4. Migrate SQLite→Postgres data and pass the integrity gate
+   (see `docs/O5_POSTGRES_MIGRATION_PLAN.md`).
+5. Create the `worker` and `beat` services with the same two reference variables.
+6. Verify: `worker` log shows `celery@… ready`; `beat` log shows the schedule;
+   Redis key `beat:health` refreshes.
+
+> ⚠️ **Do not merge/deploy the `ops/celery-postgres-railway-services` branch until
+> steps 2–4 are complete.** Deploying earlier points every service at an empty
+> Postgres and runs scheduled jobs against no data.
+
+### Single ingest owner
+The nightly ingest is owned **solely** by the `daily-ingest` cron (06:00 UTC →
+`POST /ingest/run`). It was removed from the Celery `beat` schedule (`tasks.py`)
+so ingest never runs twice. The `run_ingest` Celery task remains registered for
+the `/ingest` admin trigger and manual re-runs.
+
+### Accepted ops risk — no Railway backups/PITR
+Railway automated backups / point-in-time recovery are **unavailable on the current
+plan** and this is **accepted as an operational risk for now**. The app's own
+fail-closed pre-start snapshot (`scripts/backup_db.sh`, run before gunicorn in the
+web start command, uploaded to R2) remains the backup layer. Loss of managed
+point-in-time recovery for Postgres is accepted until a plan upgrade; do not block
+this work on Railway Pro backups.
+
+### Rollback (worker/beat)
+`worker` and `beat` are additive and safe to remove at any time — they only consume
+the Redis broker and Postgres. Removing/scaling them to zero reverts to the
+`web` + `daily-ingest` topology. Keep `Redis` provisioned so web request-path
+`.delay()` email enqueues do not hang. See `docs/O5_POSTGRES_MIGRATION_PLAN.md`
+for the full data-cutover rollback.
 
 ---
 

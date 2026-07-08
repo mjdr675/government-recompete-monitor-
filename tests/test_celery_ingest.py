@@ -42,27 +42,19 @@ def client(test_db):
 # ---------------------------------------------------------------------------
 
 class TestRunIngestTask:
-    def test_run_ingest_in_beat_schedule(self):
+    def test_run_ingest_not_in_beat_schedule_single_owner(self):
+        # Single ingest owner: the Railway `daily-ingest` cron (06:00 UTC →
+        # /ingest/run) owns the nightly ingest. run_ingest must NOT also be on
+        # the Celery beat schedule, or ingest would run twice per day.
         import tasks as tasks_module
         task_names = [v["task"] for v in tasks_module.tasks.conf.beat_schedule.values()]
-        assert "tasks.run_ingest" in task_names
+        assert "tasks.run_ingest" not in task_names
 
-    def test_nightly_schedule_crontab(self):
+    def test_run_ingest_task_still_registered(self):
+        # The task stays registered for the /ingest admin trigger
+        # (run_ingest.delay()) and manual re-runs — only the schedule entry is gone.
         import tasks as tasks_module
-        from celery.schedules import crontab
-        entry = next(
-            v for v in tasks_module.tasks.conf.beat_schedule.values()
-            if v["task"] == "tasks.run_ingest"
-        )
-        assert isinstance(entry["schedule"], crontab)
-
-    def test_nightly_schedule_hour_is_2(self):
-        import tasks as tasks_module
-        entry = next(
-            v for v in tasks_module.tasks.conf.beat_schedule.values()
-            if v["task"] == "tasks.run_ingest"
-        )
-        assert entry["schedule"].hour == frozenset([2])
+        assert "tasks.run_ingest" in tasks_module.tasks.tasks
 
     def test_run_ingest_logs_on_success(self, test_db, caplog, monkeypatch):
         import logging
