@@ -41,17 +41,21 @@
 # binds to one service), so instead these cron services curl CRON_SECRET-protected
 # endpoints on `web` (app.py: /alerts/run, /trials/run) that run the same
 # watchlist-alert / trial-email logic inside the container that owns the DB volume.
+#
+# We capture the HTTP status instead of `curl -sf` so the endpoint's benign
+# overlap-guard 409 ("already_running") counts as SUCCESS, not a crashed cron run;
+# any 2xx also succeeds, and real failures (401/5xx/network) still exit non-zero.
 [[services]]
   name = "alerts-cron"
   [services.deploy]
     cronSchedule = "0 7 * * *"
-    startCommand = "curl -sf -X POST https://recompete.us/alerts/run -H \"Authorization: Bearer $CRON_SECRET\" -H \"Content-Type: application/json\" -d '{}'"
+    startCommand = "code=$(curl -s -o /dev/null -w \"%{http_code}\" -X POST https://recompete.us/alerts/run -H \"Authorization: Bearer $CRON_SECRET\" -H \"Content-Type: application/json\" -d '{}'); echo \"alerts/run -> $code\"; case \"$code\" in 2*|409) exit 0 ;; *) exit 1 ;; esac"
 
 [[services]]
   name = "trials-cron"
   [services.deploy]
     cronSchedule = "0 9 * * *"
-    startCommand = "curl -sf -X POST https://recompete.us/trials/run -H \"Authorization: Bearer $CRON_SECRET\" -H \"Content-Type: application/json\" -d '{}'"
+    startCommand = "code=$(curl -s -o /dev/null -w \"%{http_code}\" -X POST https://recompete.us/trials/run -H \"Authorization: Bearer $CRON_SECRET\" -H \"Content-Type: application/json\" -d '{}'); echo \"trials/run -> $code\"; case \"$code\" in 2*|409) exit 0 ;; *) exit 1 ;; esac"
 
 # NOTE: there is intentionally no `daily-backup` cron *service* here.
 # A Railway volume binds to a single service, and the SQLite DB volume must stay

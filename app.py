@@ -789,7 +789,14 @@ def _run_cron_job(job: str, task_name: str):
             with lock:
                 _cron_running[job] = False
 
-    threading.Thread(target=_run, daemon=True).start()
+    try:
+        threading.Thread(target=_run, daemon=True).start()
+    except Exception:
+        # If the thread never starts, _run's finally never clears the flag —
+        # reset it here so a failed start can't wedge future cron calls at 409.
+        with lock:
+            _cron_running[job] = False
+        raise
     return {"status": "started"}, 202
 
 

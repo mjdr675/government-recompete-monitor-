@@ -120,5 +120,12 @@ def test_railway_has_alerts_and_trials_cron_services():
     assert trials["cronSchedule"] == "0 9 * * *"
     assert "/trials/run" in trials["startCommand"] and "$CRON_SECRET" in trials["startCommand"]
 
+    # The overlap-guard 409 must be treated as success (not a crashed cron run):
+    # each command captures the HTTP code and exits 0 on 2xx OR 409.
+    for dep in (alerts, trials):
+        cmd = dep["startCommand"]
+        assert "%{http_code}" in cmd, "cron must capture the HTTP status"
+        assert "409" in cmd, "cron must treat the overlap-guard 409 as success"
+
     # worker/beat must still NOT be active services (Postgres path unchanged).
     assert "worker" not in svc and "beat" not in svc
