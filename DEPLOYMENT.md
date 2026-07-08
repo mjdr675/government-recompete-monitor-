@@ -56,9 +56,14 @@ GitHub Actions UI or `gh workflow run deploy.yml` if so.
 
 ## Known gaps (tracked, not yet resolved)
 
-- **`STRIPE_WEBHOOK_SECRET` is not set on Railway prod** -> `/stripe/webhook` returns
-  400 -> subscription lifecycle events (checkout/update/cancel) are silently dropped.
-  Gate 2 O2, not yet fixed. Do not assume billing webhooks are processing.
+(Resolved 2026-07-08 — **Stripe webhook processing (was Gate 2 O2)**:
+`STRIPE_WEBHOOK_SECRET` is now set on Railway prod, and the live deploy accepted a
+resent Stripe delivery — `POST /stripe/webhook -> 200` at `2026-07-08T00:47:03Z`,
+with no missing-secret warning, no signature-verification error, and no traceback.
+`/stripe/webhook` verifies signatures via `stripe.Webhook.construct_event` and is
+covered by `tests/test_stripe_webhook*.py`. Subscription lifecycle events
+(checkout/update/cancel) are being verified and processed.)
+
 - **worker/beat are not running on Railway.** `Procfile` defines `worker`
   (`celery -A tasks worker`) and `beat` (`celery -A tasks beat`), but `railway.toml`
   only defines `web` and `daily-ingest` services — celery worker/beat are dead in
