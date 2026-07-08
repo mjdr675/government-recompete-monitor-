@@ -76,6 +76,13 @@
 
 [[services]]
   name = "beat"
+  # NOTE (schedule persistence): PersistentScheduler writes its schedule state to a
+  # local file, which resets on each redeploy/restart on Railway's ephemeral
+  # storage. Low-impact for these crontab-style entries (they re-seed from
+  # tasks.py on startup), but "persistent" state is not actually durable. A
+  # Redis-backed scheduler (celery-redbeat, reusing the live Redis) or a small
+  # attached volume on `beat` may be considered later if durable schedule state
+  # matters. Left as-is here to avoid changing runtime behavior.
   [services.deploy]
     startCommand = "celery -A tasks beat --loglevel=info --scheduler celery.beat.PersistentScheduler"
   [services.variables]

@@ -64,9 +64,11 @@ owned solely by the `daily-ingest` cron — it is **not** a beat job.
    - `GET /api/data-freshness` and `/health` return 200 with `DATABASE_URL` set.
 6. **Cut `web` over to Postgres**: it already is (step 2/3). Verify prod healthy for a
    soak period (login works, watchlists/notes load, contracts render).
-7. **Activate worker + beat**: uncomment the two `[[services]]` blocks in
-   `railway.toml` (this branch's draft), ensure `DATABASE_URL` **and** `REDIS_URL`
-   are set on both, deploy.
+7. **Activate worker + beat**: the two `[[services]]` blocks are already active in
+   `railway.toml` on this branch — the remaining action is the live-service work in
+   DEPLOYMENT.md §8b: create/deploy the `worker` and `beat` services and set
+   `DATABASE_URL` **and** `REDIS_URL` (the `${{Postgres.DATABASE_URL}}` /
+   `${{Redis.REDIS_URL}}` references) on both, then deploy.
 8. **Verify worker/beat**: worker log shows `celery@… ready`; beat log shows the
    schedule loaded; `tasks.heartbeat` and `tasks.check_beat_health` fire; a watchlist
    alert / trial email sends on schedule (or via a manual trigger).
@@ -89,8 +91,13 @@ owned solely by the `daily-ingest` cron — it is **not** a beat job.
 - **Type/collation differences** SQLite vs Postgres (e.g. boolean/text affinity) —
   validate app reads after schema build (step 3) before loading data.
 - **Premature worker/beat activation** against an empty PG or an empty per-service
-  SQLite volume → jobs act on wrong data. Prevented by keeping the services
-  commented until step 7 and by this plan's ordering.
+  SQLite volume → jobs act on wrong data. Prevented by the DO-NOT-MERGE/DEPLOY gate
+  (the service defs are active in `railway.toml` but the branch is not deployed) and
+  by this plan's ordering.
+- **Beat schedule persistence**: `celery.beat.PersistentScheduler` stores its state
+  in a local file that resets on each redeploy/restart (Railway ephemeral storage).
+  Low-impact — crontab entries re-seed from `tasks.py` — but consider `celery-redbeat`
+  (Redis-backed) or a volume on `beat` later if durable schedule state is needed.
 - **Downtime** during the maintenance-window cutover; **recurring cost** for Postgres.
 - Writes to prod (data migration, restore) are **human-only, gated** actions.
 
