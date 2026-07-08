@@ -26,9 +26,15 @@
 - **Nightly, on-host:** `~/recompete-backups/railway_nightly_backup.sh` (workstation
   cron, `CRON_TZ=UTC; 0 7 * * *`, after the 06:00 UTC ingest). Verifies integrity and
   sha256 before accepting a backup as successful. Retains 14 days under `nightly/`.
-- **Off-site copy:** not yet implemented (Gate 2 O3, in progress) — nightly backups
-  currently live only on this workstation. Do not treat this repo as backed-up
-  off-site until O3 lands.
+- **Off-site copy (Cloudflare R2):** ✅ **LIVE** as of 2026-07-08 (Railway deploy
+  `03f648b6`, SUCCESS/Online). The web service's fail-closed pre-deploy backup
+  (`scripts/backup_db.sh predeploy`, chained before `gunicorn` via `&&`) uploads
+  each snapshot to R2 and re-downloads it to prove a byte-identical, integrity-
+  checked copy before the deploy proceeds. Last verified snapshot:
+  `backup_2026-07-08_002043_nogit_predeploy.db.gz` (4.0M), `PRAGMA
+  integrity_check=ok` (run via the python3 fallback — no `sqlite3` CLI in the
+  image), R2 upload verified byte-identical. Scripted restore/rehearsal:
+  `scripts/restore_db.sh --from-r2` (`--verify-only` for a no-touch rehearsal).
 - **Restore rehearsal:** performed and verified at Gate 1 completion (on-host
   snapshot -> `recompete-backups/restore-rehearsal/`, `integrity_check ok`, sane
   row counts, queryable).
@@ -58,7 +64,9 @@ GitHub Actions UI or `gh workflow run deploy.yml` if so.
   only defines `web` and `daily-ingest` services — celery worker/beat are dead in
   production. Watchlist alerts, trial emails, and other async/scheduled email are
   not running. Needs a shared Postgres to restore properly; deferred to Gate 3 (O5).
-- **Off-site backup durability** — see Backups above; Gate 2 O3, in progress.
+
+(Resolved: **off-site backup durability** — off-site Cloudflare R2 upload + fail-closed
+restore/verify is now **live** as of 2026-07-08; see Backups above.)
 
 ## Rollback
 

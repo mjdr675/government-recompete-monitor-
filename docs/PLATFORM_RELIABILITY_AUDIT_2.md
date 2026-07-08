@@ -128,5 +128,7 @@ DB schema, or application code paths changed.
 ## Follow-ups (not in this lane)
 - **D1:** Reconcile `docs/DEPLOYMENT.md` (Railway claims vs. actual VPS deploy).
 - Off-host backup retention (copy snapshots to object storage) for full disaster recovery.
+  **DONE (2026-07-08):** off-site Cloudflare R2 upload + fail-closed restore/verify is live
+  (deploy `03f648b6`); see `DEPLOYMENT.md` › Backups.
 - **A2/T2:** Add `compileall` + codified `pytest.ini` to CI.
 - **M1:** Harden the migration SQL splitter before any dollar-quoted PG migration.
