@@ -73,12 +73,20 @@ fail() { log "ERROR: $*"; exit 1; }
 #   "<any other text>"   ran, but the DB is corrupt / not a database → caller fails
 #   ""  (empty)          ONLY when neither sqlite3 nor python3 exists
 sqlite_integrity_check() {
-    local db="$1"
+    local db="$1" out
     if command -v sqlite3 >/dev/null 2>&1; then
-        sqlite3 "$db" 'PRAGMA integrity_check;' 2>/dev/null | head -n1
+        # sqlite3 CLI present. A corrupt / non-database file makes sqlite3 exit
+        # non-zero with NO stdout, so we must map a nonzero exit OR empty output to
+        # a FAILED check — never to the empty "tool absent" signal, which would let
+        # verify_backup pass on the gzip layer alone (CodeRabbit #1).
+        if out="$(sqlite3 "$db" 'PRAGMA integrity_check;' 2>/dev/null)" && [ -n "$out" ]; then
+            printf '%s' "$out" | head -n1
+        else
+            printf 'sqlite3 integrity_check failed (corrupt or not a database)'
+        fi
         return
     fi
-    command -v python3 >/dev/null 2>&1 || return  # no tool at all → empty output
+    command -v python3 >/dev/null 2>&1 || return  # neither tool at all → empty output
     python3 -c 'import sqlite3, sys
 try:
     con = sqlite3.connect(sys.argv[1])
