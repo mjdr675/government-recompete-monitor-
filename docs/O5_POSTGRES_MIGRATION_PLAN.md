@@ -41,7 +41,7 @@ alerts, trial-reminder emails, beat health, nightly ingest fallback) actually ru
    Confirm no migration errors in the deploy logs.
 4. **Migrate data SQLite → Postgres** (one-time, maintenance window):
    - Pull the latest verified SQLite snapshot (from R2 or the web volume).
-   - Load into Postgres (e.g. `pgloader sqlite://<snapshot> postgresql://<DATABASE_URL>`),
+   - Load into Postgres (e.g. `pgloader sqlite://<snapshot> "$DATABASE_URL"`),
      or a scripted per-table dump/insert. Migration must run **after** step 3's schema.
 5. **Data-integrity checks (gate — must pass before cutover):**
    - Per-table `COUNT(*)` on Postgres == SQLite for: `users`, `user_watchlist`,
