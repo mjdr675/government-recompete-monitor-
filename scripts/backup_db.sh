@@ -64,27 +64,63 @@ LABEL_RAW="${1:-${RECOMPETE_MIGRATION_LABEL:-}}"
 log() { printf '[backup_db] %s\n' "$*"; }
 fail() { log "ERROR: $*"; exit 1; }
 
+# Run "PRAGMA integrity_check" on a SQLite file and echo its first result line.
+# Prefers the sqlite3 CLI; falls back to python3's built-in sqlite3 module, which
+# is ALWAYS present in the app image (mirrors scripts/restore_db.sh's validation),
+# so a missing sqlite3 CLI no longer downgrades verification to gzip-only.
+# Output contract:
+#   "ok"                 healthy database
+#   "<any other text>"   ran, but the DB is corrupt / not a database → caller fails
+#   ""  (empty)          ONLY when neither sqlite3 nor python3 exists
+sqlite_integrity_check() {
+    local db="$1" out
+    if command -v sqlite3 >/dev/null 2>&1; then
+        # sqlite3 CLI present. A corrupt / non-database file makes sqlite3 exit
+        # non-zero with NO stdout, so we must map a nonzero exit OR empty output to
+        # a FAILED check — never to the empty "tool absent" signal, which would let
+        # verify_backup pass on the gzip layer alone (CodeRabbit #1).
+        if out="$(sqlite3 "$db" 'PRAGMA integrity_check;' 2>/dev/null)" && [ -n "$out" ]; then
+            printf '%s' "$out" | head -n1
+        else
+            printf 'sqlite3 integrity_check failed (corrupt or not a database)'
+        fi
+        return
+    fi
+    command -v python3 >/dev/null 2>&1 || return  # neither tool at all → empty output
+    python3 -c 'import sqlite3, sys
+try:
+    con = sqlite3.connect(sys.argv[1])
+    row = con.execute("PRAGMA integrity_check;").fetchone()
+    con.close()
+    print(row[0] if row else "empty integrity_check")
+except Exception as exc:
+    print("not a database: %s" % exc)' "$db"
+}
+
 # A backup is "successful" ONLY if it is proven restorable. Args: <archive> <engine>
 #   - gzip -t              : archive is not truncated/corrupt at the compression layer
 #   - SQLite: PRAGMA integrity_check on the decompressed copy must return exactly "ok"
+#     (via sqlite3 CLI or, when absent, python3 — see sqlite_integrity_check)
 #   - Postgres: gzip -t + the pg_dump pipe already gated by `set -o pipefail`
 # Any failure → exit 1, which the deploy's `set -e` turns into a hard stop.
 verify_backup() {
     local archive="$1" engine="$2"
     gzip -t "$archive" || fail "gzip integrity check failed (corrupt/truncated archive): $archive"
     if [ "$engine" = "sqlite" ]; then
-        if command -v sqlite3 >/dev/null 2>&1; then
-            local tmp ic
-            tmp="$(mktemp)"
-            if ! gunzip -c "$archive" >"$tmp" 2>/dev/null; then
-                rm -f "$tmp"; fail "could not decompress for verification: $archive"
-            fi
-            ic="$(sqlite3 "$tmp" 'PRAGMA integrity_check;' 2>/dev/null | head -n1 || true)"
-            rm -f "$tmp"
-            [ "$ic" = "ok" ] || fail "SQLite integrity_check failed (got: '${ic:-<empty>}'): $archive"
-            log "Integrity verified: gzip OK + PRAGMA integrity_check=ok"
+        local tmp ic
+        tmp="$(mktemp)"
+        if ! gunzip -c "$archive" >"$tmp" 2>/dev/null; then
+            rm -f "$tmp"; fail "could not decompress for verification: $archive"
+        fi
+        ic="$(sqlite_integrity_check "$tmp")"
+        rm -f "$tmp"
+        if [ -z "$ic" ]; then
+            # Neither sqlite3 nor python3 present — cannot integrity-check. Do not
+            # block the backup on a missing tool, but say so loudly.
+            log "WARNING: no sqlite3 or python3 — verified gzip layer only (no integrity_check)"
         else
-            log "WARNING: sqlite3 unavailable — verified gzip layer only (no integrity_check)"
+            [ "$ic" = "ok" ] || fail "SQLite integrity_check failed (got: '${ic}'): $archive"
+            log "Integrity verified: gzip OK + PRAGMA integrity_check=ok"
         fi
     else
         log "Integrity verified: gzip OK + pg_dump pipe exit (pipefail)"
