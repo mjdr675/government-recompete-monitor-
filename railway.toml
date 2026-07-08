@@ -36,6 +36,23 @@
     cronSchedule = "0 6 * * *"
     startCommand = "curl -sf -X POST https://recompete.us/ingest/run -H \"Authorization: Bearer $CRON_SECRET\" -H \"Content-Type: application/json\" -d '{}'"
 
+# O5 / Gate 3 — async jobs via the ingest-cron pattern (NO Postgres/Celery needed).
+# Celery worker/beat would need a shared Postgres to see the DB (a Railway volume
+# binds to one service), so instead these cron services curl CRON_SECRET-protected
+# endpoints on `web` (app.py: /alerts/run, /trials/run) that run the same
+# watchlist-alert / trial-email logic inside the container that owns the DB volume.
+[[services]]
+  name = "alerts-cron"
+  [services.deploy]
+    cronSchedule = "0 7 * * *"
+    startCommand = "curl -sf -X POST https://recompete.us/alerts/run -H \"Authorization: Bearer $CRON_SECRET\" -H \"Content-Type: application/json\" -d '{}'"
+
+[[services]]
+  name = "trials-cron"
+  [services.deploy]
+    cronSchedule = "0 9 * * *"
+    startCommand = "curl -sf -X POST https://recompete.us/trials/run -H \"Authorization: Bearer $CRON_SECRET\" -H \"Content-Type: application/json\" -d '{}'"
+
 # NOTE: there is intentionally no `daily-backup` cron *service* here.
 # A Railway volume binds to a single service, and the SQLite DB volume must stay
 # on `web`, so a separate cron service would have no DB file and would no-op

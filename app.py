@@ -419,6 +419,8 @@ _PUBLIC_PATHS = frozenset({
     "/stripe/webhook",
     "/api/data-freshness",
     "/ingest/run",
+    "/alerts/run",
+    "/trials/run",
     "/feedback",
     "/pricing",
     "/terms",
@@ -732,6 +734,79 @@ def ingest_run():
     t = threading.Thread(target=_run, daemon=True)
     t.start()
     return {"status": "started", "date": date.today().isoformat()}, 202
+
+
+# ── Async job cron endpoints (O5 / Gate 3) ───────────────────────────────────
+# Celery worker/beat can't run as separate Railway services without a shared
+# Postgres: a Railway volume binds to a single service, so a separate worker/beat
+# would see an empty SQLite (not `web`'s /data/contracts.db). Until Postgres is
+# provisioned, the beat jobs that were dead in prod — watchlist alerts and trial
+# emails — are triggered the SAME way ingest already is: a CRON_SECRET-protected
+# endpoint on `web` (which owns the DB volume) that a Railway cron service curls
+# (see the `alerts-cron` / `trials-cron` services in railway.toml). Mirrors
+# /ingest/run: same auth, overlap guard, and fire-and-forget thread.
+_cron_locks = {"alerts": _threading.Lock(), "trials": _threading.Lock()}
+_cron_running = {"alerts": False, "trials": False}
+
+
+def _cron_authorized(job: str):
+    """Same CRON_SECRET auth as /ingest/run. Returns None when authorized, else a
+    (body, status) tuple. No secret set: 503 on Railway (fail-closed), open locally."""
+    if _CRON_SECRET:
+        header_secret = request.headers.get("X-Cron-Secret", "")
+        auth_header = request.headers.get("Authorization", "")
+        if header_secret != _CRON_SECRET and auth_header != f"Bearer {_CRON_SECRET}":
+            return {"error": "unauthorized"}, 401
+    elif _ON_RAILWAY:
+        logging.getLogger("cron").error(
+            "/%s/run blocked: CRON_SECRET is not set in production (fail-closed)", job)
+        return {"error": f"{job} disabled: CRON_SECRET not configured"}, 503
+    return None
+
+
+def _run_cron_job(job: str, task_name: str):
+    """Auth → overlap guard → run tasks.<task_name>() in a daemon thread. Returns a
+    Flask (body, status). Fire-and-forget like /ingest/run — the cron only triggers;
+    success/failure is logged server-side. The task runs inside `web`, so it reads
+    the live DB volume."""
+    resp = _cron_authorized(job)
+    if resp is not None:
+        return resp
+    lock = _cron_locks[job]
+    with lock:
+        if _cron_running[job]:
+            return {"status": "already_running"}, 409
+        _cron_running[job] = True
+
+    def _run():
+        _log = logging.getLogger("cron")
+        try:
+            import tasks as _tasks
+            getattr(_tasks, task_name)()
+        except Exception as exc:  # noqa: BLE001 — log; never crash the worker
+            _log.exception("/%s/run failed: %s", job, exc)
+        finally:
+            with lock:
+                _cron_running[job] = False
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"status": "started"}, 202
+
+
+@app.route("/alerts/run", methods=["POST"])
+@csrf.exempt
+def alerts_run():
+    """Watchlist expiry-alert emails — triggered daily by the `alerts-cron` Railway
+    service (07:00 UTC). CRON_SECRET-protected; see /ingest/run for the auth model."""
+    return _run_cron_job("alerts", "check_watchlist_alerts")
+
+
+@app.route("/trials/run", methods=["POST"])
+@csrf.exempt
+def trials_run():
+    """Trial-cadence emails — triggered daily by the `trials-cron` Railway service
+    (09:00 UTC). CRON_SECRET-protected; see /ingest/run for the auth model."""
+    return _run_cron_job("trials", "send_trial_emails")
 
 
 @app.route("/")
