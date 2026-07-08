@@ -69,6 +69,9 @@ covered by `tests/test_stripe_webhook*.py`. Subscription lifecycle events
   only defines `web` and `daily-ingest` services — celery worker/beat are dead in
   production. Watchlist alerts, trial emails, and other async/scheduled email are
   not running. Needs a shared Postgres to restore properly; deferred to Gate 3 (O5).
+  Branch-only groundwork + human-only cutover steps: see
+  [`docs/O5_POSTGRES_MIGRATION_PLAN.md`](docs/O5_POSTGRES_MIGRATION_PLAN.md)
+  (worker/beat service defs are drafted, commented/inactive, in `railway.toml`).
 
 (Resolved: **off-site backup durability** — off-site Cloudflare R2 upload + fail-closed
 restore/verify is now **live** as of 2026-07-08; see Backups above.)

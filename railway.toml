@@ -43,3 +43,30 @@
 # pattern: a cron service that curls a CRON_SECRET-protected endpoint on `web`
 # (which shells out to `scripts/backup_db.sh daily` in the container that owns the
 # DB volume). See docs/DEPLOYMENT.md. Pre-deploy backup above is already live.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# O5 / Gate 3 — Celery worker + beat services (DRAFT, INTENTIONALLY INACTIVE)
+#
+# These are the service definitions to activate once a shared PostgreSQL is
+# provisioned and DATABASE_URL is set on web + worker + beat. They are COMMENTED
+# OUT ON PURPOSE: uncommenting (and merging/deploying) creates them on the next
+# deploy, and until Postgres is the SHARED datastore each worker/beat service
+# would run against its own empty per-service volume — Railway volumes are
+# service-bound, so the SQLite file on `web` is NOT visible to them. That would
+# execute scheduled jobs (watchlist alerts, trial emails) against empty/wrong data.
+#
+# DO NOT UNCOMMENT until the human-only cutover in
+# docs/O5_POSTGRES_MIGRATION_PLAN.md is complete (provision Postgres → migrate
+# data → verify → set DATABASE_URL on all three services). The broker is already
+# available (REDIS_URL / the live Redis service); commands mirror the Procfile.
+#
+# [[services]]
+#   name = "worker"
+#   [services.deploy]
+#     startCommand = "celery -A tasks worker --loglevel=info"
+#
+# [[services]]
+#   name = "beat"
+#   [services.deploy]
+#     startCommand = "celery -A tasks beat --loglevel=info --scheduler celery.beat.PersistentScheduler"
+# ─────────────────────────────────────────────────────────────────────────────
