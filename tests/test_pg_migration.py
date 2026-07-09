@@ -98,6 +98,42 @@ class TestMigrationsArePostgresCompatible:
         assert "SERIAL PRIMARY KEY" in sql
         assert "AUTOINCREMENT" not in sql
 
+    def test_no_set_returning_regexp_matches_in_migrations(self):
+        """``regexp_matches()`` is a set-returning function. PostgreSQL forbids
+        set-returning functions in ``UPDATE ... SET`` and aborts the migration
+        with `set-returning functions are not allowed in UPDATE`. The scalar
+        ``regexp_match()`` (returns text[]) must be used instead. Regression for
+        016_backfill_psc_description.sql, which halted the Postgres schema build
+        at cutover. Checks the comment-stripped SQL (via the real migration
+        runner's splitter) so documentation mentioning the antipattern does not
+        trip the guard."""
+        import re
+        import db as db_module
+        pat = re.compile(r"\bregexp_matches\s*\(", re.IGNORECASE)
+        offenders = set()
+        for f in self._sql_files():
+            for stmt in db_module._split_sql_statements(f.read_text()):
+                if pat.search(stmt):
+                    offenders.add(f.name)
+        assert not offenders, (
+            "set-returning regexp_matches() found in Postgres migration(s): "
+            f"{sorted(offenders)}; use the scalar regexp_match() instead"
+        )
+
+    def test_016_backfill_uses_scalar_regexp_match(self):
+        """The 016 backfill must extract psc_description with the scalar
+        regexp_match()[1] form so it is valid inside UPDATE ... SET on Postgres.
+        Asserts against the executable SQL (comments stripped)."""
+        import db as db_module
+        stmts = db_module._split_sql_statements(
+            (MIGRATIONS_DIR / "016_backfill_psc_description.sql").read_text()
+        )
+        sql = " ".join(stmts)
+        assert "regexp_match(" in sql, "expected scalar regexp_match() in 016 backfill"
+        assert "regexp_matches(" not in sql, (
+            "016 backfill still uses set-returning regexp_matches() in UPDATE ... SET"
+        )
+
 
 class TestSqlStatementSplitter:
     """db._split_sql_statements must strip line comments BEFORE splitting on ';'
