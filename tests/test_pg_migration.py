@@ -97,3 +97,62 @@ class TestMigrationsArePostgresCompatible:
         sql = (MIGRATIONS_DIR / "008_notification_preferences.sql").read_text().upper()
         assert "SERIAL PRIMARY KEY" in sql
         assert "AUTOINCREMENT" not in sql
+
+
+class TestSqlStatementSplitter:
+    """db._split_sql_statements must strip line comments BEFORE splitting on ';'
+    so a semicolon inside a comment cannot leak comment text into the SQL.
+    Regression for 009_contracts_ci_columns.sql ('...ready; display logic ...')."""
+
+    def _split(self, sql):
+        import db as db_module
+        return db_module._split_sql_statements(sql)
+
+    def test_semicolon_inside_comment_does_not_split_or_leak(self):
+        sql = (
+            "-- Column is added now so the schema is ready; display logic shows nothing\n"
+            "-- when NULL.\n"
+            "ALTER TABLE contracts ADD COLUMN IF NOT EXISTS vendor_website TEXT;\n"
+        )
+        stmts = self._split(sql)
+        assert stmts == ["ALTER TABLE contracts ADD COLUMN IF NOT EXISTS vendor_website TEXT"]
+        assert not any("display" in s for s in stmts)
+
+    def test_full_line_and_inline_comments_removed(self):
+        sql = (
+            "-- a full-line comment;\n"
+            "CREATE TABLE t (id SERIAL PRIMARY KEY);  -- trailing; comment\n"
+        )
+        stmts = self._split(sql)
+        assert stmts == ["CREATE TABLE t (id SERIAL PRIMARY KEY)"]
+
+    def test_multiple_statements_split(self):
+        sql = "CREATE TABLE a (id INT);\nALTER TABLE a ADD COLUMN x TEXT;\n"
+        assert self._split(sql) == [
+            "CREATE TABLE a (id INT)",
+            "ALTER TABLE a ADD COLUMN x TEXT",
+        ]
+
+    def test_empty_and_comment_only_input_yields_no_statements(self):
+        assert self._split("-- just a comment;\n\n  \n") == []
+
+
+class TestAllMigrationsParseToKeywordStatements:
+    """Parsing every migration with the real runner splitter must yield only
+    statements that begin with a SQL keyword — i.e. no leaked comment fragment
+    (before the fix, 009 produced a statement starting with 'display')."""
+
+    _KEYWORDS = {
+        "CREATE", "ALTER", "INSERT", "UPDATE", "DELETE", "DROP",
+        "COMMENT", "WITH", "SELECT", "DO", "GRANT", "BEGIN", "SET",
+    }
+
+    def test_no_migration_leaks_comment_text_into_sql(self):
+        import db as db_module
+        offenders = {}
+        for f in sorted(MIGRATIONS_DIR.glob("*.sql")):
+            for stmt in db_module._split_sql_statements(f.read_text()):
+                first = stmt.split(None, 1)[0].upper()
+                if first not in self._KEYWORDS:
+                    offenders.setdefault(f.name, []).append(stmt[:60])
+        assert not offenders, f"non-keyword (leaked/comment) statements: {offenders}"
