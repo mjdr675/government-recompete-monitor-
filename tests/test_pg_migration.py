@@ -62,3 +62,38 @@ class TestApplyPgMigrationsFunction:
 
         db_module.init_db()
         assert called == [True]
+
+
+class TestMigrationsArePostgresCompatible:
+    """The SQL migration files run against PostgreSQL in production (the SQLite
+    dev path skips them entirely). Guard against SQLite-only syntax that Postgres
+    rejects. Regression for 008_notification_preferences.sql, which used
+    `INTEGER PRIMARY KEY AUTOINCREMENT` and aborted the Postgres schema build
+    with `syntax error at or near "AUTOINCREMENT"`."""
+
+    # Tokens SQLite accepts but PostgreSQL does not.
+    _SQLITE_ONLY = ("AUTOINCREMENT", "WITHOUT ROWID")
+
+    def _sql_files(self):
+        return sorted(MIGRATIONS_DIR.glob("*.sql"))
+
+    def test_no_autoincrement_in_any_migration(self):
+        offenders = [f.name for f in self._sql_files() if "AUTOINCREMENT" in f.read_text().upper()]
+        assert not offenders, (
+            f"SQLite-only AUTOINCREMENT found in Postgres migration(s): {offenders}; "
+            "use SERIAL PRIMARY KEY instead"
+        )
+
+    def test_no_sqlite_only_syntax_in_any_migration(self):
+        offenders = {}
+        for f in self._sql_files():
+            up = f.read_text().upper()
+            hits = [tok for tok in self._SQLITE_ONLY if tok in up]
+            if hits:
+                offenders[f.name] = hits
+        assert not offenders, f"SQLite-only syntax in Postgres migration(s): {offenders}"
+
+    def test_008_uses_serial_primary_key(self):
+        sql = (MIGRATIONS_DIR / "008_notification_preferences.sql").read_text().upper()
+        assert "SERIAL PRIMARY KEY" in sql
+        assert "AUTOINCREMENT" not in sql
