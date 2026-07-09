@@ -190,7 +190,10 @@ def test_company_profiles_uei_preserved_when_target_has_column(tmp_path):
     tgt = tmp_path / "tgt.db"
     _make_company_profiles_db(str(tgt), has_uei=True)
     # target row must be empty for a non-fresh load; recreate target with no row
-    con = sqlite3.connect(str(tgt)); con.execute("DELETE FROM company_profiles"); con.commit(); con.close()
+    con = sqlite3.connect(str(tgt))
+    con.execute("DELETE FROM company_profiles")
+    con.commit()
+    con.close()
 
     plans = loader.load(str(src), _target_url(str(tgt)))
     cp = next(p for p in plans if p.name == "company_profiles")
@@ -210,7 +213,10 @@ def test_company_profiles_uei_dropped_when_target_lacks_column(tmp_path):
     _make_company_profiles_db(str(src), has_uei=True, uei_value="ABC123DEF456")
     tgt = tmp_path / "tgt.db"
     _make_company_profiles_db(str(tgt), has_uei=False)
-    con = sqlite3.connect(str(tgt)); con.execute("DELETE FROM company_profiles"); con.commit(); con.close()
+    con = sqlite3.connect(str(tgt))
+    con.execute("DELETE FROM company_profiles")
+    con.commit()
+    con.close()
 
     plans = loader.load(str(src), _target_url(str(tgt)))
     cp = next(p for p in plans if p.name == "company_profiles")
