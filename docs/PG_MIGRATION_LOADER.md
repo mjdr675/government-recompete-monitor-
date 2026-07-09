@@ -23,7 +23,15 @@ the live SQLite volume. Always run it against a *snapshot copy* (a
   drift). `schema_migrations`, `sqlite_*`, and FTS shadow tables are excluded.
 - **Idempotent.** `--fresh` truncates first (`RESTART IDENTITY CASCADE` on
   Postgres), so a re-run is a clean reload. Sequence values are reset past the
-  copied ids so future inserts don't collide.
+  copied ids so future inserts don't collide. `--fresh` cannot be combined with
+  `--tables` — a subset truncate would `CASCADE` into referencing tables that are
+  not reloaded (silent data loss), so the combination is refused.
+- **Type handling.** Values copy verbatim. The Recompete Postgres schema uses only
+  `TEXT`/`INTEGER`/`REAL` columns (no `boolean`/`JSONB`/typed-date), for which
+  psycopg2 adapts Python `int`/`str`/`float`/`None` directly. A genuine type
+  mismatch raises and aborts the transaction atomically — never a silent bad write.
+  If a future migration introduces typed columns (e.g. `boolean`), add per-column
+  coercion here first.
 
 ## Usage
 

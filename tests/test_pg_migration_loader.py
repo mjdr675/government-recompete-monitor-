@@ -237,3 +237,14 @@ def test_unknown_requested_table_raises(src, tmp_path):
     _make_target(str(tgt))
     with pytest.raises(loader.LoaderError, match="not present on both sides"):
         loader.load(src, _target_url(str(tgt)), only_tables={"nonexistent"})
+
+
+def test_fresh_with_tables_is_rejected(src, tmp_path):
+    # --fresh + --tables would CASCADE-truncate referencing tables outside the
+    # subset that then never get reloaded (silent data loss) — must be refused
+    # before touching either database.
+    tgt = tmp_path / "target.db"
+    _make_target(str(tgt))
+    with pytest.raises(loader.LoaderError, match="cannot be combined with --tables"):
+        loader.load(src, _target_url(str(tgt)), fresh=True, only_tables={"parent"})
+    assert _count(str(tgt), "parent") == 0  # nothing mutated

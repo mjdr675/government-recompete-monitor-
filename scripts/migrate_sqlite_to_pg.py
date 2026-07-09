@@ -208,6 +208,14 @@ def load(
 ) -> list[TablePlan]:
     """Run the migration. Returns the executed plan. Raises LoaderError on any
     guard/verification failure (transaction rolled back)."""
+    if fresh and only_tables:
+        # TRUNCATE ... CASCADE would empty tables that reference the selected
+        # subset but are not themselves reloaded — silent data loss. A fresh
+        # load must operate on the whole schema.
+        raise LoaderError(
+            "--fresh cannot be combined with --tables: a subset truncate would "
+            "CASCADE into referencing tables that are not reloaded"
+        )
     source = _source_engine(source_url_path)
     target = create_engine(target_url)
     try:
@@ -253,6 +261,11 @@ def load(
                 for p in reversed(plans):  # children first for FK-safe truncate
                     tconn.execute(text(build_truncate_sql(tdialect, p.name)))
 
+            # Values copy verbatim: the Recompete Postgres schema uses only
+            # TEXT/INTEGER/REAL columns (no boolean/JSONB/typed-date), for which
+            # psycopg2 adapts Python int/str/float/None directly. A genuine
+            # type mismatch raises and aborts this transaction atomically (never
+            # a silent bad write) — see docs/PG_MIGRATION_LOADER.md.
             for p in plans:
                 if not p.columns:
                     continue
