@@ -3,7 +3,7 @@
 -- Idempotent: uses CREATE TABLE IF NOT EXISTS.
 
 CREATE TABLE IF NOT EXISTS user_notification_preferences (
-    id                              INTEGER PRIMARY KEY AUTOINCREMENT,
+    id                              SERIAL PRIMARY KEY,
     user_id                         INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
     email_notifications_enabled     INTEGER NOT NULL DEFAULT 1,
     pipeline_digest_enabled         INTEGER NOT NULL DEFAULT 1,
