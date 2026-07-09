@@ -135,6 +135,49 @@ class TestMigrationsArePostgresCompatible:
         )
 
 
+class TestCompanyProfilesUeiPreserved:
+    """Pre-load drift found a real SAM UEI in the SQLite snapshot's
+    company_profiles.uei that the Postgres schema lacked, so a fresh-load would
+    drop it as source-only. Beyond preservation, db.save_company_profile() upserts
+    company_profiles.{uei, vendor_name, cage_code} against the shared engine
+    (Postgres when DATABASE_URL is set), so those three columns must exist on
+    Postgres or the live app raises UndefinedColumn. A migration must add all
+    three. users.billing_interval is a vestigial column no code writes (the app's
+    billing_interval lives on workspaces) and is all-NULL in the snapshot — it
+    stays a consciously accepted drop."""
+
+    def _sql_files(self):
+        return sorted(MIGRATIONS_DIR.glob("*.sql"))
+
+    def _adds_column(self, table, col):
+        import re
+        pat = re.compile(
+            rf"ALTER\s+TABLE\s+{table}\s+ADD\s+COLUMN\s+(IF\s+NOT\s+EXISTS\s+)?{col}\b",
+            re.IGNORECASE,
+        )
+        return [f.name for f in self._sql_files() if pat.search(f.read_text())]
+
+    def test_company_profiles_uei_added_by_migration(self):
+        assert self._adds_column("company_profiles", "uei"), (
+            "no migration adds company_profiles.uei; fresh-load would drop the "
+            "SAM UEI as source-only"
+        )
+
+    def test_company_profiles_app_written_columns_added(self):
+        # save_company_profile() writes all three on the Postgres path.
+        for col in ("uei", "vendor_name", "cage_code"):
+            assert self._adds_column("company_profiles", col), (
+                f"no migration adds company_profiles.{col}; the app upsert writes "
+                "it and would fail on Postgres"
+            )
+
+    def test_users_billing_interval_remains_accepted_drop(self):
+        assert not self._adds_column("users", "billing_interval"), (
+            "users.billing_interval was added; it is a vestigial all-NULL column "
+            "that stays an accepted source-only drop"
+        )
+
+
 class TestSqlStatementSplitter:
     """db._split_sql_statements must strip line comments BEFORE splitting on ';'
     so a semicolon inside a comment cannot leak comment text into the SQL.
