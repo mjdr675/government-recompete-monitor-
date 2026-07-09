@@ -172,6 +172,10 @@ _MIGRATION_PROBES: dict = {
         "SELECT COUNT(*) FROM information_schema.tables "
         "WHERE table_schema = 'public' AND table_name = 'company_psc_codes'"
     ),
+    "024_company_profiles_uei.sql": (
+        "SELECT COUNT(*) FROM information_schema.columns "
+        "WHERE table_name = 'company_profiles' AND column_name = 'uei'"
+    ),
 }
 
 

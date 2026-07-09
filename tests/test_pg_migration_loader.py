@@ -162,6 +162,62 @@ def test_column_intersection_drops_target_missing_columns(src, tmp_path):
     assert widget.dropped_source_only == ["b"]
 
 
+def _make_company_profiles_db(path, *, has_uei, uei_value=None):
+    con = sqlite3.connect(path)
+    cols = "id INTEGER PRIMARY KEY, user_id INTEGER, uei TEXT" if has_uei else (
+        "id INTEGER PRIMARY KEY, user_id INTEGER"
+    )
+    con.executescript(
+        f"""
+        CREATE TABLE company_profiles ({cols});
+        CREATE TABLE schema_migrations (filename TEXT PRIMARY KEY, applied_at TEXT);
+        """
+    )
+    if uei_value is not None:
+        con.execute("INSERT INTO company_profiles VALUES (1, 1, ?)", (uei_value,))
+    else:
+        con.execute("INSERT INTO company_profiles (id, user_id) VALUES (1, 1)")
+    con.commit()
+    con.close()
+
+
+def test_company_profiles_uei_preserved_when_target_has_column(tmp_path):
+    """Regression for pre-load drift: once the Postgres schema has
+    company_profiles.uei (migration 024) the loader must map it — not drop it —
+    so the real SAM UEI in the source is preserved on fresh-load."""
+    src = tmp_path / "src.db"
+    _make_company_profiles_db(str(src), has_uei=True, uei_value="ABC123DEF456")
+    tgt = tmp_path / "tgt.db"
+    _make_company_profiles_db(str(tgt), has_uei=True)
+    # target row must be empty for a non-fresh load; recreate target with no row
+    con = sqlite3.connect(str(tgt)); con.execute("DELETE FROM company_profiles"); con.commit(); con.close()
+
+    plans = loader.load(str(src), _target_url(str(tgt)))
+    cp = next(p for p in plans if p.name == "company_profiles")
+    assert "uei" in cp.columns
+    assert "uei" not in cp.dropped_source_only
+    con = sqlite3.connect(str(tgt))
+    try:
+        assert con.execute("SELECT uei FROM company_profiles WHERE id=1").fetchone()[0] == "ABC123DEF456"
+    finally:
+        con.close()
+
+
+def test_company_profiles_uei_dropped_when_target_lacks_column(tmp_path):
+    """Pre-fix behavior this migration prevents: without company_profiles.uei in
+    the target schema the loader drops it as source-only (identifier lost)."""
+    src = tmp_path / "src.db"
+    _make_company_profiles_db(str(src), has_uei=True, uei_value="ABC123DEF456")
+    tgt = tmp_path / "tgt.db"
+    _make_company_profiles_db(str(tgt), has_uei=False)
+    con = sqlite3.connect(str(tgt)); con.execute("DELETE FROM company_profiles"); con.commit(); con.close()
+
+    plans = loader.load(str(src), _target_url(str(tgt)))
+    cp = next(p for p in plans if p.name == "company_profiles")
+    assert "uei" not in cp.columns
+    assert cp.dropped_source_only == ["uei"]
+
+
 def test_dry_run_writes_nothing(src, tmp_path):
     tgt = tmp_path / "target.db"
     _make_target(str(tgt))
