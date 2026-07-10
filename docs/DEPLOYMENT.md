@@ -354,9 +354,61 @@ set as reference variables on the live services**.
 6. Verify: `worker` log shows `celery@… ready`; `beat` log shows the schedule;
    Redis key `beat:health` refreshes.
 
-> ⚠️ **Do not merge/deploy the `ops/celery-postgres-railway-services` branch until
-> steps 2–4 are complete.** Deploying earlier points every service at an empty
-> Postgres and runs scheduled jobs against no data.
+> ✅ **Steps 2–4 are complete — web is live on PostgreSQL 18.4 (cutover 2026-07-10),**
+> schema built, data migrated, and the integrity gate passed. This branch is safe to
+> merge (it is config-as-code only; merging does **not** auto-create Railway
+> services). Creating/enabling the `worker` and `beat` services (steps 5–6) remains a
+> **separate human-only step**, gated by the activation runbook below and explicit
+> Product Manager authorization.
+
+### Worker/beat activation runbook (human-only)
+
+Do **not** run this until every precondition holds. Nothing here is automated.
+
+**1. Preconditions**
+- PostgreSQL production cutover accepted (web `DATABASE_URL=${{Postgres.DATABASE_URL}}`,
+  `get_engine().dialect == postgresql`).
+- ≥1 successful post-cutover **daily-ingest** cycle has completed on Postgres
+  (06:00 UTC cron → `POST /ingest/run`) with a sane contract count.
+- `/health` stable at 200; production logs show **no** Postgres connection, write,
+  locking, sequence, or migration errors during the bounded soak.
+- Repaired PR #53 reviewed and merged; the web Railway deployment is healthy.
+- Product Manager has authorized **both** the merge and worker/beat creation.
+
+**2. Create the `worker` service** (Railway dashboard → New Service → same repo/branch)
+- Start command: `celery -A tasks worker --loglevel=info`
+- Reference variables: `DATABASE_URL=${{Postgres.DATABASE_URL}}`,
+  `REDIS_URL=${{Redis.REDIS_URL}}`, plus the existing email-provider variables the
+  tasks already use (`EMAIL_API_KEY`, `ADMIN_EMAIL`, `APP_URL`).
+- No public domain, no health endpoint.
+- Expected startup log: `celery@… ready`.
+
+**3. Create the `beat` service** (same repo/branch)
+- Start command: `celery -A tasks beat --loglevel=info --scheduler celery.beat.PersistentScheduler`
+- **Exactly one replica** — `PersistentScheduler` keeps schedule state in a local
+  file (ephemeral across redeploys; it re-seeds from `tasks.py` on start). Running
+  **more than one beat replica fires every crontab job multiple times** (duplicate
+  emails/alerts). Never scale beat > 1. (RedBeat/HA is post-v1.)
+- Reference variables: same as worker.
+- No public domain.
+- Expected startup log: the beat schedule loaded (watchlist-alerts 07:00 UTC,
+  trial-emails 09:00 UTC, heartbeat 5 min, check-beat-health 10 min). `run_ingest`
+  is **not** scheduled (owned solely by the `daily-ingest` cron).
+
+**4. Validation**
+- Worker connects to Redis and Postgres (`celery@… ready`, no connection errors).
+- Beat schedule is visible in logs; Redis key `beat:health` refreshes (heartbeat).
+- Exactly one beat scheduler is active (one beat replica only).
+- Queue **one explicitly authorized** test email (to an internal/authorized address,
+  never a real customer) and confirm delivery.
+- Watchlist/trial schedules are present without manually running them.
+- Web `/health` remains 200 throughout.
+
+**5. Rollback**
+- Stop/disable **beat first**, then **worker** (scale to 0 or delete the services).
+- Leave web, PostgreSQL, Redis, and the `daily-ingest` cron **untouched**.
+- Confirm `/health` remains 200. Worker/beat are additive — removing them only stops
+  async email + scheduled jobs; web and data are unaffected.
 
 ### Single ingest owner
 The nightly ingest is owned **solely** by the `daily-ingest` cron (06:00 UTC →

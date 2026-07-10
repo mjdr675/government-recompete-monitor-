@@ -26,14 +26,20 @@ owned solely by the `daily-ingest` cron — it is **not** a beat job.
 - Therefore all three services must share a **network Postgres** via `DATABASE_URL`.
   The app already supports this: `db.get_engine()` / `db.get_connection()` select
   Postgres when `DATABASE_URL` is set, and `db._apply_migrations()` runs against
-  either engine. Worker/beat service defs are drafted (commented) in `railway.toml`.
+  either engine. Worker/beat service defs are **active** (config-as-code) in
+  `railway.toml`, gated behind the human-only activation runbook.
 
-## Current state (verified via read-only Railway CLI, 2026-07-08)
+## Current state (updated post-cutover 2026-07-10; originally 2026-07-08)
+
+> **Cutover complete:** web is live on PostgreSQL 18.4. Steps 1–6 below are done.
+> Only worker/beat service creation (step 7) remains, gated on the soak + PM sign-off.
+
 
 - Railway services: `government-recompete-monitor-` (web), `ingest-cron`, `Redis`,
   **and `Postgres` (now provisioned).**
-- `DATABASE_URL`: exists on the `Postgres` service but is **not yet referenced on
-  the live web service** (web still runs SQLite). `REDIS_URL`: present on web + Redis.
+- `DATABASE_URL`: **now referenced on the live web service** — web runs on
+  **PostgreSQL 18.4** as of the 2026-07-10 cutover
+  (`DATABASE_URL=${{Postgres.DATABASE_URL}}`). `REDIS_URL`: present on web + Redis.
 - `CRON_SECRET`: present on web + ingest-cron.
 - `railway.toml`: `web` + `daily-ingest` + **`worker` + `beat` (now active, wired to
   `${{Postgres.DATABASE_URL}}` + `${{Redis.REDIS_URL}}`).**
@@ -105,7 +111,8 @@ owned solely by the `daily-ingest` cron — it is **not** a beat job.
 
 - `railway.toml`: `worker`/`beat` service definitions are **active** and, together
   with `web`, reference the shared `${{Postgres.DATABASE_URL}}` and
-  `${{Redis.REDIS_URL}}`. A loud `DO NOT MERGE OR DEPLOY` gate points here.
+  `${{Redis.REDIS_URL}}`. An `ACTIVATION GATE` comment points here (the pre-cutover
+  `DO NOT MERGE OR DEPLOY` prohibition was removed once web went live on Postgres).
 - `tasks.py`: `run_ingest` **removed from the beat schedule** — single ingest owner
   is the `daily-ingest` cron. The task stays registered for manual/admin triggers.
 - `docs/DEPLOYMENT.md` §8b: services, live-vs-config naming, manual Railway steps,
@@ -113,4 +120,7 @@ owned solely by the `daily-ingest` cron — it is **not** a beat job.
 - Tests updated: `test_o5_worker_beat_postgres.py` now asserts worker/beat are
   active and wired to shared Postgres/Redis; `test_celery_ingest.py` asserts
   `run_ingest` is a registered task but **not** on the beat schedule.
-- Still SQLite in prod; nothing deployed. Steps 2–6 remain human-only.
+- Web is **LIVE on PostgreSQL 18.4** (cutover 2026-07-10); the pre-start pg_dump
+  backup + R2 upload are verified. The `worker`/`beat` Railway services are still
+  **NOT created** — that remains a human-only step gated on the post-cutover soak
+  and explicit Product Manager authorization (see the activation runbook).

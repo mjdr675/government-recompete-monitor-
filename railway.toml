@@ -54,18 +54,21 @@
 # DB volume). See docs/DEPLOYMENT.md. Pre-deploy backup above is already live.
 
 # ─────────────────────────────────────────────────────────────────────────────
-# O5 / Gate 3 — Celery worker + beat services (ACTIVE on this branch).
+# O5 / Gate 3 — Celery worker + beat services (config-as-code; NOT yet created).
 #
-# Postgres and Redis are now provisioned in the Railway project. worker and beat
-# run the Procfile commands and reference the SHARED Postgres + Redis so they
-# operate on the same data as web. The broker is REDIS_URL (already live).
+# Postgres and Redis are provisioned, and the web service is now LIVE on
+# PostgreSQL 18.4 (cutover completed 2026-07-10). worker and beat run the Procfile
+# commands and reference the SHARED Postgres + Redis so they operate on the same
+# data as web. The broker is REDIS_URL (already live).
 #
-# ⚠️  DO NOT MERGE OR DEPLOY THIS BRANCH until the human-only Postgres data
-# cutover in docs/O5_POSTGRES_MIGRATION_PLAN.md is complete: set DATABASE_URL on
-# the live `web`/government-recompete-monitor- service, build the schema, migrate
-# SQLite→Postgres data, and pass the integrity gate. Deploying before that points
-# every service at an EMPTY Postgres and would run scheduled jobs against no data.
-# Activating the service definitions here is repo-side groundwork only.
+# ⚠️  ACTIVATION GATE (human-only) — see the activation runbook in
+# docs/DEPLOYMENT.md §8b and docs/O5_POSTGRES_MIGRATION_PLAN.md. These [[services]]
+# blocks are repo-side config only: Railway services are dashboard-authoritative and
+# are NOT auto-created by merging this file. Create/enable the worker + beat services
+# ONLY after (a) ≥1 successful post-cutover daily-ingest cycle on Postgres, (b) a
+# bounded soak with stable /health and no Postgres errors, and (c) explicit Product
+# Manager authorization. Merge and worker/beat activation remain SEPARATE Product
+# Manager decisions; merging this file never auto-deploys the services.
 [[services]]
   name = "worker"
   [services.deploy]

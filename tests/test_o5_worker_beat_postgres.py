@@ -1,19 +1,19 @@
-"""O5 / Gate 3 groundwork — Postgres engine selection, Celery/beat wiring, and
-the (intentionally inactive) worker/beat railway.toml draft.
+"""O5 / Gate 3 — Postgres engine selection, Celery/beat wiring, and the worker/beat
+railway.toml config-as-code (post-cutover: web is live on PostgreSQL).
 
 All hermetic: no live Postgres, Redis, or Railway. Engine tests assert dialect
 selection without connecting; the psycopg2 path is exercised with a fake module;
-the railway.toml test is a static parse. These lock in that the app already
-supports a shared Postgres and that worker/beat are drafted but NOT yet active
-(so current SQLite prod behavior is preserved).
+the railway.toml tests are static parses. These lock in that the app runs on a
+shared Postgres, that worker/beat are wired to it (but only *created* via the
+human-only activation runbook), that run_ingest stays off the beat schedule, and
+that the task paths are Postgres-safe.
 """
+
 import sqlite3
 import sys
 import tomllib
 import types
 from pathlib import Path
-
-import pytest
 
 import db
 import tasks as tasks_mod
@@ -24,7 +24,9 @@ RAILWAY_TOML = ROOT / "railway.toml"
 
 # ── DB engine selection (DATABASE_URL → Postgres, else SQLite) ────────────────
 def test_get_engine_selects_postgres_when_database_url_set(monkeypatch):
-    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg2://u:p@localhost:5432/testdb")
+    monkeypatch.setenv(
+        "DATABASE_URL", "postgresql+psycopg2://u:p@localhost:5432/testdb"
+    )
     assert db.get_engine().dialect.name == "postgresql"
 
 
@@ -71,7 +73,9 @@ def test_beat_schedule_has_required_automation_jobs():
         "heartbeat-every-5-minutes": "tasks.heartbeat",
         "check-beat-health-every-10-minutes": "tasks.check_beat_health",
     }
-    assert set(required) <= set(sched), f"missing beat jobs: {set(required) - set(sched)}"
+    assert set(required) <= set(sched), (
+        f"missing beat jobs: {set(required) - set(sched)}"
+    )
     for key, task_name in required.items():
         assert sched[key]["task"] == task_name
 
@@ -93,6 +97,87 @@ def test_railway_worker_beat_active_and_wired_to_shared_postgres():
         assert vars_.get("REDIS_URL") == "${{Redis.REDIS_URL}}", name
 
     raw = RAILWAY_TOML.read_text()
-    # The human deploy cutover gate must remain referenced and loud.
-    assert "O5_POSTGRES_MIGRATION_PLAN.md" in raw
-    assert "DO NOT MERGE OR DEPLOY" in raw
+    # The activation runbook must remain referenced, and the (post-cutover)
+    # ACTIVATION GATE must be present — but the obsolete pre-cutover
+    # "DO NOT MERGE OR DEPLOY" prohibition (which assumed web was still on SQLite)
+    # must be gone now that web is live on PostgreSQL.
+    assert "DEPLOYMENT.md" in raw or "O5_POSTGRES_MIGRATION_PLAN.md" in raw
+    assert "ACTIVATION GATE" in raw
+    assert "DO NOT MERGE OR DEPLOY" not in raw
+
+
+def test_beat_is_single_replica_and_run_ingest_excluded():
+    """Beat uses a file-based PersistentScheduler, so exactly ONE beat replica may
+    run or crontab jobs fire multiple times. railway.toml must not scale beat >1,
+    and the single-replica requirement must be documented. run_ingest must never be
+    on the beat schedule (the daily-ingest cron is the sole ingest owner)."""
+    with open(RAILWAY_TOML, "rb") as fh:
+        cfg = tomllib.load(fh)
+    services = {s.get("name"): s for s in cfg.get("services", [])}
+    beat = services["beat"]
+    # No replica scaling on beat (Railway defaults to 1; >1 duplicates schedules).
+    replicas = beat.get("deploy", {}).get("numReplicas")
+    assert replicas in (None, 1), f"beat must run exactly one replica, got {replicas}"
+    # Single-replica requirement is documented somewhere in the config/runbook.
+    combined = (
+        RAILWAY_TOML.read_text() + (ROOT / "docs" / "DEPLOYMENT.md").read_text()
+    ).lower()
+    assert (
+        "one replica" in combined
+        or "single replica" in combined
+        or "exactly one" in combined
+    )
+    # run_ingest is registered but NOT scheduled by beat.
+    scheduled = {v["task"] for v in tasks_mod.tasks.conf.beat_schedule.values()}
+    assert "tasks.run_ingest" not in scheduled, (
+        "run_ingest must not be on the beat schedule"
+    )
+    assert "tasks.run_ingest" in tasks_mod.tasks.tasks  # registered for admin trigger
+
+
+def test_worker_beat_task_paths_have_no_sqlite_only_sql():
+    """Every task reachable via worker/beat must be Postgres-safe: no ? placeholders,
+    no INSERT OR IGNORE/REPLACE, no fts5 MATCH — they must go through the shared
+    dialect-safe db engine (text() + :named params)."""
+    import re
+
+    src = (ROOT / "tasks.py").read_text()
+    offenders = []
+    if re.search(r"INSERT\s+OR\s+(IGNORE|REPLACE)", src, re.I):
+        offenders.append("INSERT OR IGNORE/REPLACE")
+    if re.search(r"execute\([^)]*\?[,)]|VALUES\s*\(\s*\?", src):
+        offenders.append("raw ? placeholder")
+    if re.search(r"\bMATCH\s+:|contracts_fts\b", src):
+        offenders.append("fts5 MATCH")
+    assert not offenders, f"SQLite-only SQL in worker/beat task paths: {offenders}"
+
+
+def test_worker_beat_tasks_are_discoverable():
+    """Task discovery: worker/beat resolve the intended tasks by name."""
+    registered = tasks_mod.tasks.tasks
+    for name in (
+        "tasks.send_email_task",
+        "tasks.heartbeat",
+        "tasks.check_beat_health",
+        "tasks.check_watchlist_alerts",
+        "tasks.send_trial_emails",
+        "tasks.run_ingest",
+    ):
+        assert name in registered, f"task not registered/discoverable: {name}"
+
+
+def test_production_status_docs_identify_postgres():
+    """Status docs must reflect the completed cutover — web on PostgreSQL, not the
+    stale 'web still runs SQLite'."""
+    plan = (ROOT / "docs" / "O5_POSTGRES_MIGRATION_PLAN.md").read_text()
+    assert "web still runs SQLite" not in plan
+    assert "PostgreSQL" in plan
+
+
+def test_config_performs_no_automatic_railway_action():
+    """The repo config must not shell out to the Railway CLI/API to create or enable
+    services — activation stays a human dashboard step."""
+    raw = RAILWAY_TOML.read_text()
+    assert "railway up" not in raw
+    assert "railway service" not in raw
+    assert "railway variables" not in raw
