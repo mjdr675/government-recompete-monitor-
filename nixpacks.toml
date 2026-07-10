@@ -21,8 +21,10 @@
 # fail-closed `&&` blocked gunicorn, and the container crash-looped. We link into
 # /opt/venv/bin (on PATH) and also /usr/local/bin as a harmless extra.
 [phases.setup]
-# "..." preserves Nixpacks' auto-detected apt packages; we no longer append any.
-aptPkgs = ["..."]
+# "..." preserves Nixpacks' auto-detected apt packages. curl + gnupg +
+# ca-certificates are needed in the build phase to add the PGDG apt repository
+# (see the postgresql-client-18 install in [phases.build]).
+aptPkgs = ["...", "curl", "gnupg", "ca-certificates"]
 
 [phases.build]
 cmds = [
@@ -30,6 +32,23 @@ cmds = [
   "/opt/awscli/bin/pip install --no-cache-dir awscli",
   "ln -sf /opt/awscli/bin/aws /opt/venv/bin/aws",
   "ln -sf /opt/awscli/bin/aws /usr/local/bin/aws",
+  # PostgreSQL client 18 for scripts/backup_db.sh's fail-closed pre-start backup
+  # (pg_dump path, taken when DATABASE_URL points at Postgres). Without pg_dump on
+  # PATH the predeploy backup exits non-zero and the `&&` start command crash-loops
+  # the container (incident: deploy 519872fd). Ubuntu "noble" ships only
+  # postgresql-client-16, and pg_dump REFUSES to dump a server newer than itself
+  # (Railway Postgres is 18.4), so we add the official PGDG apt repo and install
+  # the matching v18 client. Client only — no PostgreSQL server is installed or run.
+  "install -d -m 0755 /usr/share/keyrings",
+  "curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/pgdg.gpg",
+  "echo \"deb [signed-by=/usr/share/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo \"$VERSION_CODENAME\")-pgdg main\" > /etc/apt/sources.list.d/pgdg.list",
+  "apt-get update",
+  "apt-get install -y --no-install-recommends postgresql-client-18",
+  # Put pg_dump on the RUNTIME PATH. Railway/Nixpacks runs the start command with
+  # /opt/venv/bin on PATH but NOT /usr/local/bin (same reason as `aws` above), so
+  # link the real v18 binary into the app venv; /usr/local/bin is a harmless extra.
+  "ln -sf /usr/lib/postgresql/18/bin/pg_dump /opt/venv/bin/pg_dump",
+  "ln -sf /usr/lib/postgresql/18/bin/pg_dump /usr/local/bin/pg_dump",
 ]
 
 [start]
