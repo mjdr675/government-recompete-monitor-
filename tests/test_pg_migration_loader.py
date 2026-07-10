@@ -57,8 +57,45 @@ def test_seq_reset_sql_uses_setval_and_guard():
     sql = loader.build_seq_reset_sql("users", "id")
     assert "setval(" in sql
     assert "pg_get_serial_sequence('users', 'id')" in sql
-    assert 'MAX("id")' in sql
-    assert "IS NOT NULL" in sql  # no-op when the column owns no sequence
+    assert "IS NOT NULL" in sql  # guard: no-op when the column owns no sequence
+    # MAX is deferred inside EXECUTE format() so it is only planned for a
+    # sequence-owning (integer) column, never at top level.
+    assert "EXECUTE format(" in sql
+    assert "MAX(%I)" in sql
+
+
+def test_seq_reset_text_pk_defers_max_behind_guard():
+    """A TEXT primary key (contracts.internal_id) must NOT produce a top-level
+    COALESCE(text, integer): the MAX() is deferred behind the
+    pg_get_serial_sequence guard via EXECUTE format(), so Postgres never plans
+    the text/integer mismatch. Regression for the fresh-load abort
+    (`COALESCE types text and integer cannot be matched`)."""
+    sql = loader.build_seq_reset_sql("contracts", "internal_id")
+    assert "pg_get_serial_sequence('contracts', 'internal_id')" in sql
+    assert "IS NOT NULL" in sql
+    assert "EXECUTE format(" in sql
+    # the deferred, identifier-agnostic form only — never a concrete
+    # COALESCE(MAX("internal_id"), 1) that would be planned up front
+    assert "COALESCE((SELECT MAX(%I) FROM %I), 1)" in sql
+    assert 'MAX("internal_id")' not in sql
+
+
+def test_seq_reset_integer_pk_still_generates_setval():
+    sql = loader.build_seq_reset_sql("lead_companies", "id")
+    assert "setval(" in sql
+    assert "pg_get_serial_sequence('lead_companies', 'id')" in sql
+    assert "EXECUTE format(" in sql
+    assert "MAX(%I)" in sql
+
+
+def test_seq_reset_is_type_safe_do_block():
+    """The statement is a guarded DO block for any PK type, so no concrete
+    (planned) COALESCE over a text column is ever emitted."""
+    for table, pk in (("contracts", "internal_id"), ("users", "id")):
+        sql = loader.build_seq_reset_sql(table, pk).strip()
+        assert sql.startswith("DO $$")
+        assert sql.endswith("$$;")
+        assert 'COALESCE((SELECT MAX("' not in sql  # no up-front text/int COALESCE
 
 
 def test_quote_ident_escapes_quotes():
@@ -160,6 +197,68 @@ def test_column_intersection_drops_target_missing_columns(src, tmp_path):
     widget = next(p for p in plans if p.name == "widget")
     assert widget.columns == ["id", "a"]
     assert widget.dropped_source_only == ["b"]
+
+
+def _make_company_profiles_db(path, *, has_uei, uei_value=None):
+    con = sqlite3.connect(path)
+    cols = "id INTEGER PRIMARY KEY, user_id INTEGER, uei TEXT" if has_uei else (
+        "id INTEGER PRIMARY KEY, user_id INTEGER"
+    )
+    con.executescript(
+        f"""
+        CREATE TABLE company_profiles ({cols});
+        CREATE TABLE schema_migrations (filename TEXT PRIMARY KEY, applied_at TEXT);
+        """
+    )
+    if uei_value is not None:
+        con.execute("INSERT INTO company_profiles VALUES (1, 1, ?)", (uei_value,))
+    else:
+        con.execute("INSERT INTO company_profiles (id, user_id) VALUES (1, 1)")
+    con.commit()
+    con.close()
+
+
+def test_company_profiles_uei_preserved_when_target_has_column(tmp_path):
+    """Regression for pre-load drift: once the Postgres schema has
+    company_profiles.uei (migration 024) the loader must map it — not drop it —
+    so the real SAM UEI in the source is preserved on fresh-load."""
+    src = tmp_path / "src.db"
+    _make_company_profiles_db(str(src), has_uei=True, uei_value="ABC123DEF456")
+    tgt = tmp_path / "tgt.db"
+    _make_company_profiles_db(str(tgt), has_uei=True)
+    # target row must be empty for a non-fresh load; recreate target with no row
+    con = sqlite3.connect(str(tgt))
+    con.execute("DELETE FROM company_profiles")
+    con.commit()
+    con.close()
+
+    plans = loader.load(str(src), _target_url(str(tgt)))
+    cp = next(p for p in plans if p.name == "company_profiles")
+    assert "uei" in cp.columns
+    assert "uei" not in cp.dropped_source_only
+    con = sqlite3.connect(str(tgt))
+    try:
+        assert con.execute("SELECT uei FROM company_profiles WHERE id=1").fetchone()[0] == "ABC123DEF456"
+    finally:
+        con.close()
+
+
+def test_company_profiles_uei_dropped_when_target_lacks_column(tmp_path):
+    """Pre-fix behavior this migration prevents: without company_profiles.uei in
+    the target schema the loader drops it as source-only (identifier lost)."""
+    src = tmp_path / "src.db"
+    _make_company_profiles_db(str(src), has_uei=True, uei_value="ABC123DEF456")
+    tgt = tmp_path / "tgt.db"
+    _make_company_profiles_db(str(tgt), has_uei=False)
+    con = sqlite3.connect(str(tgt))
+    con.execute("DELETE FROM company_profiles")
+    con.commit()
+    con.close()
+
+    plans = loader.load(str(src), _target_url(str(tgt)))
+    cp = next(p for p in plans if p.name == "company_profiles")
+    assert "uei" not in cp.columns
+    assert cp.dropped_source_only == ["uei"]
 
 
 def test_dry_run_writes_nothing(src, tmp_path):

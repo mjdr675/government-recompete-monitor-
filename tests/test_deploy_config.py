@@ -54,6 +54,54 @@ def test_awscli_installed_via_build_phase(cfg):
     )
 
 
+def test_postgres_client_installed_via_build_phase(cfg):
+    """scripts/backup_db.sh's pre-start backup shells out to `pg_dump` when
+    DATABASE_URL points at Postgres. pg_dump must be in the built image or the
+    fail-closed `&&` start command crash-loops the container (incident: deploy
+    519872fd, "pg_dump not on PATH"). Ubuntu noble ships only postgresql-client-16
+    and pg_dump refuses to dump a NEWER server (Railway Postgres is 18.4), so the
+    build must add the PGDG apt repo and install the v18 client."""
+    cmds = cfg.get("phases", {}).get("build", {}).get("cmds", [])
+    joined = "\n".join(cmds).lower()
+    assert "postgresql-client-18" in joined, (
+        "build phase must install postgresql-client-18 (matches the PG 18.4 server; "
+        "noble's default client-16 cannot dump an 18 server)"
+    )
+    assert "apt.postgresql.org" in joined, (
+        "postgresql-client-18 is not in noble's default repos — the PGDG apt repo "
+        "(apt.postgresql.org) must be added in the build phase"
+    )
+
+
+def test_pg_dump_on_runtime_path(cfg):
+    """pg_dump must land on the RUNTIME PATH. Railway runs the start command with
+    /opt/venv/bin on PATH but NOT /usr/local/bin (same crash mode that hit `aws`
+    in deploy 3ebd98ed), so require the app-venv location."""
+    cmds = cfg.get("phases", {}).get("build", {}).get("cmds", [])
+    joined = "\n".join(cmds)
+    assert "/opt/venv/bin/pg_dump" in joined, (
+        "pg_dump must be linked into /opt/venv/bin (on Railway's runtime PATH); "
+        "/usr/local/bin alone is NOT on the runtime PATH"
+    )
+
+
+def test_no_postgres_server_package(cfg):
+    """Only the client is needed for backups — never install a PostgreSQL server."""
+    import re
+
+    setup = " ".join(cfg.get("phases", {}).get("setup", {}).get("aptPkgs", [])).lower()
+    build = "\n".join(cfg.get("phases", {}).get("build", {}).get("cmds", [])).lower()
+    # postgresql-client-* is fine; a bare postgresql / postgresql-<ver> server is not.
+    server = re.search(
+        r"\bpostgresql-server\b|install[^\n]*\bpostgresql\b(?!-client)",
+        setup + "\n" + build,
+    )
+    assert server is None, (
+        f"must not install a PostgreSQL server package: "
+        f"{server.group() if server else ''}"
+    )
+
+
 def test_start_command_is_fail_closed_backup_then_gunicorn(cfg):
     # Preserve the fail-closed contract: backup runs BEFORE gunicorn, gated by &&.
     start = cfg.get("start", {}).get("cmd", "")

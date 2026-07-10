@@ -300,3 +300,111 @@ def test_r2_retention_prunes_old(env_setup):
     assert not old.exists(), "old (>14d) R2 object should have been pruned"
     # the freshly uploaded object remains
     assert list(bucket.glob("backup_*.gz")), "current backup must be retained"
+
+
+# ── PostgreSQL backup path (scripts/backup_db.sh pg_dump branch) ──────────────
+# Hermetic: a fake `pg_dump` stub stands in for the real client, so no database
+# or credentials are needed. Regression for the cutover crash-loop (deploy
+# 519872fd): with DATABASE_URL set but pg_dump missing, the fail-closed start
+# command blocked gunicorn. These prove the pg_dump branch is correct and
+# secret-safe once pg_dump is present (installed via nixpacks.toml).
+
+# A recognizable secret embedded in the DSN — must NEVER appear in script output.
+PG_SECRET = "s3cr3t_pw_DO_NOT_LEAK"
+PG_DSN = f"postgresql://appuser:{PG_SECRET}@db.internal:5432/railway"
+
+# A fake `pg_dump`: fails on demand (FAKE_PGDUMP_FAIL=1), else emits a small SQL
+# dump to stdout. Deliberately does NOT echo its DSN argument — mirrors real
+# pg_dump and keeps the secret-safety assertions meaningful.
+PG_DUMP_STUB = r"""#!/usr/bin/env bash
+set -u
+if [ "${FAKE_PGDUMP_FAIL:-}" = "1" ]; then
+  echo "pg_dump: error: connection failed" >&2
+  exit 1
+fi
+printf -- '-- fake pg_dump\nSELECT 1;\n'
+exit 0
+"""
+
+
+def with_pg_dump_stub(env, tmp_path, *, fail=False):
+    """Copy of `env` with a fake `pg_dump` prepended to PATH and DATABASE_URL set,
+    so backup_db.sh takes its Postgres branch without a real database."""
+    d = tmp_path / "pgbin"
+    d.mkdir(exist_ok=True)
+    p = d / "pg_dump"
+    p.write_text(PG_DUMP_STUB)
+    p.chmod(0o755)
+    e = dict(env)
+    e["PATH"] = f"{d}{os.pathsep}{e['PATH']}"
+    e["DATABASE_URL"] = PG_DSN
+    if fail:
+        e["FAKE_PGDUMP_FAIL"] = "1"
+    return e
+
+
+def _path_without(env, tmp_path, name, dirname):
+    """Copy of `env` whose PATH symlinks every executable EXCEPT `name`, so
+    `command -v <name>` is deterministically FALSE even on CI hosts that ship it
+    (GitHub runners preinstall pg_dump)."""
+    d = tmp_path / dirname
+    d.mkdir(exist_ok=True)
+    seen = set()
+    for pdir in env.get("PATH", "").split(os.pathsep):
+        pd = Path(pdir)
+        if not pd.is_dir():
+            continue
+        for exe in pd.iterdir():
+            if exe.name == name or exe.name in seen:
+                continue
+            try:
+                if not exe.is_dir() and os.access(exe, os.X_OK):
+                    (d / exe.name).symlink_to(exe.resolve())
+                    seen.add(exe.name)
+            except OSError:
+                pass
+    e = dict(env)
+    e["PATH"] = str(d)
+    return e
+
+
+def test_pg_path_success_creates_dump_and_continues(env_setup):
+    """pg_dump present + succeeds → .sql.gz written, exit 0 (start chain may then
+    proceed to gunicorn). The DSN/secret never appears in output."""
+    e = with_pg_dump_stub(env_setup["env"], env_setup["tmp"])
+    r = run_backup(e, cwd=env_setup["tmp"])
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "PostgreSQL backup complete" in r.stdout
+    dumps = list(Path(env_setup["backup_dir"]).glob("backup_*.sql.gz"))
+    assert dumps, "expected a .sql.gz dump"
+    assert PG_SECRET not in (r.stdout + r.stderr), "DSN/secret must never surface"
+
+
+def test_pg_path_pg_dump_failure_is_fail_closed(env_setup):
+    """A genuine pg_dump failure must exit non-zero (deploy aborts) — never a
+    silent success — and must not leak the DSN."""
+    e = with_pg_dump_stub(env_setup["env"], env_setup["tmp"], fail=True)
+    r = run_backup(e, cwd=env_setup["tmp"])
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "pg_dump failed" in (r.stdout + r.stderr)
+    assert PG_SECRET not in (r.stdout + r.stderr)
+
+
+def test_pg_path_missing_pg_dump_fails_closed_with_clear_error(env_setup):
+    """DATABASE_URL set but pg_dump absent → exit 1 with a clear, sanitized error
+    (the exact crash-loop condition from deploy 519872fd). No secret leak."""
+    e = _path_without(env_setup["env"], env_setup["tmp"], "pg_dump", "nopgdump")
+    e["DATABASE_URL"] = PG_DSN
+    r = run_backup(e, cwd=env_setup["tmp"])
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "pg_dump not on PATH" in (r.stdout + r.stderr)
+    assert PG_SECRET not in (r.stdout + r.stderr)
+
+
+def test_sqlite_path_unaffected(env_setup):
+    """The SQLite branch (no DATABASE_URL) is unchanged: backup succeeds and the
+    integrity-verified .db.gz is written."""
+    r = run_backup(env_setup["env"], cwd=env_setup["tmp"])
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "SQLite backup complete" in r.stdout
+    assert list(Path(env_setup["backup_dir"]).glob("backup_*.db.gz"))

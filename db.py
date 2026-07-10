@@ -172,6 +172,10 @@ _MIGRATION_PROBES: dict = {
         "SELECT COUNT(*) FROM information_schema.tables "
         "WHERE table_schema = 'public' AND table_name = 'company_psc_codes'"
     ),
+    "024_company_profiles_uei.sql": (
+        "SELECT COUNT(*) FROM information_schema.columns "
+        "WHERE table_name = 'company_profiles' AND column_name = 'uei'"
+    ),
 }
 
 
@@ -206,6 +210,31 @@ def _stamp_pre_existing(engine, applied: set) -> None:
             "schema_migrations: stamped %d pre-existing migration(s): %s",
             len(stamped), ", ".join(stamped),
         )
+
+
+def _split_sql_statements(sql: str) -> list:
+    """Split a migration file into executable statements.
+
+    Line comments are stripped BEFORE splitting on ``;`` so that a semicolon
+    inside a ``--`` comment can never split a statement or leak comment text into
+    the SQL sent to the database. Regression: ``009_contracts_ci_columns.sql``
+    had the comment "...schema is ready; display logic shows nothing", whose
+    mid-line ``;`` split the statement and leaked ``display logic shows nothing``
+    into the SQL (``syntax error at or near "display"`` on Postgres).
+
+    Each line is cut at its first ``--`` (the standard SQL line-comment marker;
+    the migration files contain no ``--`` inside string literals). Fully-empty
+    lines are dropped, then the remainder is split on ``;``.
+    """
+    cleaned_lines = []
+    for line in sql.splitlines():
+        idx = line.find("--")
+        if idx != -1:
+            line = line[:idx]
+        if line.strip():
+            cleaned_lines.append(line)
+    cleaned = "\n".join(cleaned_lines)
+    return [stmt.strip() for stmt in cleaned.split(";") if stmt.strip()]
 
 
 def _apply_migrations(migrations_dir=None) -> None:
@@ -260,14 +289,7 @@ def _apply_migrations(migrations_dir=None) -> None:
             _log.debug("Migration already applied, skipping: %s", sql_file.name)
             continue
         _log.info("Applying migration: %s", sql_file.name)
-        statements = []
-        for seg in sql_file.read_text().split(";"):
-            body = "\n".join(
-                line for line in seg.splitlines()
-                if line.strip() and not line.strip().startswith("--")
-            ).strip()
-            if body:
-                statements.append(body)
+        statements = _split_sql_statements(sql_file.read_text())
         try:
             with engine.begin() as conn:
                 for stmt in statements:
