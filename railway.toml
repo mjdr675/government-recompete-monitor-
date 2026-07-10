@@ -88,6 +88,11 @@
   # matters. Left as-is here to avoid changing runtime behavior.
   [services.deploy]
     startCommand = "celery -A tasks beat --loglevel=info --scheduler celery.beat.PersistentScheduler"
+    # EXACTLY ONE beat replica. PersistentScheduler is file-based, so >1 replica
+    # fires every crontab job multiple times (duplicate emails/alerts). Pinned
+    # explicitly so a platform-default or inherited scaling change cannot silently
+    # scale beat out. (RedBeat/HA is post-v1.)
+    numReplicas = 1
   [services.variables]
     DATABASE_URL = "${{Postgres.DATABASE_URL}}"
     REDIS_URL = "${{Redis.REDIS_URL}}"

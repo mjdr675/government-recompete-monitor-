@@ -115,9 +115,11 @@ def test_beat_is_single_replica_and_run_ingest_excluded():
         cfg = tomllib.load(fh)
     services = {s.get("name"): s for s in cfg.get("services", [])}
     beat = services["beat"]
-    # No replica scaling on beat (Railway defaults to 1; >1 duplicates schedules).
+    # Beat must PIN exactly one replica. Relying on the platform default (None) is
+    # not enough — an inherited/dashboard scaling change could silently scale beat
+    # out and fire every crontab job N times. Require the explicit numReplicas = 1.
     replicas = beat.get("deploy", {}).get("numReplicas")
-    assert replicas in (None, 1), f"beat must run exactly one replica, got {replicas}"
+    assert replicas == 1, f"beat must explicitly pin numReplicas = 1, got {replicas!r}"
     # Single-replica requirement is documented somewhere in the config/runbook.
     combined = (
         RAILWAY_TOML.read_text() + (ROOT / "docs" / "DEPLOYMENT.md").read_text()
@@ -127,29 +129,52 @@ def test_beat_is_single_replica_and_run_ingest_excluded():
         or "single replica" in combined
         or "exactly one" in combined
     )
-    # run_ingest is registered but NOT scheduled by beat.
+    # run_ingest is registered but NOT scheduled by beat...
     scheduled = {v["task"] for v in tasks_mod.tasks.conf.beat_schedule.values()}
     assert "tasks.run_ingest" not in scheduled, (
         "run_ingest must not be on the beat schedule"
     )
     assert "tasks.run_ingest" in tasks_mod.tasks.tasks  # registered for admin trigger
+    # ...AND the daily-ingest cron must be the real, working ingest owner (proving
+    # absence-from-beat did not simply drop the nightly trigger entirely).
+    ingest = services["daily-ingest"]
+    assert ingest.get("deploy", {}).get("cronSchedule"), (
+        "daily-ingest needs a cron schedule"
+    )
+    assert "/ingest/run" in ingest["deploy"]["startCommand"], (
+        "daily-ingest must trigger POST /ingest/run"
+    )
 
 
 def test_worker_beat_task_paths_have_no_sqlite_only_sql():
-    """Every task reachable via worker/beat must be Postgres-safe: no ? placeholders,
-    no INSERT OR IGNORE/REPLACE, no fts5 MATCH — they must go through the shared
-    dialect-safe db engine (text() + :named params)."""
+    """Every module reachable via worker/beat must be Postgres-safe: no ?
+    placeholders, no INSERT OR IGNORE/REPLACE, no fts5 MATCH. This scans tasks.py
+    AND recompete_report.py (run_ingest delegates to recompete_report.main). The
+    shared db.py layer is intentionally NOT scanned here: it carries SQLite-only
+    SQL that is dialect-GUARDED (SQLite-only init branch), which a naive text scan
+    would false-positive on; its Postgres-safety is asserted by the engine-selection
+    tests + the migration suite. Worker/beat tasks reach the DB only through that
+    dialect-safe db.get_engine()/get_connection() layer."""
     import re
 
-    src = (ROOT / "tasks.py").read_text()
-    offenders = []
-    if re.search(r"INSERT\s+OR\s+(IGNORE|REPLACE)", src, re.I):
-        offenders.append("INSERT OR IGNORE/REPLACE")
-    if re.search(r"execute\([^)]*\?[,)]|VALUES\s*\(\s*\?", src):
-        offenders.append("raw ? placeholder")
-    if re.search(r"\bMATCH\s+:|contracts_fts\b", src):
-        offenders.append("fts5 MATCH")
-    assert not offenders, f"SQLite-only SQL in worker/beat task paths: {offenders}"
+    modules = ["tasks.py"]
+    if (ROOT / "recompete_report.py").exists():
+        modules.append("recompete_report.py")
+    offenders = {}
+    for mod in modules:
+        src = (ROOT / mod).read_text()
+        hits = []
+        if re.search(r"INSERT\s+OR\s+(IGNORE|REPLACE)", src, re.I):
+            hits.append("INSERT OR IGNORE/REPLACE")
+        if re.search(r"execute\([^)]*\?[,)]|VALUES\s*\(\s*\?", src):
+            hits.append("raw ? placeholder")
+        if re.search(r"\bMATCH\s+:|contracts_fts\b", src):
+            hits.append("fts5 MATCH")
+        if hits:
+            offenders[mod] = hits
+    assert not offenders, (
+        f"SQLite-only SQL in worker/beat-reachable modules: {offenders}"
+    )
 
 
 def test_worker_beat_tasks_are_discoverable():
