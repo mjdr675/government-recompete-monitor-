@@ -57,8 +57,45 @@ def test_seq_reset_sql_uses_setval_and_guard():
     sql = loader.build_seq_reset_sql("users", "id")
     assert "setval(" in sql
     assert "pg_get_serial_sequence('users', 'id')" in sql
-    assert 'MAX("id")' in sql
-    assert "IS NOT NULL" in sql  # no-op when the column owns no sequence
+    assert "IS NOT NULL" in sql  # guard: no-op when the column owns no sequence
+    # MAX is deferred inside EXECUTE format() so it is only planned for a
+    # sequence-owning (integer) column, never at top level.
+    assert "EXECUTE format(" in sql
+    assert "MAX(%I)" in sql
+
+
+def test_seq_reset_text_pk_defers_max_behind_guard():
+    """A TEXT primary key (contracts.internal_id) must NOT produce a top-level
+    COALESCE(text, integer): the MAX() is deferred behind the
+    pg_get_serial_sequence guard via EXECUTE format(), so Postgres never plans
+    the text/integer mismatch. Regression for the fresh-load abort
+    (`COALESCE types text and integer cannot be matched`)."""
+    sql = loader.build_seq_reset_sql("contracts", "internal_id")
+    assert "pg_get_serial_sequence('contracts', 'internal_id')" in sql
+    assert "IS NOT NULL" in sql
+    assert "EXECUTE format(" in sql
+    # the deferred, identifier-agnostic form only — never a concrete
+    # COALESCE(MAX("internal_id"), 1) that would be planned up front
+    assert "COALESCE((SELECT MAX(%I) FROM %I), 1)" in sql
+    assert 'MAX("internal_id")' not in sql
+
+
+def test_seq_reset_integer_pk_still_generates_setval():
+    sql = loader.build_seq_reset_sql("lead_companies", "id")
+    assert "setval(" in sql
+    assert "pg_get_serial_sequence('lead_companies', 'id')" in sql
+    assert "EXECUTE format(" in sql
+    assert "MAX(%I)" in sql
+
+
+def test_seq_reset_is_type_safe_do_block():
+    """The statement is a guarded DO block for any PK type, so no concrete
+    (planned) COALESCE over a text column is ever emitted."""
+    for table, pk in (("contracts", "internal_id"), ("users", "id")):
+        sql = loader.build_seq_reset_sql(table, pk).strip()
+        assert sql.startswith("DO $$")
+        assert sql.endswith("$$;")
+        assert 'COALESCE((SELECT MAX("' not in sql  # no up-front text/int COALESCE
 
 
 def test_quote_ident_escapes_quotes():
