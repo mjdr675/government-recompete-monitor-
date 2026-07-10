@@ -24,7 +24,6 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-import sys
 from dataclasses import dataclass, field
 
 from sqlalchemy import create_engine, inspect, text
@@ -95,13 +94,32 @@ def build_truncate_sql(dialect: str, table: str) -> str:
 
 
 def build_seq_reset_sql(table: str, pk: str) -> str:
-    """Postgres: advance the SERIAL sequence past the max copied id (no-op if
-    the column has no owned sequence)."""
+    """Postgres: advance the owned SERIAL/IDENTITY sequence past the max copied
+    id — a safe no-op when the primary key owns no sequence.
+
+    Emitted as a guarded ``DO`` block: the ``MAX()``/``COALESCE`` is deferred
+    inside ``EXECUTE format(...)`` and is only parsed/planned when
+    ``pg_get_serial_sequence()`` proves the column actually owns a sequence
+    (i.e. an integer serial/identity column). A plain top-level
+    ``COALESCE(MAX(pk), 1)`` is type-checked at plan time regardless of a WHERE
+    guard, so for a TEXT primary key such as ``contracts.internal_id`` it aborts
+    with ``COALESCE types text and integer cannot be matched`` — which rolled
+    back an entire fresh load. Deferring evaluation behind the guard avoids
+    planning the text/integer mismatch for non-integer keys."""
+    t = table.replace("'", "''")
+    p = pk.replace("'", "''")
     return (
-        "SELECT setval("
-        f"pg_get_serial_sequence('{table}', '{pk}'), "
-        f"COALESCE((SELECT MAX({quote_ident(pk)}) FROM {quote_ident(table)}), 1)"
-        ") WHERE pg_get_serial_sequence('" + table + "', '" + pk + "') IS NOT NULL"
+        "DO $$\n"
+        "BEGIN\n"
+        f"    IF pg_get_serial_sequence('{t}', '{p}') IS NOT NULL THEN\n"
+        "        EXECUTE format(\n"
+        "            'SELECT setval(%L, COALESCE((SELECT MAX(%I) FROM %I), 1))',\n"
+        f"            pg_get_serial_sequence('{t}', '{p}'),\n"
+        f"            '{p}',\n"
+        f"            '{t}'\n"
+        "        );\n"
+        "    END IF;\n"
+        "END $$;"
     )
 
 
