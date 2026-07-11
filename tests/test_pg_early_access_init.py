@@ -15,6 +15,7 @@ legacy-watchlist initializers are intentionally left untouched (asserted below).
 import os
 import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 from sqlalchemy import text
@@ -22,6 +23,20 @@ from sqlalchemy import text
 import db as db_module
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def _is_postgres_url(url):
+    """True only for a PostgreSQL SQLAlchemy URL (canonical or driver-qualified) —
+    e.g. postgresql://, postgres://, postgresql+psycopg2://. Blank/unset/malformed
+    or non-Postgres schemes (sqlite://, mysql://) are False. Parses the scheme
+    rather than substring-matching."""
+    if not url or not url.strip():
+        return False
+    try:
+        scheme = urlsplit(url.strip()).scheme.lower()
+    except ValueError:
+        return False
+    return scheme.split("+", 1)[0] in ("postgresql", "postgres")
 
 
 # ── Hermetic Postgres branch: no SQLite CREATE, bound to_regclass, loud-if-absent ─
@@ -133,9 +148,27 @@ def test_sqlite_save_early_access_persists_and_upserts(sqlite_db):
 
 
 # ── PostgreSQL-gated (skipped without DATABASE_URL) ──────────────────────────
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        (None, False),
+        ("", False),
+        ("   ", False),
+        ("postgresql://u:p@h:5432/d", True),
+        ("postgres://u:p@h:5432/d", True),
+        ("postgresql+psycopg2://u:p@h:5432/d", True),
+        ("sqlite:///tmp/x.db", False),
+        ("mysql://u:p@h/d", False),
+        ("not-a-url", False),
+    ],
+)
+def test_is_postgres_url_gate(url, expected):
+    assert _is_postgres_url(url) is expected
+
+
 @pytest.mark.skipif(
-    not os.environ.get("DATABASE_URL"),
-    reason="PostgreSQL runtime test — set DATABASE_URL to a DISPOSABLE test database",
+    not _is_postgres_url(os.environ.get("DATABASE_URL")),
+    reason="PostgreSQL runtime test — set DATABASE_URL to a DISPOSABLE PostgreSQL database",
 )
 def test_init_early_access_runs_on_postgres():
     db_module._cached_engine.cache_clear()
@@ -165,13 +198,25 @@ def test_init_early_access_guards_sqlite_ddl_behind_postgres_check():
 
 
 def test_out_of_scope_initializers_left_untouched():
-    """demo / saved-search / legacy watchlist initializers must be unchanged: their
-    SQLite-only DDL is still present and NOT wrapped behind a Postgres to_regclass
-    guard (this fix touched only early_access)."""
+    """The dead-code demo / saved-search / legacy-watchlist initializers must stay
+    unguarded: each still runs its SQLite CREATE and did NOT gain the early_access
+    Postgres guard. Asserted via to_regclass/dialect-guard absence (robust; note
+    init_watchlist_table uses a TEXT primary key, not AUTOINCREMENT)."""
     src = (ROOT / "db.py").read_text()
-    for name in ("init_demo_table", "init_saved_searches_table"):
+    out_of_scope = (
+        "init_demo_table",
+        "init_saved_searches_table",
+        "init_watchlist_table",
+    )
+    for name in out_of_scope:
         body = _func_body(src, name)
-        assert "AUTOINCREMENT" in body.upper(), (
-            f"{name} SQLite DDL unexpectedly changed"
-        )
-        assert "to_regclass" not in body, f"{name} was modified (out of scope)"
+        assert "CREATE TABLE" in body.upper(), f"{name} SQLite DDL unexpectedly changed"
+        assert "to_regclass" not in body, f"{name} gained the guard (out of scope)"
+        assert 'dialect.name == "postgresql"' not in body, f"{name} gained a PG guard"
+    # init_early_access_table is the ONLY one of these four with the Postgres guard
+    guarded = [
+        name
+        for name in out_of_scope + ("init_early_access_table",)
+        if "to_regclass" in _func_body(src, name)
+    ]
+    assert guarded == ["init_early_access_table"], f"unexpected guarded set: {guarded}"
