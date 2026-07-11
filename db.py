@@ -2087,7 +2087,26 @@ def save_demo_request(email, name="", company="", phone="", notes="",
 
 
 def init_early_access_table():
-    with get_engine().begin() as conn:
+    engine = get_engine()
+    if engine.dialect.name == "postgresql":
+        # early_access is owned by the migrations (001_initial_pg.sql) on Postgres
+        # and is authoritative — never run the SQLite CREATE below. Its
+        # `id INTEGER PRIMARY KEY AUTOINCREMENT` is SQLite-only and Postgres rejects
+        # it at parse time, even under IF NOT EXISTS (same defect class as
+        # init_snapshots_table). Verify the migrated relation exists so a skipped
+        # migration fails loudly instead of silently.
+        with engine.connect() as conn:
+            exists = conn.execute(
+                text("SELECT to_regclass(:relname)"),
+                {"relname": "public.early_access"},
+            ).scalar()
+        if not exists:
+            raise RuntimeError(
+                "early_access is missing on PostgreSQL — apply migrations "
+                "(001_initial_pg.sql) before using early access"
+            )
+        return
+    with engine.begin() as conn:
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS early_access (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
