@@ -56,9 +56,11 @@ def detect_changes(run_date):
     if not have_comparison:
         print("No previous snapshot available.")
 
-    # Compute the priority feed (change semantics unchanged; empty when we can't compare).
+    # Compute the priority feed (change semantics unchanged; empty when we can't
+    # compare). IDs within each category are sorted so the persisted order is
+    # deterministic rather than dependent on set iteration order.
     records = []
-    for internal_id in today_rows.keys() - yesterday_rows.keys():
+    for internal_id in sorted(today_rows.keys() - yesterday_rows.keys()):
         records.append(
             {
                 "change_type": "NEW",
@@ -68,7 +70,7 @@ def detect_changes(run_date):
                 "description": "New contract",
             }
         )
-    for internal_id in yesterday_rows.keys() - today_rows.keys():
+    for internal_id in sorted(yesterday_rows.keys() - today_rows.keys()):
         records.append(
             {
                 "change_type": "REMOVED",
@@ -78,7 +80,7 @@ def detect_changes(run_date):
                 "description": "Removed contract",
             }
         )
-    for internal_id in today_rows.keys() & yesterday_rows.keys():
+    for internal_id in sorted(today_rows.keys() & yesterday_rows.keys()):
         old_priority = yesterday_rows[internal_id]
         new_priority = today_rows[internal_id]
         if old_priority != new_priority:

@@ -90,6 +90,51 @@ def test_new_removed_and_priority_changes(sqlite_db):
     ]
 
 
+def test_records_persisted_in_deterministic_id_order(sqlite_db):
+    # IDs are deliberately NOT in sorted order in the snapshots, so a pass here
+    # cannot come from set iteration accidentally yielding sorted order — the
+    # detector must sort internal_ids within each category before persisting.
+    _snap(
+        "2026-07-10",
+        [
+            {"internal_id": "keep_z", "priority": "LOW"},
+            {"internal_id": "keep_a", "priority": "LOW"},
+            {"internal_id": "gone_m", "priority": "HIGH"},
+            {"internal_id": "gone_b", "priority": "HIGH"},
+        ],
+    )
+    _snap(
+        "2026-07-11",
+        [
+            {"internal_id": "keep_z", "priority": "HIGH"},  # UPGRADE
+            {"internal_id": "keep_a", "priority": "HIGH"},  # UPGRADE
+            {"internal_id": "new_y", "priority": "LOW"},  # NEW
+            {"internal_id": "new_c", "priority": "LOW"},  # NEW ; gone_* REMOVED
+        ],
+    )
+    change_detector.detect_changes("2026-07-11")
+    # `changes.id` is autoincrement, so ORDER BY id reflects insertion order.
+    with db_module.get_engine().connect() as c:
+        rows = [
+            tuple(r)
+            for r in c.execute(
+                text(
+                    "SELECT change_type, internal_id FROM changes "
+                    "WHERE run_date = '2026-07-11' ORDER BY id"
+                )
+            )
+        ]
+    by_cat = {}
+    for change_type, internal_id in rows:
+        by_cat.setdefault(change_type, []).append(internal_id)
+    # each category's persisted ids are in sorted (deterministic) internal_id order
+    assert by_cat["NEW"] == ["new_c", "new_y"]
+    assert by_cat["REMOVED"] == ["gone_b", "gone_m"]
+    assert by_cat["UPGRADE"] == ["keep_a", "keep_z"]
+    for cat, ids in by_cat.items():
+        assert ids == sorted(ids), f"{cat} not persisted in sorted id order: {ids}"
+
+
 def test_downgrade_detected(sqlite_db):
     _snap("2026-07-10", [{"internal_id": "A", "priority": "CRITICAL"}])
     _snap("2026-07-11", [{"internal_id": "A", "priority": "LOW"}])
@@ -153,12 +198,10 @@ def test_write_is_atomic_no_partial_rows_on_failure(sqlite_db, monkeypatch):
     assert before  # non-empty
 
     real_text = change_detector.text
-    calls = {"n": 0}
 
     def boom(sql):
-        calls["n"] += 1
-        # fail on the first INSERT inside the write transaction
-        if "INSERT INTO changes" in sql and calls["n"] >= 1:
+        # fail the write transaction on the INSERT into `changes`
+        if "INSERT INTO changes" in sql:
             raise RuntimeError("injected write failure")
         return real_text(sql)
 
