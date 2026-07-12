@@ -16,6 +16,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 
 import db as db_module
 from users import (create_user, get_user_by_id, get_user_by_stripe_customer,
@@ -27,27 +28,25 @@ from users import (create_user, get_user_by_id, get_user_by_stripe_customer,
 # ---------------------------------------------------------------------------
 
 @pytest.fixture()
-def prod_shaped_db(tmp_path):
+def prod_shaped_db(tmp_path, monkeypatch):
     """SQLite test DB with users.billing_interval dropped, mirroring the
     production PostgreSQL schema (which never had this column)."""
     db_path = str(tmp_path / "test.db")
-    original = db_module.DB_PATH
-    db_module.DB_PATH = db_path
+    monkeypatch.setattr(db_module, "DB_PATH", db_path)
     db_module.init_db()
     engine = db_module.get_engine()
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE users DROP COLUMN billing_interval"))
     yield db_path
-    db_module.DB_PATH = original
 
 
 @pytest.fixture()
-def client(prod_shaped_db):
+def client(prod_shaped_db, monkeypatch):
     import app as flask_app
-    flask_app.app.config["TESTING"] = True
-    flask_app.app.config["WTF_CSRF_ENABLED"] = False
-    flask_app.app.config["RATELIMIT_ENABLED"] = False
-    flask_app.app.secret_key = "test-secret-key"
+    monkeypatch.setitem(flask_app.app.config, "TESTING", True)
+    monkeypatch.setitem(flask_app.app.config, "WTF_CSRF_ENABLED", False)
+    monkeypatch.setitem(flask_app.app.config, "RATELIMIT_ENABLED", False)
+    monkeypatch.setitem(flask_app.app.config, "SECRET_KEY", "test-secret-key")
     flask_app.limiter.reset()
     with flask_app.app.test_client() as c:
         yield c
@@ -99,7 +98,7 @@ def test_old_query_would_have_raised_without_column(prod_shaped_db):
     """Control: proves the missing column, not something else, was the cause
     of the original 500 — the raw pre-fix SELECT still fails on this schema."""
     engine = db_module.get_engine()
-    with pytest.raises(Exception):
+    with pytest.raises(OperationalError, match="billing_interval"):
         with engine.connect() as conn:
             conn.execute(text(
                 "SELECT id, billing_interval FROM users WHERE id = :id"
@@ -113,7 +112,7 @@ def test_set_subscription_billing_interval_write_path_is_unreachable_in_prod(pro
     inspection — so this is documented as a known latent risk, not fixed
     here (fixing it would touch subscription/billing logic, out of scope)."""
     user = create_user("latent-write@example.com", "password123")
-    with pytest.raises(Exception):
+    with pytest.raises(OperationalError, match="billing_interval"):
         set_subscription(user["id"], "cus_latent", "active", billing_interval="monthly")
 
 
