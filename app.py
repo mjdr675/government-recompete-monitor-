@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 from flask import Flask, abort, flash, g, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import CSRFError, CSRFProtect
 from werkzeug.utils import secure_filename
 
 from auth import bp as auth_bp
@@ -230,6 +230,19 @@ ALLOWED_LOGO_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp", "svg"}
 csrf = CSRFProtect(app)
 limiter = Limiter(app=app, key_func=get_remote_address, default_limits=[])
 app.register_blueprint(auth_bp)
+
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(error):
+    """Friendly recovery page for expired/missing form sessions.
+
+    Only catches flask_wtf CSRFError (a 400 subclass); CSRF enforcement is
+    unchanged. Keeps the 400 status and exposes no token, session, or request
+    data. ``request.path`` is server-derived (path only), so it is a safe
+    same-origin reload target.
+    """
+    recovery_url = request.path if request.path.startswith("/") else "/"
+    return render_template("csrf_error.html", recovery_url=recovery_url), 400
 
 
 @app.after_request

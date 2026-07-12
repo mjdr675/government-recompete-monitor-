@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Session expired — Recompete{% endblock %}
+
+{% block extra_head %}{% include 'partials/_auth_styles.html' %}{% endblock %}
+
+{% block content %}
+<div class="auth-page">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <span class="auth-logo-mark" aria-hidden="true">R</span>
+      <span class="auth-logo-name">Recompete</span>
+    </div>
+
+    <h1 class="auth-heading">Your session expired</h1>
+    <p class="auth-sub">
+      For your security, we couldn't verify this form. Your session may have
+      expired. Please reload the page and try again.
+    </p>
+
+    <a href="{{ recovery_url }}" class="btn btn-primary btn-block">Reload and try again</a>
+
+    <p class="auth-footer">
+      <a href="/login">Back to sign in</a>
+    </p>
+  </div>
+</div>
+{% endblock %}
