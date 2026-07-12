@@ -5,7 +5,15 @@ A stale or missing form session (Flask-WTF ``CSRFError``) must still return
 HTTP 400, but render a friendly first-party recovery page instead of the raw
 default response — without weakening CSRF enforcement or leaking token,
 session, password, or traceback data.
+
+The recovery link must be a GET-safe target: the failing request may be a
+POST-only endpoint (e.g. ``/onboarding/dismiss``), so reflecting ``request.path``
+would produce a link that 405s on reload. The handler instead accepts the
+referring page only when it validates as same-origin/local, and otherwise falls
+back to the login page — external origins are never reflected.
 """
+
+import re
 
 import pytest
 import db as db_module
@@ -49,6 +57,18 @@ def no_csrf_client(_isolated_db):
 
 
 _FRIENDLY = b"Reload and try again"
+
+# A POST-only, non-CSRF-exempt endpoint. CSRFProtect runs before the login
+# gate, so a sessionless POST here raises CSRFError (not a login redirect); a
+# GET reload of this exact path would 405, which is what the recovery link must
+# avoid.
+_POST_ONLY_ROUTE = "/onboarding/dismiss"
+
+
+def _recovery_href(data):
+    """Return the href of the "Reload and try again" button, or None."""
+    m = re.search(rb'href="([^"]+)"[^>]*>\s*Reload and try again', data)
+    return m.group(1).decode() if m else None
 
 
 def test_get_login_still_200(csrf_client):
@@ -103,3 +123,58 @@ def test_valid_login_form_behavior_unchanged(no_csrf_client):
     )
     assert rv.status_code == 200
     assert _FRIENDLY not in rv.data
+
+
+def test_post_only_endpoint_gets_get_safe_recovery_link(csrf_client):
+    """A sessionless CSRF failure on a POST-only endpoint must render the 400
+    friendly page with a recovery link that is safe to GET — i.e. NOT the
+    POST-only path itself (which would 405 on reload)."""
+    rv = csrf_client.post(_POST_ONLY_ROUTE)
+    assert rv.status_code == 400
+    assert _FRIENDLY in rv.data
+
+    href = _recovery_href(rv.data)
+    assert href is not None
+    # Must not reflect the POST-only request path (the old request.path bug).
+    assert href not in (_POST_ONLY_ROUTE, "http://localhost" + _POST_ONLY_ROUTE)
+    # With no referrer it falls back to the GET-able login page.
+    assert href == "/login"
+    # Prove it is actually GET-safe: reloading the link does not 405.
+    assert csrf_client.get(href).status_code != 405
+
+
+def test_external_referrer_is_rejected(csrf_client):
+    """An off-origin Referer must never be reflected into the recovery link;
+    the handler falls back to the login page instead (no open redirect)."""
+    rv = csrf_client.post(
+        _POST_ONLY_ROUTE, headers={"Referer": "https://evil.example.com/phish"}
+    )
+    assert rv.status_code == 400
+    href = _recovery_href(rv.data)
+    assert href == "/login"
+    assert b"evil.example.com" not in rv.data
+
+
+def test_same_origin_referrer_is_accepted(csrf_client):
+    """A validated same-origin Referer (the page that rendered the form) is used
+    as the recovery target, and it is a GET-safe page (not a 405)."""
+    rv = csrf_client.post(
+        _POST_ONLY_ROUTE, headers={"Referer": "http://localhost/onboarding"}
+    )
+    assert rv.status_code == 400
+    href = _recovery_href(rv.data)
+    assert href == "http://localhost/onboarding"
+    # GET-safe: the originating form page does not 405 (sessionless → redirect).
+    assert csrf_client.get("/onboarding").status_code != 405
+
+
+def test_scheme_relative_referrer_is_rejected(csrf_client):
+    """A scheme/protocol-relative Referer pointing off-origin must not be
+    reflected (defense against ``//evil.example.com`` style bypasses)."""
+    rv = csrf_client.post(
+        _POST_ONLY_ROUTE, headers={"Referer": "//evil.example.com/x"}
+    )
+    assert rv.status_code == 400
+    href = _recovery_href(rv.data)
+    assert href == "/login"
+    assert b"evil.example.com" not in rv.data
