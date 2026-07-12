@@ -1,8 +1,18 @@
 # O5 / Gate 3 — Shared Postgres + Celery worker/beat cutover plan
 
-**Status:** groundwork only (this branch). Nothing here is provisioned or deployed.
+**Status:** Postgres + Redis are provisioned in the Railway project. Worker/beat
+service defs and the shared `DATABASE_URL`/`REDIS_URL` references are now **active
+in `railway.toml`** on branch `ops/celery-postgres-railway-services` (repo-side
+groundwork). **Not deployed.** The human data cutover (steps 2–6 below) is still
+outstanding, so this branch must **not** be merged/deployed yet.
 **Goal:** run Celery `worker` and `beat` in prod so scheduled/async jobs (watchlist
-alerts, trial-reminder emails, beat health, nightly ingest fallback) actually run.
+alerts, trial-reminder emails, beat health) actually run. The nightly ingest is
+owned solely by the `daily-ingest` cron — it is **not** a beat job.
+
+> **Accepted ops risk:** Railway automated backups / PITR are unavailable on the
+> current plan and are accepted as an operational risk for now. The app's
+> fail-closed pre-start `scripts/backup_db.sh` snapshot (uploaded to R2) is the
+> backup layer. Do not block this cutover on Railway Pro backups.
 
 ---
 
@@ -16,13 +26,23 @@ alerts, trial-reminder emails, beat health, nightly ingest fallback) actually ru
 - Therefore all three services must share a **network Postgres** via `DATABASE_URL`.
   The app already supports this: `db.get_engine()` / `db.get_connection()` select
   Postgres when `DATABASE_URL` is set, and `db._apply_migrations()` runs against
-  either engine. Worker/beat service defs are drafted (commented) in `railway.toml`.
+  either engine. Worker/beat service defs are **active** (config-as-code) in
+  `railway.toml`, gated behind the human-only activation runbook.
 
-## Current state (verified)
+## Current state (updated post-cutover 2026-07-10; originally 2026-07-08)
 
-- Railway services: `web` (Online), `ingest-cron`, `Redis` (Online). **No Postgres.**
-- `DATABASE_URL`: **not set** (SQLite). `REDIS_URL`: **present**.
-- `railway.toml`: only `web` + `daily-ingest`. Worker/beat are drafted but inactive.
+> **Cutover complete:** web is live on PostgreSQL 18.4. Steps 1–6 below are done.
+> Only worker/beat service creation (step 7) remains, gated on the soak + PM sign-off.
+
+
+- Railway services: `government-recompete-monitor-` (web), `ingest-cron`, `Redis`,
+  **and `Postgres` (now provisioned).**
+- `DATABASE_URL`: **now referenced on the live web service** — web runs on
+  **PostgreSQL 18.4** as of the 2026-07-10 cutover
+  (`DATABASE_URL=${{Postgres.DATABASE_URL}}`). `REDIS_URL`: present on web + Redis.
+- `CRON_SECRET`: present on web + ingest-cron.
+- `railway.toml`: `web` + `daily-ingest` + **`worker` + `beat` (now active, wired to
+  `${{Postgres.DATABASE_URL}}` + `${{Redis.REDIS_URL}}`).**
 
 ---
 
@@ -50,9 +70,11 @@ alerts, trial-reminder emails, beat health, nightly ingest fallback) actually ru
    - `GET /api/data-freshness` and `/health` return 200 with `DATABASE_URL` set.
 6. **Cut `web` over to Postgres**: it already is (step 2/3). Verify prod healthy for a
    soak period (login works, watchlists/notes load, contracts render).
-7. **Activate worker + beat**: uncomment the two `[[services]]` blocks in
-   `railway.toml` (this branch's draft), ensure `DATABASE_URL` **and** `REDIS_URL`
-   are set on both, deploy.
+7. **Activate worker + beat**: the two `[[services]]` blocks are already active in
+   `railway.toml` on this branch — the remaining action is the live-service work in
+   DEPLOYMENT.md §8b: create/deploy the `worker` and `beat` services and set
+   `DATABASE_URL` **and** `REDIS_URL` (the `${{Postgres.DATABASE_URL}}` /
+   `${{Redis.REDIS_URL}}` references) on both, then deploy.
 8. **Verify worker/beat**: worker log shows `celery@… ready`; beat log shows the
    schedule loaded; `tasks.heartbeat` and `tasks.check_beat_health` fire; a watchlist
    alert / trial email sends on schedule (or via a manual trigger).
@@ -75,15 +97,30 @@ alerts, trial-reminder emails, beat health, nightly ingest fallback) actually ru
 - **Type/collation differences** SQLite vs Postgres (e.g. boolean/text affinity) —
   validate app reads after schema build (step 3) before loading data.
 - **Premature worker/beat activation** against an empty PG or an empty per-service
-  SQLite volume → jobs act on wrong data. Prevented by keeping the services
-  commented until step 7 and by this plan's ordering.
+  SQLite volume → jobs act on wrong data. Prevented by the DO-NOT-MERGE/DEPLOY gate
+  (the service defs are active in `railway.toml` but the branch is not deployed) and
+  by this plan's ordering.
+- **Beat schedule persistence**: `celery.beat.PersistentScheduler` stores its state
+  in a local file that resets on each redeploy/restart (Railway ephemeral storage).
+  Low-impact — crontab entries re-seed from `tasks.py` — but consider `celery-redbeat`
+  (Redis-backed) or a volume on `beat` later if durable schedule state is needed.
 - **Downtime** during the maintenance-window cutover; **recurring cost** for Postgres.
 - Writes to prod (data migration, restore) are **human-only, gated** actions.
 
-## What is already done on this branch (no infra changes)
+## What is already done on branch `ops/celery-postgres-railway-services` (no deploy)
 
-- `railway.toml`: drafted (commented, inert) `worker`/`beat` service definitions.
-- Tests: Postgres-vs-SQLite engine/connection selection, Celery broker/backend wired
-  to `REDIS_URL`, and the beat schedule contains the required jobs
-  (`tests/test_o5_worker_beat_postgres.py`).
-- This plan. SQLite behavior is unchanged; nothing is provisioned or deployed.
+- `railway.toml`: `worker`/`beat` service definitions are **active** and, together
+  with `web`, reference the shared `${{Postgres.DATABASE_URL}}` and
+  `${{Redis.REDIS_URL}}`. An `ACTIVATION GATE` comment points here (the pre-cutover
+  `DO NOT MERGE OR DEPLOY` prohibition was removed once web went live on Postgres).
+- `tasks.py`: `run_ingest` **removed from the beat schedule** — single ingest owner
+  is the `daily-ingest` cron. The task stays registered for manual/admin triggers.
+- `docs/DEPLOYMENT.md` §8b: services, live-vs-config naming, manual Railway steps,
+  single ingest owner, accepted backup risk, and worker/beat rollback.
+- Tests updated: `test_o5_worker_beat_postgres.py` now asserts worker/beat are
+  active and wired to shared Postgres/Redis; `test_celery_ingest.py` asserts
+  `run_ingest` is a registered task but **not** on the beat schedule.
+- Web is **LIVE on PostgreSQL 18.4** (cutover 2026-07-10); the pre-start pg_dump
+  backup + R2 upload are verified. The `worker`/`beat` Railway services are still
+  **NOT created** — that remains a human-only step gated on the post-cutover soak
+  and explicit Product Manager authorization (see the activation runbook).

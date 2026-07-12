@@ -83,10 +83,11 @@ tasks.conf.beat_schedule = {
         "task": "tasks.check_beat_health",
         "schedule": 600.0,
     },
-    "nightly-ingest-0200-utc": {
-        "task": "tasks.run_ingest",
-        "schedule": crontab(hour=2, minute=0),
-    },
+    # NOTE: the nightly ingest is intentionally NOT scheduled here. It is owned
+    # SOLELY by the Railway `daily-ingest` cron (06:00 UTC → POST /ingest/run,
+    # see railway.toml) so ingest never runs twice. The run_ingest task below
+    # stays registered for the /ingest admin trigger (run_ingest.delay()) and
+    # manual re-runs.
     "watchlist-alerts-0700-utc": {
         "task": "tasks.check_watchlist_alerts",
         "schedule": crontab(hour=7, minute=0),
