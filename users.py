@@ -177,7 +177,7 @@ def get_user_by_stripe_customer(stripe_customer_id: str) -> dict | None:
         row = conn.execute(
             text(
                 "SELECT id, email, created_at, stripe_customer_id,"
-                " subscription_status, trial_ends_at, billing_interval"
+                " subscription_status, trial_ends_at"
                 " FROM users WHERE stripe_customer_id = :cid AND is_active = 1"
             ),
             {"cid": stripe_customer_id},
@@ -192,7 +192,7 @@ def get_user_by_id(user_id: int) -> dict | None:
         row = conn.execute(
             text(
                 "SELECT id, email, created_at, stripe_customer_id,"
-                " subscription_status, trial_ends_at, company_name, billing_interval"
+                " subscription_status, trial_ends_at, company_name"
                 " FROM users WHERE id = :id AND is_active = 1"
             ),
             {"id": user_id},
