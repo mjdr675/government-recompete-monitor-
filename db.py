@@ -1584,6 +1584,23 @@ def _has_unique_index(conn, table, cols):
 
 def init_snapshots_table():
     engine = get_engine()
+    if engine.dialect.name == "postgresql":
+        # contract_snapshots is owned by the migrations (001_initial_pg.sql) on
+        # Postgres and is authoritative — never run the SQLite CREATE below. Its
+        # `id INTEGER PRIMARY KEY AUTOINCREMENT` is SQLite-only and Postgres rejects
+        # it at PARSE time, even under IF NOT EXISTS (this broke the first
+        # post-cutover scheduled ingest, 2026-07-10 06:14 UTC). Verify the migrated
+        # table exists so a skipped migration fails loudly instead of silently.
+        with engine.connect() as conn:
+            exists = conn.execute(
+                text("SELECT to_regclass('public.contract_snapshots')")
+            ).scalar()
+        if not exists:
+            raise RuntimeError(
+                "contract_snapshots is missing on PostgreSQL — apply migrations "
+                "(001_initial_pg.sql) before running ingest"
+            )
+        return
     with engine.begin() as conn:
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS contract_snapshots (
@@ -1611,7 +1628,8 @@ def init_snapshots_table():
         # constraint existed lack it, so save_snapshot's
         # ON CONFLICT(run_date, internal_id) fails. Dedupe (keep lowest id per
         # key) then add a unique index. Only runs when the constraint is absent.
-        if engine.dialect.name != "postgresql" and not _has_unique_index(
+        # (SQLite-only path — Postgres already returned above.)
+        if not _has_unique_index(
             conn, "contract_snapshots", ("run_date", "internal_id")
         ):
             conn.execute(text("""
@@ -1783,7 +1801,22 @@ def save_snapshot(run_date, rows):
 
 
 def init_changes_table():
-    with get_engine().begin() as conn:
+    engine = get_engine()
+    if engine.dialect.name == "postgresql":
+        # `changes` is owned by the migrations (001_initial_pg.sql) on Postgres.
+        # Skip the SQLite CREATE below — `id INTEGER PRIMARY KEY AUTOINCREMENT` is
+        # SQLite-only and Postgres rejects it at parse time (same defect class as
+        # init_snapshots_table). Verify the migrated table exists so a skipped
+        # migration fails loudly.
+        with engine.connect() as conn:
+            exists = conn.execute(text("SELECT to_regclass('public.changes')")).scalar()
+        if not exists:
+            raise RuntimeError(
+                "changes is missing on PostgreSQL — apply migrations "
+                "(001_initial_pg.sql) before running ingest"
+            )
+        return
+    with engine.begin() as conn:
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS changes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2054,7 +2087,26 @@ def save_demo_request(email, name="", company="", phone="", notes="",
 
 
 def init_early_access_table():
-    with get_engine().begin() as conn:
+    engine = get_engine()
+    if engine.dialect.name == "postgresql":
+        # early_access is owned by the migrations (001_initial_pg.sql) on Postgres
+        # and is authoritative — never run the SQLite CREATE below. Its
+        # `id INTEGER PRIMARY KEY AUTOINCREMENT` is SQLite-only and Postgres rejects
+        # it at parse time, even under IF NOT EXISTS (same defect class as
+        # init_snapshots_table). Verify the migrated relation exists so a skipped
+        # migration fails loudly instead of silently.
+        with engine.connect() as conn:
+            exists = conn.execute(
+                text("SELECT to_regclass(:relname)"),
+                {"relname": "public.early_access"},
+            ).scalar()
+        if not exists:
+            raise RuntimeError(
+                "early_access is missing on PostgreSQL — apply migrations "
+                "(001_initial_pg.sql) before using early access"
+            )
+        return
+    with engine.begin() as conn:
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS early_access (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

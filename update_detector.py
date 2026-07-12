@@ -12,8 +12,10 @@ table) so that existing change-detection, ``report_builder`` and the vendor
 testable. ``detect_field_changes`` orchestrates the snapshot reads/writes.
 """
 
+from sqlalchemy import text
+
 from db import (
-    connect,
+    get_engine,
     init_snapshots_table,
     clear_field_changes_for_date,
     insert_field_changes,
@@ -131,12 +133,17 @@ def detect_field_changes(run_date):
     cols = ("internal_id",) + TRACKED_FIELDS
     select_cols = ", ".join(cols)
 
-    with connect() as con:
+    # Dialect-safe reads via the shared SQLAlchemy engine (bound run_date param).
+    # select_cols is a fixed list of TRACKED_FIELDS identifiers (not user input);
+    # only the run_date value is bound.
+    with get_engine().connect() as con:
         dates = [
             r[0]
             for r in con.execute(
-                "SELECT DISTINCT run_date FROM contract_snapshots"
-                " ORDER BY run_date DESC LIMIT 2"
+                text(
+                    "SELECT DISTINCT run_date FROM contract_snapshots"
+                    " ORDER BY run_date DESC LIMIT 2"
+                )
             )
         ]
         if len(dates) < 2:
@@ -148,8 +155,10 @@ def detect_field_changes(run_date):
         def _load(date):
             out = {}
             for r in con.execute(
-                f"SELECT {select_cols} FROM contract_snapshots WHERE run_date = ?",
-                (date,),
+                text(
+                    f"SELECT {select_cols} FROM contract_snapshots WHERE run_date = :run_date"
+                ),
+                {"run_date": date},
             ):
                 d = dict(zip(cols, r))
                 out[d["internal_id"]] = d
