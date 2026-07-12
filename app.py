@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 from flask import Flask, abort, flash, g, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import CSRFError, CSRFProtect
 from werkzeug.utils import secure_filename
 
 from auth import bp as auth_bp
@@ -230,6 +230,25 @@ ALLOWED_LOGO_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp", "svg"}
 csrf = CSRFProtect(app)
 limiter = Limiter(app=app, key_func=get_remote_address, default_limits=[])
 app.register_blueprint(auth_bp)
+
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(error):
+    """Friendly recovery page for expired/missing form sessions.
+
+    Only catches flask_wtf CSRFError (a 400 subclass); CSRF enforcement is
+    unchanged. Keeps the 400 status and exposes no token, session, or request
+    data.
+
+    The recovery link must be a GET-safe target. ``request.path`` is *not* used:
+    the failing request may be a POST-only endpoint (e.g. ``/onboarding/dismiss``),
+    where a GET reload would 405. Instead we reuse the app's ``_safe_redirect``
+    same-origin policy — the referring page (the one that rendered the form) is
+    accepted only when it validates as local, otherwise we fall back to the login
+    page. External origins can never be reflected into the link.
+    """
+    recovery_url = _safe_redirect(fallback=url_for("auth.login"))
+    return render_template("csrf_error.html", recovery_url=recovery_url), 400
 
 
 @app.after_request
