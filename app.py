@@ -1667,13 +1667,12 @@ def ingest_status():
 
 @app.route("/contract/<internal_id>")
 def contract_detail(internal_id):
-    con = connect()
-    con.row_factory = lambda cur, row: {col[0]: row[i] for i, col in enumerate(cur.description)}
-    row = con.execute(
-        "SELECT * FROM contracts WHERE internal_id=?",
-        (internal_id,),
-    ).fetchone()
-    con.close()
+    with get_engine().connect() as conn:
+        result = conn.execute(
+            text("SELECT * FROM contracts WHERE internal_id = :iid"),
+            {"iid": internal_id},
+        ).mappings().fetchone()
+    row = dict(result) if result is not None else None
 
     if not row:
         return redirect("/contracts")
@@ -1787,13 +1786,12 @@ def contract_detail(internal_id):
 
 @app.route("/contract/<internal_id>/apply")
 def contract_apply(internal_id):
-    con = connect()
-    con.row_factory = lambda cur, row: {col[0]: row[i] for i, col in enumerate(cur.description)}
-    row = con.execute(
-        "SELECT * FROM contracts WHERE internal_id=?",
-        (internal_id,),
-    ).fetchone()
-    con.close()
+    with get_engine().connect() as conn:
+        result = conn.execute(
+            text("SELECT * FROM contracts WHERE internal_id = :iid"),
+            {"iid": internal_id},
+        ).mappings().fetchone()
+    row = dict(result) if result is not None else None
 
     if not row:
         return redirect("/contracts")
@@ -2194,12 +2192,12 @@ def opportunity_detail(opp_id):
     if not opp:
         return redirect("/pipeline")
 
-    con = connect()
-    con.row_factory = lambda cur, row: {col[0]: row[i] for i, col in enumerate(cur.description)}
-    contract = con.execute(
-        "SELECT * FROM contracts WHERE internal_id=?", (opp["internal_id"],)
-    ).fetchone()
-    con.close()
+    with get_engine().connect() as conn:
+        result = conn.execute(
+            text("SELECT * FROM contracts WHERE internal_id = :iid"),
+            {"iid": opp["internal_id"]},
+        ).mappings().fetchone()
+    contract = dict(result) if result is not None else None
 
     biz_match_score = None
     biz_match_reasons_list = []
@@ -2601,14 +2599,12 @@ def compare():
     def _fetch(internal_id):
         if not internal_id:
             return None
-        con = connect()
-        con.row_factory = lambda cur, row: {col[0]: row[i] for i, col in enumerate(cur.description)}
-        row = con.execute(
-            "SELECT * FROM contracts WHERE internal_id=?",
-            (internal_id,),
-        ).fetchone()
-        con.close()
-        return row
+        with get_engine().connect() as conn:
+            result = conn.execute(
+                text("SELECT * FROM contracts WHERE internal_id = :iid"),
+                {"iid": internal_id},
+            ).mappings().fetchone()
+        return dict(result) if result is not None else None
 
     _SLOTS = ["a", "b", "c", "d", "e"]
     raw_ids = [request.args.get(s, "").strip() for s in _SLOTS]
