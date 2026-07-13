@@ -9,6 +9,9 @@ from pathlib import Path
 
 from sqlalchemy import create_engine, text
 
+import lifecycle
+import procurement_status
+
 DB_PATH = os.environ.get("DB_PATH", "contracts.db")
 
 # Apply-window bounds — kept in sync with apply_window.py. A contract is
@@ -16,6 +19,13 @@ DB_PATH = os.environ.get("DB_PATH", "contracts.db")
 # at least MIN_APPLY_DAYS and at most MAX_PREP_DAYS before the incumbent ends.
 APPLY_MIN_DAYS = 60
 APPLY_MAX_DAYS = 540
+
+# Canonical lower bound for the default *actionable* discovery window. Records
+# below this (Too Late / Expired, < 30 days) are excluded from default search/
+# listing results at the query layer — never merely hidden in the template —
+# so counts and pagination agree with what is shown. Sourced from the single
+# canonical lifecycle classifier so this never drifts from stage boundaries.
+APPLY_FLOOR_DAYS = lifecycle.CLOSING_MIN  # 30
 
 
 @lru_cache(maxsize=None)
@@ -2394,10 +2404,28 @@ def parse_nl_query(q: str) -> dict:
     return result
 
 
+def _procurement_open_sql(params, alias="c"):
+    """Return a SQL boolean expression that is true for procurement-status Open
+    rows (a live SAM.gov opportunity notice), binding the notice-type list into
+    ``params``.
+
+    Mirrors :func:`procurement_status.status_code` Open detection so the query
+    layer and the per-row display never disagree. The type list is a trusted
+    module constant, never user input.
+    """
+    keys = []
+    for i, t in enumerate(sorted(procurement_status.OPEN_SAM_TYPES)):
+        k = f"pst_{i}"
+        params[k] = t
+        keys.append(f":{k}")
+    return f"LOWER(COALESCE({alias}.sam_type, '')) IN ({', '.join(keys)})"
+
+
 def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort="recompete_score",
                   direction="desc", page=1, limit=25, status="", profile_filter=None,
                   internal_ids=None, state="", category="", exclude_ids=None, all_rows=False,
-                  applyable=False, min_days_left=None, naics_code=""):
+                  applyable=False, min_days_left=None, naics_code="", procurement="",
+                  with_status_counts=False):
     engine = get_engine()
     is_pg = engine.dialect.name == "postgresql"
     params: dict = {}
@@ -2434,13 +2462,21 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
         base += " AND c.days_remaining <= :days"
         params["days"] = int(days)
 
-    # Apply-window filter — show contracts within the actionable window.
-    # The upper bound hides contracts too far out (>18 months, not yet actionable).
-    # The lower bound is NOT applied so that critically-expiring contracts
-    # (days_remaining < MIN_APPLY_DAYS) remain visible — users need to see them.
+    # Apply-window filter — restrict to the canonical *actionable* discovery
+    # window (30..540 days). The upper bound hides contracts too far out (Long
+    # Range, > 540 days, not yet actionable); the lower bound excludes Too Late /
+    # Expired (< 30 days), which the canonical lifecycle never treats as
+    # actionable and which must never appear in default actionable discovery.
+    # Applied to *discovery* only (internal_ids is None); an explicit id list
+    # (watchlist / pipeline) is a curated set, not discovery, so it is exempt.
+    # Callers wanting Too Late / Expired rows pass applyable=False (see the
+    # actionability=too_late/expired escape hatch in the /contracts route).
     if applyable:
         base += " AND c.days_remaining <= :apply_max"
         params["apply_max"] = APPLY_MAX_DAYS
+        if internal_ids is None:
+            base += " AND c.days_remaining >= :apply_floor"
+            params["apply_floor"] = APPLY_FLOOR_DAYS
 
     if min_days_left is not None:
         base += " AND c.days_remaining >= :min_days_left"
@@ -2536,21 +2572,43 @@ def get_contracts(q="", agency="", priority="", days=None, min_value=None, sort=
     order = "ASC" if direction == "asc" else "DESC"
     secondary = "" if col == "recompete_score" else ", COALESCE(c.recompete_score, 0) DESC"
 
+    # Procurement-status filter (Open / Closed) — a concept independent of the
+    # lifecycle window above. Applied on top of ``base`` for the shown results;
+    # status counts (when requested) are computed on ``base`` *before* this
+    # filter so both buckets are always reported. Open == a live SAM.gov
+    # opportunity notice; Closed == everything else (awarded / expired /
+    # cancelled). "" leaves both buckets in.
+    open_sql = _procurement_open_sql(params)
+    proc_clause = ""
+    if procurement == "open":
+        proc_clause = f" AND {open_sql}"
+    elif procurement == "closed":
+        proc_clause = f" AND NOT ({open_sql})"
+
+    status_counts = None
     with engine.connect() as conn:
-        total = conn.execute(text(f"SELECT COUNT(*) {base}"), params).scalar()
+        if with_status_counts:
+            open_ct = conn.execute(
+                text(f"SELECT COUNT(*) {base} AND {open_sql}"), params
+            ).scalar() or 0
+            base_ct = conn.execute(text(f"SELECT COUNT(*) {base}"), params).scalar() or 0
+            status_counts = {"open": open_ct, "closed": base_ct - open_ct}
+
+        total = conn.execute(text(f"SELECT COUNT(*) {base}{proc_clause}"), params).scalar()
         if all_rows:
             rows = conn.execute(
-                text(f"SELECT c.* {base} ORDER BY c.{col} {order}{secondary}"), params,
+                text(f"SELECT c.* {base}{proc_clause} ORDER BY c.{col} {order}{secondary}"), params,
             ).mappings().fetchall()
         else:
             rows = conn.execute(
-                text(f"SELECT c.* {base} ORDER BY c.{col} {order}{secondary} LIMIT :limit OFFSET :offset"),
+                text(f"SELECT c.* {base}{proc_clause} ORDER BY c.{col} {order}{secondary} LIMIT :limit OFFSET :offset"),
                 {**params, "limit": limit, "offset": (page - 1) * limit},
             ).mappings().fetchall()
 
     return {
         "contracts": rows, "page": page,
         "start": (page - 1) * limit, "total": total, "count": len(rows),
+        "status_counts": status_counts,
     }
 
 

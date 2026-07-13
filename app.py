@@ -95,8 +95,9 @@ from business_match import (
 from report_builder import build_report
 from views import SAVED_VIEWS, build_view_query, format_filter_summary, active_filter_chips, quick_views, active_view_id
 from apply_window import apply_stage, is_applyable, in_sweet_spot, MIN_APPLY_DAYS, MAX_PREP_DAYS
-from sam_links import resolve_apply_destination
+from source_links import resolve_source_destination
 import lifecycle
+import procurement_status
 import hubspot_service
 from users import (
     get_user_by_email,
@@ -278,6 +279,7 @@ app.jinja_env.globals["format_filter_summary"] = format_filter_summary
 app.jinja_env.globals["apply_stage"] = apply_stage
 app.jinja_env.globals["is_applyable"] = is_applyable
 app.jinja_env.globals["effective_priority"] = lifecycle.effective_priority
+app.jinja_env.globals["procurement_status"] = procurement_status.procurement_status
 
 init_db()
 
@@ -1063,12 +1065,23 @@ def contracts():
     applyable = request.args.get("applyable", "1") != "0"
     min_days_left = request.args.get("min_days_left", type=int)
     naics_code = request.args.get("naics_code", "").strip()
+    # Procurement status filter (independent of lifecycle): "" (both) | open | closed.
+    procurement = request.args.get("procurement", "")
+    if procurement not in ("", "open", "closed"):
+        procurement = ""
 
     if status not in ("", "open", "expired"):
         status = ""
     _VALID_ACTIONABILITY = {"", "open_now", "prepare_recompete", "too_late", "watch", "expired"}
     if actionability not in _VALID_ACTIONABILITY:
         actionability = ""
+
+    # Explicit non-actionable views are the intentional escape hatch for the
+    # default 30-day actionable floor: when the user asks to see Too Late /
+    # Expired rows, disable the actionable-window filter so the query layer
+    # returns them (the post-query actionability filter then narrows to them).
+    if actionability in ("too_late", "expired"):
+        applyable = False
 
     # Natural-language query parsing: extract category/state intent from free text
     # so "lawn care contracts in Virginia" routes correctly without exact wording.
@@ -1122,7 +1135,8 @@ def contracts():
     all_states = list_contract_states(engine)
 
     if pipeline_ids is not None and len(pipeline_ids) == 0:
-        result = {"contracts": [], "total": 0, "count": 0, "start": 0, "page": page}
+        result = {"contracts": [], "total": 0, "count": 0, "start": 0, "page": page,
+                  "status_counts": {"open": 0, "closed": 0}}
     else:
         result = get_contracts(
             q=q,
@@ -1143,6 +1157,8 @@ def contracts():
             applyable=applyable,
             min_days_left=min_days_left,
             naics_code=naics_code,
+            procurement=procurement,
+            with_status_counts=True,
         )
 
     _total = result["total"]
@@ -1182,6 +1198,7 @@ def contracts():
     for r in rows:
         rd = dict(r) if not isinstance(r, dict) else r
         rd["opportunity_status"] = _opp_status(rd)
+        rd["proc_status"] = procurement_status.procurement_status(rd)
         rows_with_status.append(rd)
     if actionability:
         rows_with_status = [r for r in rows_with_status
@@ -1226,6 +1243,8 @@ def contracts():
         in_pipeline=in_pipeline,
         has_profile=profile is not None,
         actionability=actionability,
+        procurement=procurement,
+        status_counts=result.get("status_counts"),
     )
 
 
@@ -1245,6 +1264,13 @@ def contracts_export():
     state = request.args.get("state", "")
     category = request.args.get("category", "")
     naics_code_export = request.args.get("naics_code", "").strip()
+    # Export is a raw "all matching rows" data dump: it deliberately does NOT
+    # apply the actionable-window floor (unlike the on-screen listing), so a
+    # user can export the full filtered set. It still honours an explicit
+    # procurement-status filter when one is passed.
+    procurement_export = request.args.get("procurement", "")
+    if procurement_export not in ("", "open", "closed"):
+        procurement_export = ""
 
     days_int = int(days) if days else None
     result = get_contracts(
@@ -1255,6 +1281,7 @@ def contracts_export():
         state=state, category=category,
         min_days_left=min_days_left,
         naics_code=naics_code_export,
+        procurement=procurement_export,
     )
 
     fields = [
@@ -1668,17 +1695,21 @@ def ingest_status():
     return tail, 200, {"Content-Type": "text/plain; charset=utf-8"}
 
 
-def _resolve_contract_sam_dest(row):
-    """Shared SAM.gov destination resolution for contract_detail and contract_apply.
+def _resolve_contract_source_dest(row):
+    """Shared source-aware destination resolution for contract_detail/contract_apply.
 
-    Keeps the two routes from drifting apart: both need the same solicitation_id
-    fallback to raw_json (via extract_raw_field) so a contract with the id only
-    in raw_json still resolves to the same narrow_search destination on either
-    page. See sam_links.resolve_apply_destination for the precedence order.
+    Keeps the two routes from drifting apart: both recover the USASpending award
+    permalink (``generated_internal_id``) and the incumbent ``solicitation_id``
+    from raw_json when they are not top-level columns, so a contract resolves to
+    the same authoritative destination on either page. See
+    source_links.resolve_source_destination for the tier precedence (exact SAM
+    opportunity → USASpending award → source search → general search).
     """
     solicitation_id = row.get("solicitation_id") or extract_raw_field(row, "solicitation_id") or ""
-    return resolve_apply_destination({
+    gid = row.get("generated_internal_id") or extract_raw_field(row, "generated_internal_id") or ""
+    return resolve_source_destination({
         "sam_url": row.get("sam_url") or "",
+        "generated_internal_id": gid,
         "solicitation_id": solicitation_id,
         "agency": row.get("agency") or "",
         "description": row.get("description") or "",
@@ -1801,7 +1832,8 @@ def contract_detail(internal_id):
                            solicitation_window=solicitation_window,
                            action_steps=action_steps,
                            highlights=highlights,
-                           sam_dest=_resolve_contract_sam_dest(row),
+                           sam_dest=_resolve_contract_source_dest(row),
+                           proc_status=procurement_status.procurement_status(row),
                            score_headline=score_headline)
 
 
@@ -1820,16 +1852,17 @@ def contract_apply(internal_id):
     stage_key, stage_label, stage_detail = apply_stage(row.get("days_remaining"))
     applyable = is_applyable(row.get("days_remaining"))
 
-    # Resolve the most specific trustworthy SAM.gov destination: the exact stored
-    # opportunity record when we have a validated URL, else a narrow search on the
-    # incumbent solicitation number, else a broad agency/work-type search. See
-    # _resolve_contract_sam_dest / sam_links.resolve_apply_destination for the
-    # deterministic precedence (shared with contract_detail).
+    # Resolve the strongest safe authoritative destination (source-aware): the
+    # exact stored SAM.gov opportunity, else the USASpending award page derived
+    # from the permalink id, else a source-specific / general search. See
+    # _resolve_contract_source_dest / source_links.resolve_source_destination for
+    # the deterministic tier precedence (shared with contract_detail).
     solicitation_id = row.get("solicitation_id") or extract_raw_field(row, "solicitation_id") or ""
     sam_naics = extract_raw_field(row, "sam_naics") or extract_raw_field(row, "naics_code") or row.get("naics_code") or ""
-    sam_dest = _resolve_contract_sam_dest(row)
+    sam_dest = _resolve_contract_source_dest(row)
     sam_search_url = sam_dest["url"]
     sam_is_exact = sam_dest["is_exact"]
+    proc_status = procurement_status.procurement_status(row)
 
     category = infer_category(
         description=row.get("description") or "",
@@ -1852,6 +1885,8 @@ def contract_apply(internal_id):
         applyable=applyable,
         sam_search_url=sam_search_url,
         sam_is_exact=sam_is_exact,
+        sam_dest=sam_dest,
+        proc_status=proc_status,
         sam_naics=sam_naics,
         solicitation_id=solicitation_id,
         category=category,

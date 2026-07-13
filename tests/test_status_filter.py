@@ -82,7 +82,9 @@ class TestGetContractsStatus:
 # ── route + UI ──────────────────────────────────────────────────────────────────
 class TestContractsRouteStatus:
     def test_open_filter_hides_expired(self, client):
-        body = client.get("/contracts?status=open").get_data(as_text=True)
+        # applyable=0 isolates the status filter from the default actionable
+        # floor, so the small-positive Beta LLC (5 days) is still evaluated.
+        body = client.get("/contracts?status=open&applyable=0").get_data(as_text=True)
         assert "Acme Corp" in body and "Beta LLC" in body
         assert "Gamma Inc" not in body and "Delta Co" not in body
 
@@ -91,9 +93,19 @@ class TestContractsRouteStatus:
         assert 'name="status"' in body
         assert 'value="open" selected' in body
 
-    def test_default_shows_all(self, client):
+    def test_default_excludes_expired_and_too_late(self, client):
+        # Canonical rule: default actionable discovery excludes Expired / Too
+        # Late (< 30 days). Only Acme Corp (120 days) is actionable; the rest
+        # are hidden unless the user opts in (applyable=0).
         body = client.get("/contracts").get_data(as_text=True)
-        assert "Gamma Inc" in body          # expired still visible by default
+        assert "Acme Corp" in body
+        assert "Gamma Inc" not in body      # expired — hidden by default
+        assert "Delta Co" not in body       # ends today — hidden by default
+        assert "Beta LLC" not in body       # 5 days — Too Late, hidden
+
+    def test_expired_reachable_via_explicit_include(self, client):
+        body = client.get("/contracts?applyable=0").get_data(as_text=True)
+        assert "Gamma Inc" in body          # expired visible on explicit opt-in
 
     def test_invalid_status_sanitized_not_error(self, client):
         resp = client.get("/contracts?status=evil")

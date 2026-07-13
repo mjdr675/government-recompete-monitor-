@@ -68,8 +68,23 @@
     <div class="cd-stage-key" style="color:{{ stage_color.get(stage_key, 'var(--accent)') }}">{{ stage_label }}</div>
     <div class="cd-stage-detail">{{ stage_detail }}</div>
   </div>
-  <a href="/contract/{{ row['internal_id'] }}/apply" class="btn btn-primary" style="white-space:nowrap">How to apply &rarr;</a>
+  <a href="/contract/{{ row['internal_id'] }}/apply" class="btn btn-primary" style="white-space:nowrap">{% if proc_status and not proc_status.is_open %}Recompete playbook &rarr;{% else %}How to apply &rarr;{% endif %}</a>
 </div>
+
+{# ── Procurement status — independent of recompete lifecycle/priority ──────── #}
+{% if proc_status %}
+{% set _proc_open = proc_status.is_open %}
+<div class="cd-proc-status" data-testid="procurement-status"
+     style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface)">
+  <span style="font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--text-muted)">Status</span>
+  <span class="proc-badge proc-{{ proc_status.code|replace('_','-') }}" role="status"
+        aria-label="Procurement status: {{ proc_status.label }}"
+        style="font-weight:700;font-size:13px;padding:3px 10px;border-radius:999px;{% if _proc_open %}background:var(--badge-high-bg,#2d6a4f);color:#fff{% else %}background:var(--border);color:var(--text-primary){% endif %}">
+    {{ proc_status.label }}
+  </span>
+  <span class="muted" style="font-size:13px;flex:1 1 240px;min-width:200px">{{ proc_status.explanation }}</span>
+</div>
+{% endif %}
 
 {# ── Quick brief: plain-language executive summary ───────────────────────── #}
 {% if plain_summary %}
@@ -438,7 +453,7 @@
   {% if sam_dest.is_exact %}
   <div class="cd-bid-footer">
     <a href="{{ sam_dest.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="font-size:13px">
-      {% if opp_status.can_bid %}View SAM.gov solicitation &rarr;{% else %}View SAM.gov record &rarr;{% endif %}
+      {% if sam_dest.source == 'usaspending' %}View Award on USAspending &rarr;{% elif opp_status.can_bid %}View SAM.gov solicitation &rarr;{% else %}View SAM.gov record &rarr;{% endif %}
     </a>
   </div>
   {% endif %}
@@ -446,7 +461,7 @@
 {% endif %}
 
 <div style="margin-top:12px">
-  {% if not sam_dest.is_exact %}
+  {% if sam_dest.destination_type == 'search' and sam_dest.url %}
   <a href="{{ sam_dest.url }}" target="_blank" rel="noopener noreferrer" class="cd-sam-link">
     Search SAM.gov for this contract &rarr;
   </a>
