@@ -18,6 +18,8 @@ import csv
 import logging
 import os
 import time
+
+import lifecycle
 from datetime import date, datetime, timedelta
 
 import requests
@@ -220,21 +222,31 @@ def recompete_score(row):
 def _priority(score, days=None):
     """Assign pursuit priority.
 
-    CRITICAL requires meaningful runway: a contract expiring in < 30 days
-    cannot be CRITICAL because there is no realistic time to prepare a bid.
-    High score with very short runway is HIGH at best.
+    CRITICAL is reserved for contracts in the canonical *critical lifecycle
+    window* — a valuable, actionable preparation window (see ``lifecycle``).
+    A contract that is Too Late / Expired (or otherwise outside that window)
+    can never be CRITICAL no matter how high its score, because there is no
+    realistic runway to prepare a competitive bid. Such contracts are HIGH at
+    best. This is the single guard that stops "few days remaining" contracts
+    from being labelled Critical.
+
+    ``days`` is optional: when it is unknown we fall back to the score-only
+    ladder (the caller has no lifecycle signal to apply).
     """
     if days is not None:
         try:
             days = int(days)
         except (TypeError, ValueError):
             days = None
-    if days is not None and days < 30:
+
+    # Known days but outside the critical window → never CRITICAL.
+    if days is not None and not lifecycle.is_critical(days):
         if score >= 75:
             return "HIGH"
         if score >= 60:
             return "MEDIUM"
         return "LOW"
+
     if score >= 90:
         return "CRITICAL"
     if score >= 75:

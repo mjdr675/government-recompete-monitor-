@@ -240,8 +240,9 @@
         <td class="cw-watch"><button class="bm-btn" data-id="{{ r['internal_id'] }}" onclick="bookmarkToggle(this)" title="Bookmark">{{ "★" if r['internal_id'] in watchlist_ids else "☆" }}</button></td>
         <td class="cw-cmp"><input type="checkbox" class="cmp-check" value="{{ r['internal_id'] }}" onchange="updateCompare()"></td>
         <td class="cw-pri">
-          <a class="priority-badge priority-{{ (r["priority"] or "unknown").lower().replace(" ", "-").replace("_", "-") }}"
-             href="/contract/{{ r["internal_id"] }}">{{ r["priority"] }}</a>
+          {% set eff_pri = effective_priority(r["priority"], r["days_remaining"]) %}
+          <a class="priority-badge priority-{{ (eff_pri or "unknown").lower().replace(" ", "-").replace("_", "-") }}"
+             href="/contract/{{ r["internal_id"] }}">{{ eff_pri }}</a>
           {% if pipeline_map and r['internal_id'] in pipeline_map %}
           <a href="/pipeline/{{ pipeline_map[r['internal_id']] }}"
              style="font-size:10.5px;padding:1px 6px;border-radius:var(--radius-sm);background:#d1fae5;color:#065f46;font-weight:600;text-decoration:none;vertical-align:middle;margin-left:4px">&#10003; Pipeline</a>
@@ -304,7 +305,8 @@
   <div class="mobile-card">
     <div class="mobile-card-head">
       <a href="/contract/{{ r['internal_id'] }}" class="mobile-card-title">{{ r["vendor"] or r["award_id"] or r["internal_id"] }}</a>
-      <span class="priority-badge priority-{{ (r["priority"] or "unknown").lower().replace(" ", "-").replace("_", "-") }}">{{ r["priority"] }}</span>
+      {% set eff_pri = effective_priority(r["priority"], r["days_remaining"]) %}
+      <span class="priority-badge priority-{{ (eff_pri or "unknown").lower().replace(" ", "-").replace("_", "-") }}">{{ eff_pri }}</span>
     </div>
     <div class="mobile-card-agency">{{ r["agency"] or '—' }}{% if r.get("place_of_performance_state") %} &middot; {% if r.get("place_of_performance_city") %}{{ r["place_of_performance_city"] }}, {% endif %}{{ r["place_of_performance_state"] }}{% if r.get("place_of_performance_zip") %} {{ r["place_of_performance_zip"] }}{% endif %}{% endif %}</div>
     <div class="mobile-card-meta">

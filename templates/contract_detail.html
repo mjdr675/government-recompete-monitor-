@@ -435,9 +435,9 @@
     <p>{{ opp_status.reason }}</p>
     <p class="muted"><strong>Next action:</strong> {{ opp_status.next_action }}</p>
   </div>
-  {% if row.get("sam_url") %}
+  {% if sam_dest.is_exact %}
   <div class="cd-bid-footer">
-    <a href="{{ row['sam_url'] }}" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="font-size:13px">
+    <a href="{{ sam_dest.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="font-size:13px">
       {% if opp_status.can_bid %}View SAM.gov solicitation &rarr;{% else %}View SAM.gov record &rarr;{% endif %}
     </a>
   </div>
@@ -446,9 +446,8 @@
 {% endif %}
 
 <div style="margin-top:12px">
-  {% if not row.get("sam_url") %}
-  <a href="https://sam.gov/content/opportunities?keywords={{ (row.get('solicitation_id') or row.get('vendor') or '')|urlencode }}"
-     target="_blank" rel="noopener noreferrer" class="cd-sam-link">
+  {% if not sam_dest.is_exact %}
+  <a href="{{ sam_dest.url }}" target="_blank" rel="noopener noreferrer" class="cd-sam-link">
     Search SAM.gov for this contract &rarr;
   </a>
   {% endif %}

@@ -95,6 +95,8 @@ from business_match import (
 from report_builder import build_report
 from views import SAVED_VIEWS, build_view_query, format_filter_summary, active_filter_chips, quick_views, active_view_id
 from apply_window import apply_stage, is_applyable, in_sweet_spot, MIN_APPLY_DAYS, MAX_PREP_DAYS
+from sam_links import resolve_apply_destination
+import lifecycle
 import hubspot_service
 from users import (
     get_user_by_email,
@@ -275,6 +277,7 @@ app.view_functions["auth.register"] = limiter.limit(
 app.jinja_env.globals["format_filter_summary"] = format_filter_summary
 app.jinja_env.globals["apply_stage"] = apply_stage
 app.jinja_env.globals["is_applyable"] = is_applyable
+app.jinja_env.globals["effective_priority"] = lifecycle.effective_priority
 
 init_db()
 
@@ -1781,6 +1784,12 @@ def contract_detail(internal_id):
                            solicitation_window=solicitation_window,
                            action_steps=action_steps,
                            highlights=highlights,
+                           sam_dest=resolve_apply_destination({
+                               "sam_url": row.get("sam_url") or "",
+                               "solicitation_id": row.get("solicitation_id") or "",
+                               "agency": row.get("agency") or "",
+                               "description": row.get("description") or "",
+                           }),
                            score_headline=score_headline)
 
 
@@ -1799,15 +1808,20 @@ def contract_apply(internal_id):
     stage_key, stage_label, stage_detail = apply_stage(row.get("days_remaining"))
     applyable = is_applyable(row.get("days_remaining"))
 
-    # Build a SAM.gov search URL seeded with the incumbent solicitation number
-    # (if known) or the agency/work description so the user can find the live notice.
+    # Resolve the most specific trustworthy SAM.gov destination: the exact stored
+    # opportunity record when we have a validated URL, else a narrow search on the
+    # incumbent solicitation number, else a broad agency/work-type search. See
+    # sam_links.resolve_apply_destination for the deterministic precedence.
     solicitation_id = row.get("solicitation_id") or extract_raw_field(row, "solicitation_id") or ""
     sam_naics = extract_raw_field(row, "sam_naics") or extract_raw_field(row, "naics_code") or row.get("naics_code") or ""
-    if solicitation_id:
-        sam_search_url = "https://sam.gov/search/?keywords=" + urllib.parse.quote(str(solicitation_id))
-    else:
-        terms = " ".join(filter(None, [row.get("agency") or "", row.get("description") or ""]))[:120]
-        sam_search_url = "https://sam.gov/search/?keywords=" + urllib.parse.quote(terms)
+    sam_dest = resolve_apply_destination({
+        "sam_url": row.get("sam_url") or "",
+        "solicitation_id": solicitation_id,
+        "agency": row.get("agency") or "",
+        "description": row.get("description") or "",
+    })
+    sam_search_url = sam_dest["url"]
+    sam_is_exact = sam_dest["is_exact"]
 
     category = infer_category(
         description=row.get("description") or "",
@@ -1829,6 +1843,7 @@ def contract_apply(internal_id):
         stage_detail=stage_detail,
         applyable=applyable,
         sam_search_url=sam_search_url,
+        sam_is_exact=sam_is_exact,
         sam_naics=sam_naics,
         solicitation_id=solicitation_id,
         category=category,
