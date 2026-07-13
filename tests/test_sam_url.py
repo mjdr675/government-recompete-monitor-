@@ -255,6 +255,72 @@ class TestContractDetailTemplate:
 # sam_lookup returns sam_url from API uiLink field
 # ---------------------------------------------------------------------------
 
+class TestContractSamDestConsistency:
+    """contract_detail and contract_apply must resolve the identical SAM.gov
+    destination for the same contract (see sam_links.resolve_apply_destination
+    and app._resolve_contract_sam_dest, the shared helper both routes call)."""
+
+    def _insert_contract(self, db_path, internal_id, sam_url="", solicitation_id="", raw_json=None):
+        con = sqlite3.connect(db_path)
+        con.execute(
+            "INSERT OR REPLACE INTO contracts "
+            "(internal_id, award_id, vendor, agency, value, end_date, priority, "
+            " recompete_score, solicitation_id, sam_url, raw_json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (internal_id, "AWARD-123", "Test Vendor", "DOD",
+             1_000_000, "2026-12-31", "HIGH", 80, solicitation_id, sam_url, raw_json),
+        )
+        con.commit()
+        con.close()
+
+    def test_detail_and_apply_agree_when_solicitation_id_only_in_raw_json(self, client, test_db):
+        import json as json_module
+        self._insert_contract(
+            test_db, "CONT_RAWONLY",
+            sam_url="", solicitation_id="",
+            raw_json=json_module.dumps({"solicitation_id": "SOL-FROM-RAW"}),
+        )
+        detail_rv = client.get("/contract/CONT_RAWONLY")
+        apply_rv = client.get("/contract/CONT_RAWONLY/apply")
+
+        assert detail_rv.status_code == 200
+        assert apply_rv.status_code == 200
+        # Both pages must resolve to the same narrow_search destination built
+        # from the solicitation id recovered from raw_json, not a general search.
+        assert b"SOL-FROM-RAW" in detail_rv.data
+        assert b"SOL-FROM-RAW" in apply_rv.data
+
+    def test_exact_sam_url_still_wins_on_detail_page(self, client, test_db):
+        self._insert_contract(
+            test_db, "CONT_EXACT", sam_url="https://sam.gov/opp/exact-uuid/view",
+            solicitation_id="", raw_json=None,
+        )
+        rv = client.get("/contract/CONT_EXACT")
+        assert b"https://sam.gov/opp/exact-uuid/view" in rv.data
+
+    def test_unsafe_sam_url_rejected_falls_back_to_search(self, client, test_db):
+        self._insert_contract(
+            test_db, "CONT_UNSAFE", sam_url="javascript:alert(1)",
+            solicitation_id="SOL-SAFE-FALLBACK", raw_json=None,
+        )
+        rv = client.get("/contract/CONT_UNSAFE")
+        assert rv.status_code == 200
+        assert b"javascript:alert(1)" not in rv.data
+        assert b"SOL-SAFE-FALLBACK" in rv.data
+
+    def test_missing_identifiers_use_general_search_fallback_on_both_routes(self, client, test_db):
+        self._insert_contract(
+            test_db, "CONT_NOID", sam_url="", solicitation_id="", raw_json=None,
+        )
+        detail_rv = client.get("/contract/CONT_NOID")
+        apply_rv = client.get("/contract/CONT_NOID/apply")
+
+        assert detail_rv.status_code == 200
+        assert apply_rv.status_code == 200
+        assert b"sam.gov/search" in detail_rv.data
+        assert b"sam.gov/search" in apply_rv.data
+
+
 class TestSamLookupReturnsUrl:
     def test_lookup_solicitation_returns_sam_url_from_ui_link(self, monkeypatch):
         import sam_lookup

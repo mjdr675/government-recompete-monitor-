@@ -1,16 +1,25 @@
 from db import connect, get_engine
 from sqlalchemy import text
 
+import lifecycle
+
+# The "Critical Opportunities" surfaces show only contracts in the canonical
+# critical lifecycle window (a valuable, actionable preparation window). This
+# excludes Too Late / Expired contracts and guards against any stale stored
+# priority='CRITICAL' on a near-expired row surfacing as Critical. See lifecycle.
+_CRIT_MIN = lifecycle.CLOSING_MIN       # 30 — excludes Too Late / Expired
+_CRIT_MAX = lifecycle.BEST_WINDOW_MAX   # 540 — excludes Long Range
+
 
 def dashboard_analytics():
     """Platform-wide summary stats and key lists for the customer dashboard."""
     engine = get_engine()
     with engine.connect() as conn:
-        platform = conn.execute(text("""
+        platform = conn.execute(text(f"""
             SELECT
                 COUNT(*) AS total_contracts,
                 COALESCE(SUM(value), 0) AS total_pipeline,
-                SUM(CASE WHEN priority='CRITICAL' THEN 1 ELSE 0 END) AS critical_contracts,
+                SUM(CASE WHEN priority='CRITICAL' AND days_remaining BETWEEN {_CRIT_MIN} AND {_CRIT_MAX} THEN 1 ELSE 0 END) AS critical_contracts,
                 SUM(CASE WHEN COALESCE(days_remaining, 0) > 0 THEN 1 ELSE 0 END) AS active_contracts,
                 COALESCE(AVG(recompete_score), 0) AS avg_score
             FROM contracts
@@ -25,11 +34,12 @@ def dashboard_analytics():
             LIMIT 10
         """)).mappings().fetchall()
 
-        critical = conn.execute(text("""
+        critical = conn.execute(text(f"""
             SELECT internal_id, award_id, vendor, agency, value, end_date,
                    days_remaining, recompete_score
             FROM contracts
-            WHERE priority = 'CRITICAL' AND COALESCE(days_remaining, 0) > 0
+            WHERE priority = 'CRITICAL'
+              AND days_remaining BETWEEN {_CRIT_MIN} AND {_CRIT_MAX}
             ORDER BY recompete_score DESC, days_remaining ASC
             LIMIT 10
         """)).mappings().fetchall()
@@ -117,7 +127,8 @@ def opportunity_recommendations():
         for r in conn.execute(text(f"""
             SELECT {_intel_cols}
             FROM contracts
-            WHERE priority = 'CRITICAL' AND COALESCE(days_remaining, 0) > 0
+            WHERE priority = 'CRITICAL'
+              AND days_remaining BETWEEN {_CRIT_MIN} AND {_CRIT_MAX}
             ORDER BY recompete_score DESC LIMIT 3
         """)).mappings().fetchall():
             _add(r, "Critical priority contract")
@@ -675,13 +686,13 @@ def vendor_profile_analytics(vendor):
     """Return profile data for a single vendor."""
     engine = get_engine()
     with engine.connect() as conn:
-        summary = dict(conn.execute(text("""
+        summary = dict(conn.execute(text(f"""
             SELECT
                 COUNT(*) AS contracts,
                 COALESCE(SUM(value),0) AS pipeline_value,
                 COALESCE(AVG(recompete_score),0) AS avg_score,
                 MAX(recompete_score) AS max_score,
-                SUM(CASE WHEN priority='CRITICAL' THEN 1 ELSE 0 END) AS critical_contracts,
+                SUM(CASE WHEN priority='CRITICAL' AND days_remaining BETWEEN {_CRIT_MIN} AND {_CRIT_MAX} THEN 1 ELSE 0 END) AS critical_contracts,
                 SUM(CASE WHEN COALESCE(days_remaining,0) > 0 THEN 1 ELSE 0 END) AS active_contracts,
                 SUM(CASE WHEN COALESCE(days_remaining,0) <= 0 THEN 1 ELSE 0 END) AS expired_contracts,
                 COALESCE(AVG(CASE WHEN days_remaining IS NOT NULL THEN days_remaining END), 0) AS avg_days_remaining,
@@ -829,10 +840,11 @@ def vendor_profile_analytics(vendor):
             ORDER BY days_remaining ASC
         """), {"vendor": vendor}).mappings().fetchall()]
 
-        critical_contracts = [dict(r) for r in conn.execute(text("""
+        critical_contracts = [dict(r) for r in conn.execute(text(f"""
             SELECT internal_id, agency, value, priority, recompete_score, days_remaining, end_date
             FROM contracts
             WHERE vendor = :vendor AND priority = 'CRITICAL'
+              AND days_remaining BETWEEN {_CRIT_MIN} AND {_CRIT_MAX}
             ORDER BY recompete_score DESC
         """), {"vendor": vendor}).mappings().fetchall()]
 
@@ -904,13 +916,13 @@ def agency_profile(agency):
     """Return profile data for a single agency."""
     engine = get_engine()
     with engine.connect() as conn:
-        summary = dict(conn.execute(text("""
+        summary = dict(conn.execute(text(f"""
             SELECT
                 COUNT(*) AS contracts,
                 COALESCE(SUM(value),0) AS pipeline_value,
                 COALESCE(AVG(recompete_score),0) AS avg_score,
                 MAX(recompete_score) AS max_score,
-                SUM(CASE WHEN priority='CRITICAL' THEN 1 ELSE 0 END) AS critical_contracts,
+                SUM(CASE WHEN priority='CRITICAL' AND days_remaining BETWEEN {_CRIT_MIN} AND {_CRIT_MAX} THEN 1 ELSE 0 END) AS critical_contracts,
                 SUM(CASE WHEN COALESCE(days_remaining,0) > 0 THEN 1 ELSE 0 END) AS active_contracts,
                 SUM(CASE WHEN COALESCE(days_remaining,0) <= 0 THEN 1 ELSE 0 END) AS expired_contracts
             FROM contracts
