@@ -1668,6 +1668,23 @@ def ingest_status():
     return tail, 200, {"Content-Type": "text/plain; charset=utf-8"}
 
 
+def _resolve_contract_sam_dest(row):
+    """Shared SAM.gov destination resolution for contract_detail and contract_apply.
+
+    Keeps the two routes from drifting apart: both need the same solicitation_id
+    fallback to raw_json (via extract_raw_field) so a contract with the id only
+    in raw_json still resolves to the same narrow_search destination on either
+    page. See sam_links.resolve_apply_destination for the precedence order.
+    """
+    solicitation_id = row.get("solicitation_id") or extract_raw_field(row, "solicitation_id") or ""
+    return resolve_apply_destination({
+        "sam_url": row.get("sam_url") or "",
+        "solicitation_id": solicitation_id,
+        "agency": row.get("agency") or "",
+        "description": row.get("description") or "",
+    })
+
+
 @app.route("/contract/<internal_id>")
 def contract_detail(internal_id):
     with get_engine().connect() as conn:
@@ -1784,12 +1801,7 @@ def contract_detail(internal_id):
                            solicitation_window=solicitation_window,
                            action_steps=action_steps,
                            highlights=highlights,
-                           sam_dest=resolve_apply_destination({
-                               "sam_url": row.get("sam_url") or "",
-                               "solicitation_id": row.get("solicitation_id") or "",
-                               "agency": row.get("agency") or "",
-                               "description": row.get("description") or "",
-                           }),
+                           sam_dest=_resolve_contract_sam_dest(row),
                            score_headline=score_headline)
 
 
@@ -1811,15 +1823,11 @@ def contract_apply(internal_id):
     # Resolve the most specific trustworthy SAM.gov destination: the exact stored
     # opportunity record when we have a validated URL, else a narrow search on the
     # incumbent solicitation number, else a broad agency/work-type search. See
-    # sam_links.resolve_apply_destination for the deterministic precedence.
+    # _resolve_contract_sam_dest / sam_links.resolve_apply_destination for the
+    # deterministic precedence (shared with contract_detail).
     solicitation_id = row.get("solicitation_id") or extract_raw_field(row, "solicitation_id") or ""
     sam_naics = extract_raw_field(row, "sam_naics") or extract_raw_field(row, "naics_code") or row.get("naics_code") or ""
-    sam_dest = resolve_apply_destination({
-        "sam_url": row.get("sam_url") or "",
-        "solicitation_id": solicitation_id,
-        "agency": row.get("agency") or "",
-        "description": row.get("description") or "",
-    })
+    sam_dest = _resolve_contract_sam_dest(row)
     sam_search_url = sam_dest["url"]
     sam_is_exact = sam_dest["is_exact"]
 
