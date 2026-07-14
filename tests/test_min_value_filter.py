@@ -19,7 +19,12 @@ def tmp_db(tmp_path, monkeypatch):
 
 
 def _seed(values):
-    """Insert minimal contract rows with the given dollar values."""
+    """Insert minimal contract rows with the given dollar values.
+
+    days_remaining is set inside the actionable window (200) so these
+    value-filter route tests are not affected by the default actionable-window
+    floor applied on the /contracts listing.
+    """
     for i, v in enumerate(values):
         db_module.upsert_contract({
             "internal_id": f"ID{i}",
@@ -27,6 +32,7 @@ def _seed(values):
             "vendor": f"Vendor {i}",
             "agency": "TEST AGENCY",
             "value": v,
+            "days_remaining": 200,
             "recompete_score": 50,
             "priority": "MEDIUM",
         })

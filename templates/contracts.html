@@ -108,6 +108,14 @@
         {% endfor %}
       </select>
     </div>
+    <div class="filter-field sm">
+      <label title="Whether the contract is currently open for bidding or already closed/awarded — independent of recompete priority">Procurement</label>
+      <select name="procurement" aria-label="Procurement status filter">
+        <option value="" {% if procurement == "" %}selected{% endif %}>Open &amp; Closed{% if status_counts %} ({{ status_counts.open + status_counts.closed }}){% endif %}</option>
+        <option value="open" {% if procurement == "open" %}selected{% endif %}>Open{% if status_counts %} ({{ status_counts.open }}){% endif %}</option>
+        <option value="closed" {% if procurement == "closed" %}selected{% endif %}>Closed{% if status_counts %} ({{ status_counts.closed }}){% endif %}</option>
+      </select>
+    </div>
     </div>
     <input type="hidden" name="sort" value="{{ sort }}">
     <input type="hidden" name="dir" value="{{ direction }}">
@@ -145,7 +153,7 @@
 {% if g.user %}
 <div style="margin:-8px 0 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
   {% if for_my_business %}
-    <a href="/contracts?q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}{% if not applyable %}&applyable=0{% endif %}"
+    <a href="/contracts?q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&procurement={{ procurement }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}{% if not applyable %}&applyable=0{% endif %}"
        class="btn btn-primary" style="padding:5px 14px;font-size:13px">&#10003; For My Business</a>
     <a href="/contracts" class="muted" style="font-size:12px;text-decoration:underline">Show all contracts</a>
     {% if not has_profile %}
@@ -153,26 +161,26 @@
     {% endif %}
   {% else %}
     {% if not has_profile %}
-    <a href="/contracts?for_my_business=1&q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}{% if not applyable %}&applyable=0{% endif %}"
+    <a href="/contracts?for_my_business=1&q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&procurement={{ procurement }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}{% if not applyable %}&applyable=0{% endif %}"
        class="btn btn-ghost" style="padding:5px 14px;font-size:13px" title="Filter using your Company Profile">For My Business</a>
     <span class="muted" style="font-size:12px">— <a href="/company-profile">Set up your Company Profile</a> first</span>
     {% else %}
-    <a href="/contracts?for_my_business=1&q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}{% if not applyable %}&applyable=0{% endif %}"
+    <a href="/contracts?for_my_business=1&q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&procurement={{ procurement }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}{% if not applyable %}&applyable=0{% endif %}"
        class="btn btn-ghost" style="padding:5px 14px;font-size:13px" title="Filter using your Company Profile">For My Business</a>
     {% endif %}
   {% endif %}
   {% if in_pipeline %}
-    <a href="/contracts?q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}{% if discover %}&discover=1{% endif %}{% if not applyable %}&applyable=0{% endif %}"
+    <a href="/contracts?q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&procurement={{ procurement }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}{% if discover %}&discover=1{% endif %}{% if not applyable %}&applyable=0{% endif %}"
        class="btn btn-primary" style="padding:5px 14px;font-size:13px">&#10003; In My Pipeline</a>
   {% elif pipeline_map %}
-    <a href="/contracts?in_pipeline=1&q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}{% if not applyable %}&applyable=0{% endif %}"
+    <a href="/contracts?in_pipeline=1&q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&procurement={{ procurement }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}{% if not applyable %}&applyable=0{% endif %}"
        class="btn btn-ghost" style="padding:5px 14px;font-size:13px" title="Show only contracts in your pipeline">In My Pipeline</a>
   {% endif %}
   {% if discover %}
-    <a href="/contracts?q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if not applyable %}&applyable=0{% endif %}"
+    <a href="/contracts?q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&procurement={{ procurement }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if not applyable %}&applyable=0{% endif %}"
        class="btn btn-primary" style="padding:5px 14px;font-size:13px">&#10003; Discover Mode</a>
   {% elif pipeline_map %}
-    <a href="/contracts?discover=1&q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}{% if not applyable %}&applyable=0{% endif %}"
+    <a href="/contracts?discover=1&q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&procurement={{ procurement }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}{% if not applyable %}&applyable=0{% endif %}"
        class="btn btn-ghost" style="padding:5px 14px;font-size:13px" title="Show only contracts not yet in your pipeline">Discover</a>
   {% endif %}
 </div>
@@ -206,7 +214,7 @@
 {% macro sort_link(col, label) %}
   {% set next_dir = "asc" if (sort == col and direction == "desc") else "desc" %}
   {% set arrow = " ↓" if (sort == col and direction == "desc") else (" ↑" if sort == col else "") %}
-  <a href="/contracts?q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&state={{ state }}&category={{ category }}&sort={{ col }}&dir={{ next_dir }}{% if for_my_business %}&for_my_business=1{% endif %}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}{% if not applyable %}&applyable=0{% endif %}">{{ label }}{{ arrow }}</a>
+  <a href="/contracts?q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&procurement={{ procurement }}&state={{ state }}&category={{ category }}&sort={{ col }}&dir={{ next_dir }}{% if for_my_business %}&for_my_business=1{% endif %}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}{% if not applyable %}&applyable=0{% endif %}">{{ label }}{{ arrow }}</a>
 {% endmacro %}
 
 {# ── Desktop table (hidden on mobile) ──────────────────────── #}
@@ -240,9 +248,17 @@
         <td class="cw-watch"><button class="bm-btn" data-id="{{ r['internal_id'] }}" onclick="bookmarkToggle(this)" title="Bookmark">{{ "★" if r['internal_id'] in watchlist_ids else "☆" }}</button></td>
         <td class="cw-cmp"><input type="checkbox" class="cmp-check" value="{{ r['internal_id'] }}" onchange="updateCompare()"></td>
         <td class="cw-pri">
+          {% set ps = r.get("proc_status") %}
+          {% if ps %}
+          <span class="proc-badge proc-{{ ps.code|replace('_','-') }}" role="status"
+                aria-label="Procurement status: {{ ps.label }}"
+                title="{{ ps.label }}"
+                style="display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:999px;margin-bottom:3px;{% if ps.is_open %}background:#d1fae5;color:#065f46;border:1px solid #6ee7b7{% else %}background:var(--border);color:var(--text-muted);border:1px solid var(--border){% endif %}">{{ ps.badge }}</span>
+          <br>
+          {% endif %}
           {% set eff_pri = effective_priority(r["priority"], r["days_remaining"]) %}
           <a class="priority-badge priority-{{ (eff_pri or "unknown").lower().replace(" ", "-").replace("_", "-") }}"
-             href="/contract/{{ r["internal_id"] }}">{{ eff_pri }}</a>
+             href="/contract/{{ r["internal_id"] }}" title="Recompete priority (lifecycle)">{{ eff_pri }}</a>
           {% if pipeline_map and r['internal_id'] in pipeline_map %}
           <a href="/pipeline/{{ pipeline_map[r['internal_id']] }}"
              style="font-size:10.5px;padding:1px 6px;border-radius:var(--radius-sm);background:#d1fae5;color:#065f46;font-weight:600;text-decoration:none;vertical-align:middle;margin-left:4px">&#10003; Pipeline</a>
@@ -305,8 +321,16 @@
   <div class="mobile-card">
     <div class="mobile-card-head">
       <a href="/contract/{{ r['internal_id'] }}" class="mobile-card-title">{{ r["vendor"] or r["award_id"] or r["internal_id"] }}</a>
-      {% set eff_pri = effective_priority(r["priority"], r["days_remaining"]) %}
-      <span class="priority-badge priority-{{ (eff_pri or "unknown").lower().replace(" ", "-").replace("_", "-") }}">{{ eff_pri }}</span>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+        {% set ps = r.get("proc_status") %}
+        {% if ps %}
+        <span class="proc-badge proc-{{ ps.code|replace('_','-') }}" role="status"
+              aria-label="Procurement status: {{ ps.label }}"
+              style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:999px;{% if ps.is_open %}background:#d1fae5;color:#065f46;border:1px solid #6ee7b7{% else %}background:var(--border);color:var(--text-muted);border:1px solid var(--border){% endif %}">{{ ps.badge }}</span>
+        {% endif %}
+        {% set eff_pri = effective_priority(r["priority"], r["days_remaining"]) %}
+        <span class="priority-badge priority-{{ (eff_pri or "unknown").lower().replace(" ", "-").replace("_", "-") }}">{{ eff_pri }}</span>
+      </div>
     </div>
     <div class="mobile-card-agency">{{ r["agency"] or '—' }}{% if r.get("place_of_performance_state") %} &middot; {% if r.get("place_of_performance_city") %}{{ r["place_of_performance_city"] }}, {% endif %}{{ r["place_of_performance_state"] }}{% if r.get("place_of_performance_zip") %} {{ r["place_of_performance_zip"] }}{% endif %}{% endif %}</div>
     <div class="mobile-card-meta">
@@ -350,7 +374,7 @@
 </div>
 
 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px">
-  {% set base_qs %}q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}{% if not applyable %}&applyable=0{% endif %}{% endset %}
+  {% set base_qs %}q={{ q }}&agency={{ agency }}&naics_code={{ naics_code }}&priority={{ priority }}&days={{ days }}&min_days_left={{ min_days_left }}&min_value={{ min_value }}&status={{ status }}&actionability={{ actionability }}&procurement={{ procurement }}&state={{ state }}&category={{ category }}&sort={{ sort }}&dir={{ direction }}{% if for_my_business %}&for_my_business=1{% endif %}{% if in_pipeline %}&in_pipeline=1{% endif %}{% if discover %}&discover=1{% endif %}{% if not applyable %}&applyable=0{% endif %}{% endset %}
 
   {% if has_prev %}
     <a href="/contracts?{{ base_qs }}&page=1" class="btn btn-ghost" style="padding:5px 10px">First</a>

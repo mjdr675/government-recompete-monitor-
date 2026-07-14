@@ -94,9 +94,16 @@ class TestHidden:
 
 class TestEffectivePriority:
     def test_high_score_cannot_restore_critical_under_30(self):
-        # A stale/stored CRITICAL on a 5-day contract must not display Critical.
-        assert lifecycle.effective_priority("CRITICAL", 5) == "HIGH"
-        assert lifecycle.effective_priority("CRITICAL", 29) == "HIGH"
+        # A stale/stored CRITICAL on a Too Late contract must never display High
+        # or Critical — canonical rule: < 30 days is never High/Critical.
+        assert lifecycle.effective_priority("CRITICAL", 5) == "LOW"
+        assert lifecycle.effective_priority("CRITICAL", 29) == "LOW"
+
+    def test_high_under_30_downgraded(self):
+        # A stored HIGH on a Too Late / Expired record must not display High.
+        assert lifecycle.effective_priority("HIGH", 5) == "LOW"
+        assert lifecycle.effective_priority("HIGH", 0) == "LOW"
+        assert lifecycle.effective_priority("HIGH", -3) == "LOW"
 
     def test_critical_kept_in_window(self):
         assert lifecycle.effective_priority("CRITICAL", 200) == "CRITICAL"
@@ -106,7 +113,8 @@ class TestEffectivePriority:
         assert lifecycle.effective_priority("CRITICAL", 900) == "HIGH"
 
     def test_non_critical_pass_through(self):
-        assert lifecycle.effective_priority("HIGH", 5) == "HIGH"
+        # Inside/above the actionable window a non-CRITICAL priority is untouched.
+        assert lifecycle.effective_priority("HIGH", 100) == "HIGH"
         assert lifecycle.effective_priority("LOW", 500) == "LOW"
 
     def test_unknown_days_leaves_priority_untouched(self):

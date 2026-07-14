@@ -130,19 +130,29 @@ def label(days_remaining):
 
 
 def effective_priority(priority, days_remaining):
-    """Display guard: never present a contract as 'CRITICAL' outside the critical
-    window.
+    """Display guard so a stored priority never overstates lifecycle urgency.
 
-    A stored ``priority`` of CRITICAL on a Too Late / Expired / otherwise
-    non-critical-window contract is downgraded to HIGH for display, so high
-    score/value can never surface a near-expired contract as Critical in any
-    listing or badge. Non-CRITICAL priorities pass through unchanged; when days
-    are unknown we leave the stored priority as-is (no lifecycle signal).
+    Two rules, in order of the day bucket:
+
+      * Too Late / Expired (< 30 days, ``hidden_by_default``): a record this
+        close to (or past) expiry must **never** display High **or** Critical —
+        there is no realistic runway to prepare a competitive bid. A stored
+        CRITICAL/HIGH is downgraded to LOW.
+      * Long Range (> 540 days) and any other non-critical bucket: a stored
+        CRITICAL is downgraded to HIGH (real value, but not an imminent
+        actionable window).
+
+    Inside the critical window (30..540) the stored priority stands. When days
+    are unknown we leave the stored priority as-is (no lifecycle signal). This
+    is the single guard that stops high score/value from surfacing a
+    near-expired contract as High/Critical in any listing or badge.
     """
     p = (priority or "").strip()
-    if p.upper() != "CRITICAL":
-        return priority
     if _coerce_days(days_remaining) is None:
+        return priority
+    if is_hidden_by_default(days_remaining):
+        return "LOW" if p.upper() in ("CRITICAL", "HIGH") else priority
+    if p.upper() != "CRITICAL":
         return priority
     return priority if is_critical(days_remaining) else "HIGH"
 

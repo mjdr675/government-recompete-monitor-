@@ -96,12 +96,13 @@
         This contract appearing here means the <em>current</em> award is expiring — the agency hasn't necessarily posted
         the new solicitation yet. When they do, it shows up on SAM.gov as a Sources Sought notice, an RFI, or a full
         Solicitation.
-        {% if sam_is_exact %}The button below opens the exact SAM.gov record we have on file for this opportunity.
+        {% if sam_dest.destination_type == 'award' %}The button below opens the current award record on {% if sam_dest.source == 'usaspending' %}USAspending.gov{% else %}SAM.gov{% endif %}. This contract has already been awarded — the record is here for incumbent research; the follow-on solicitation may not be posted on SAM.gov yet.
+        {% elif sam_is_exact %}The button below opens the exact SAM.gov record we have on file for this opportunity.
         {% else %}The button below runs a SAM.gov search
         {% if solicitation_id %}for the incumbent solicitation number <strong>{{ solicitation_id }}</strong>{% else %}seeded with this agency and work type{% endif %}
         so you can find it (or set up a follow notification for when it drops).{% endif %}
       </div>
-      <a href="{{ sam_search_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="font-size:13px;padding:6px 14px">{% if sam_is_exact %}Open this opportunity on SAM.gov{% else %}Search SAM.gov for this opportunity{% endif %} &rarr;</a>
+      <a href="{{ sam_dest.url or sam_search_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="font-size:13px;padding:6px 14px">{% if sam_dest.label %}{{ sam_dest.label }} on {% if sam_dest.source == 'usaspending' %}USAspending{% else %}SAM.gov{% endif %}{% else %}Search SAM.gov for this opportunity{% endif %} &rarr;</a>
       {% if sam_naics %}
       <div class="muted" style="font-size:12px;margin-top:6px">Tip: filter SAM.gov by NAICS <strong>{{ sam_naics }}</strong> to find similar work from the same agency.</div>
       {% endif %}
