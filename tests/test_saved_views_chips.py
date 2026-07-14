@@ -30,7 +30,12 @@ class TestFormatChipValue:
         assert _format_chip_value("priority", "CRITICAL") == "Critical"
 
     def test_status_open(self):
-        assert _format_chip_value("status", "open") == "Open only"
+        # Labeled "Not expired" (not "Open only") — this filter is purely
+        # days_remaining-based and is independent of procurement status, which
+        # has its own separate Open/Closed filter. See test_status_filter.py::
+        # TestStatusLabelDoesNotImplyProcurementOpen for the underlying
+        # root-cause regression test.
+        assert _format_chip_value("status", "open") == "Not expired"
 
     def test_status_expired(self):
         assert _format_chip_value("status", "expired") == "Expired"

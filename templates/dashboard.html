@@ -131,7 +131,7 @@
   {# ── Company-specific KPIs (only when we have actual matched contracts) ── #}
   <a href="/contracts?q={{ (contract_summary.match_term or '') | urlencode }}" class="kpi-card">
     <div class="kpi-header">
-      <span class="kpi-label">Current Awards</span>
+      <span class="kpi-label">Matched Awards</span>
       <svg class="kpi-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
         <polyline points="14 2 14 8 20 8"/>
@@ -528,11 +528,13 @@
       {# My Contracts panel #}
       <div id="panel-my-contracts">
 
-        {# Current Awards: matched by UEI > vendor_name > company_name #}
+        {# Matched Awards: matched by UEI > vendor_name > company_name — not a
+           guaranteed ownership registry, so the heading says "Matched" rather
+           than implying a verified list of awards this account holds. #}
         {% if contract_summary and contract_summary.contracts %}
         <div class="table-wrapper" style="margin-bottom:12px">
           <div class="table-header">
-            <h2>Current Awards</h2>
+            <h2>Matched Awards</h2>
             <span style="font-size:12px;color:var(--text-muted);font-weight:400">
               {{ contract_summary.count }} federal award{{ 's' if contract_summary.count != 1 }} matched by
               {% if contract_summary.match_method == 'uei' %}UEI: <strong>{{ contract_summary.match_term }}</strong>
@@ -555,8 +557,9 @@
                   {{ r.days_remaining if r.days_remaining is not none else '&mdash;' }}
                 </td>
                 <td>
-                  {% if r.priority %}
-                  <span class="priority-badge priority-{{ r.priority | lower }}">{{ r.priority }}</span>
+                  {% set eff_pri = effective_priority(r.priority, r.days_remaining) %}
+                  {% if eff_pri %}
+                  <span class="priority-badge priority-{{ eff_pri | lower }}">{{ eff_pri }}</span>
                   {% else %}&mdash;{% endif %}
                 </td>
               </tr>
@@ -968,8 +971,9 @@
         <tbody>
           {% for r in analytics.upcoming %}
           {% set days = r.days_remaining %}
+          {% set eff_pri = effective_priority(r.priority, r.days_remaining) %}
           <tr>
-            <td style="white-space:nowrap"><span class="priority-badge priority-{{ (r.priority or 'unknown').lower().replace(' ','-').replace('_','-') }}">{{ r.priority or '&mdash;' }}</span></td>
+            <td style="white-space:nowrap"><span class="priority-badge priority-{{ (eff_pri or 'unknown').lower().replace(' ','-').replace('_','-') }}">{{ eff_pri or '&mdash;' }}</span></td>
             <td><a href="/contract/{{ r.internal_id }}">{{ r.award_id or r.internal_id }}</a></td>
             <td class="col-r">${{ "{:,.0f}".format(r.value or 0) }}</td>
             <td class="col-r">
@@ -1115,7 +1119,9 @@
       </table>
       {% else %}
       <div class="empty-state" style="font-size:12.5px">
-        No recent updates on your watchlist or pipeline contracts yet.
+        No recent updates yet. Updates appear here when a watched or pipeline
+        contract changes — <a href="/contracts">browse contracts</a> and add a
+        few to your watchlist or pipeline to start tracking changes.
       </div>
       {% endif %}
     </div>
@@ -1130,10 +1136,17 @@
       {% if recommendations %}
       <div class="rec-opp-rows">
         {% for r in recommendations[:8] %}
+        {% set rec_ps = procurement_status(r) %}
+        {% set eff_pri = effective_priority(r.priority, r.days_remaining) %}
         <div class="rec-opp-row">
           <div class="rec-opp-row-head">
             <a href="/contract/{{ r.internal_id }}" class="rec-opp-title">{{ r.award_id or r.internal_id }}</a>
-            <span class="priority-badge priority-{{ (r.priority or 'unknown').lower().replace(' ','-').replace('_','-') }}">{{ r.priority or '—' }}</span>
+            <span style="display:inline-flex;gap:4px;align-items:center">
+              <span class="proc-badge proc-{{ rec_ps.code|replace('_','-') }}" role="status"
+                    aria-label="Procurement status: {{ rec_ps.label }}" title="{{ rec_ps.label }}"
+                    style="display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:999px;{% if rec_ps.is_open %}background:#d1fae5;color:#065f46;border:1px solid #6ee7b7{% else %}background:var(--border);color:var(--text);border:1px solid var(--text-muted){% endif %}">{{ rec_ps.badge }}</span>
+              <span class="priority-badge priority-{{ (eff_pri or 'unknown').lower().replace(' ','-').replace('_','-') }}">{{ eff_pri or '—' }}</span>
+            </span>
           </div>
           <div class="rec-opp-why"><span class="fmb-label">Why:</span> {{ r.reason }}</div>
         </div>
