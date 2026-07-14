@@ -43,6 +43,50 @@ class TestStatusCode:
         assert ps.procurement_status(row)["is_open"] is False
 
 
+class TestIntentToBundleIsNotAwardEvidence:
+    """"Intent to Bundle Requirements" is a pre-solicitation/planning notice,
+    not evidence of an award. It must not force closed_awarded — it falls
+    through to the days_remaining-based fallback like any other unmatched
+    sam_type, so real expiry evidence still wins.
+    """
+
+    def test_not_in_award_sam_types(self):
+        assert "intent to bundle requirements" not in ps.AWARD_SAM_TYPES
+
+    def test_alone_with_expired_days_is_not_closed_awarded(self):
+        # Previously this sam_type was in AWARD_SAM_TYPES, which forced
+        # closed_awarded and ignored days_remaining entirely — an already
+        # expired contract would still be reported as "already been awarded".
+        row = {"sam_type": "Intent to Bundle Requirements", "days_remaining": -15}
+        assert ps.status_code(row) == ps.CLOSED_EXPIRED
+        assert ps.status_code(row) != ps.CLOSED_AWARDED
+
+    def test_alone_produces_no_award_cta(self):
+        row = {"sam_type": "Intent to Bundle Requirements", "days_remaining": -15}
+        result = ps.procurement_status(row)
+        assert result["code"] != ps.CLOSED_AWARDED
+        assert result["label"] != ps.STATUS_LABELS[ps.CLOSED_AWARDED]
+        assert "already been awarded" not in result["explanation"].lower()
+
+    def test_distinct_from_actual_award_notice(self):
+        # A real award notice still forces closed_awarded regardless of days —
+        # "intent to bundle" is no longer treated the same way.
+        bundle = {"sam_type": "Intent to Bundle Requirements", "days_remaining": -15}
+        award = {"sam_type": "Award Notice", "days_remaining": -15}
+        assert ps.status_code(bundle) != ps.status_code(award)
+        assert ps.status_code(award) == ps.CLOSED_AWARDED
+
+    def test_existing_award_classifications_still_pass(self):
+        for sam_type in [
+            "Award Notice",
+            "Justification",
+            "Fair Opportunity / Limited Sources Justification",
+            "Modification/Amendment",
+        ]:
+            assert ps.status_code({"sam_type": sam_type, "days_remaining": 200}) == ps.CLOSED_AWARDED
+            assert ps.status_code({"sam_type": sam_type, "days_remaining": -10}) == ps.CLOSED_AWARDED
+
+
 class TestClassificationDict:
     def test_labels_and_badges(self):
         assert ps.procurement_status({"sam_type": "Solicitation"})["label"] == "Open"

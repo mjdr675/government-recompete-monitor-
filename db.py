@@ -18,7 +18,7 @@ DB_PATH = os.environ.get("DB_PATH", "contracts.db")
 # "applyable" when an SMB has enough runway left to realistically bid:
 # at least MIN_APPLY_DAYS and at most MAX_PREP_DAYS before the incumbent ends.
 APPLY_MIN_DAYS = 60
-APPLY_MAX_DAYS = 540
+APPLY_MAX_DAYS = lifecycle.BEST_WINDOW_MAX  # 540 — sourced from lifecycle so both bounds stay in sync
 
 # Canonical lower bound for the default *actionable* discovery window. Records
 # below this (Too Late / Expired, < 30 days) are excluded from default search/

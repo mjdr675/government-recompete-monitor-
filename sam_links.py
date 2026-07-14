@@ -10,7 +10,7 @@ delegating to the canonical resolver rather than duplicating link logic.
 ``resolve_apply_destination`` returns the legacy ``{url, kind, is_exact}`` shape.
 """
 
-from source_links import _host_source, resolve_source_destination
+from source_links import SAM, get_source, resolve_source_destination
 
 
 def is_safe_external_url(url):
@@ -19,7 +19,7 @@ def is_safe_external_url(url):
     Backward-compatible SAM-only safety gate. Rejects empty/None, non-https
     schemes, userinfo-embedding / host-spoofing attempts, and any non-SAM host.
     """
-    return _host_source(url) == "sam.gov"
+    return get_source(url) == SAM
 
 
 def resolve_apply_destination(row):

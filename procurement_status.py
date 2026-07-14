@@ -61,10 +61,15 @@ OPEN_SAM_TYPES = frozenset({
 })
 
 # Award / post-award informational notices — the contract is already awarded.
+# NOTE: "intent to bundle requirements" is deliberately excluded — it is a
+# pre-solicitation/planning notice (DFARS/FAR bundling notification), not
+# evidence of an award. Treating it as an award notice would force
+# closed_awarded even when days_remaining shows the record has actually
+# expired. Rows carrying only this notice type fall through to the
+# days_remaining-based fallback below instead.
 AWARD_SAM_TYPES = frozenset({
     "award notice",
     "justification",
-    "intent to bundle requirements",
     "fair opportunity / limited sources justification",
     "modification/amendment",
 })

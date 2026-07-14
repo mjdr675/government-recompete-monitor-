@@ -102,7 +102,7 @@
         {% if solicitation_id %}for the incumbent solicitation number <strong>{{ solicitation_id }}</strong>{% else %}seeded with this agency and work type{% endif %}
         so you can find it (or set up a follow notification for when it drops).{% endif %}
       </div>
-      <a href="{{ sam_dest.url or sam_search_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="font-size:13px;padding:6px 14px">{% if sam_dest.destination_type == 'award' %}View Award on {% if sam_dest.source == 'usaspending' %}USAspending{% else %}SAM.gov{% endif %}{% elif sam_is_exact %}View Opportunity on SAM.gov{% else %}Search SAM.gov for this opportunity{% endif %} &rarr;</a>
+      <a href="{{ sam_dest.url or sam_search_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="font-size:13px;padding:6px 14px">{% if sam_dest.label %}{{ sam_dest.label }} on {% if sam_dest.source == 'usaspending' %}USAspending{% else %}SAM.gov{% endif %}{% else %}Search SAM.gov for this opportunity{% endif %} &rarr;</a>
       {% if sam_naics %}
       <div class="muted" style="font-size:12px;margin-top:6px">Tip: filter SAM.gov by NAICS <strong>{{ sam_naics }}</strong> to find similar work from the same agency.</div>
       {% endif %}

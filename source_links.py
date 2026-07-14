@@ -99,6 +99,14 @@ def is_safe_source_url(url):
     return _host_source(url) is not None
 
 
+def get_source(url):
+    """Public accessor for the source key (``SAM``, ``USASPENDING``, or ``None``)
+    of a safe, allowlisted government URL. Other modules should use this
+    instead of importing the private ``_host_source`` helper directly.
+    """
+    return _host_source(url)
+
+
 def _usaspending_award_url(gid):
     return _USA_AWARD_BASE + quote(str(gid).strip(), safe="")
 
