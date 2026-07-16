@@ -93,9 +93,9 @@
       </select>
     </div>
     <div class="filter-field sm">
-      <label>Status</label>
+      <label title="Filters by days remaining until expiry only — independent of procurement status (see Procurement filter)">Expiry</label>
       <select name="status">
-        {% for val, label in [("", "All"), ("open", "Open only"), ("expired", "Expired")] %}
+        {% for val, label in [("", "All"), ("open", "Not expired"), ("expired", "Expired")] %}
           <option value="{{ val }}" {% if status == val %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
       </select>
@@ -253,7 +253,7 @@
           <span class="proc-badge proc-{{ ps.code|replace('_','-') }}" role="status"
                 aria-label="Procurement status: {{ ps.label }}"
                 title="{{ ps.label }}"
-                style="display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:999px;margin-bottom:3px;{% if ps.is_open %}background:#d1fae5;color:#065f46;border:1px solid #6ee7b7{% else %}background:var(--border);color:var(--text-muted);border:1px solid var(--border){% endif %}">{{ ps.badge }}</span>
+                style="display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:999px;margin-bottom:3px;{% if ps.is_open %}background:#d1fae5;color:#065f46;border:1px solid #6ee7b7{% else %}background:var(--border);color:var(--text);border:1px solid var(--text-muted){% endif %}">{{ ps.badge }}</span>
           <br>
           {% endif %}
           {% set eff_pri = effective_priority(r["priority"], r["days_remaining"]) %}
@@ -326,7 +326,7 @@
         {% if ps %}
         <span class="proc-badge proc-{{ ps.code|replace('_','-') }}" role="status"
               aria-label="Procurement status: {{ ps.label }}"
-              style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:999px;{% if ps.is_open %}background:#d1fae5;color:#065f46;border:1px solid #6ee7b7{% else %}background:var(--border);color:var(--text-muted);border:1px solid var(--border){% endif %}">{{ ps.badge }}</span>
+              style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:999px;{% if ps.is_open %}background:#d1fae5;color:#065f46;border:1px solid #6ee7b7{% else %}background:var(--border);color:var(--text);border:1px solid var(--text-muted){% endif %}">{{ ps.badge }}</span>
         {% endif %}
         {% set eff_pri = effective_priority(r["priority"], r["days_remaining"]) %}
         <span class="priority-badge priority-{{ (eff_pri or "unknown").lower().replace(" ", "-").replace("_", "-") }}">{{ eff_pri }}</span>

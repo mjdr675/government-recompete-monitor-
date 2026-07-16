@@ -242,4 +242,5 @@ def test_dashboard_recent_updates_shows_tracked_change(client):
 def test_dashboard_empty_updates_message(client):
     rv = client.get("/dashboard")
     body = rv.data.decode()
-    assert "No recent updates on your watchlist or pipeline contracts yet." in body
+    assert "No recent updates yet." in body
+    assert "browse contracts" in body.lower()

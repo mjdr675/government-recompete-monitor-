@@ -49,7 +49,10 @@ _CHIP_LABELS = {
     "days": "Expiring within",
     "min_days_left": "Min days left",
     "min_value": "Min value",
-    "status": "Status",
+    # Labeled "Expiry" (not "Status") to avoid colliding with the separate
+    # procurement-status Open/Closed filter — this one is purely
+    # days_remaining-based and says nothing about procurement status.
+    "status": "Expiry",
 }
 
 # Params that are not filters but must survive when a chip is removed (so sort
@@ -57,7 +60,7 @@ _CHIP_LABELS = {
 # filter changes the result set, so we reset to page 1.
 _PRESERVED_PARAMS = ("sort", "dir", "for_my_business", "in_pipeline", "discover")
 
-_STATUS_CHIP_VALUES = {"open": "Open only", "expired": "Expired"}
+_STATUS_CHIP_VALUES = {"open": "Not expired", "expired": "Expired"}
 
 
 def _format_chip_value(key, value):

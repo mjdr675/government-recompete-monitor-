@@ -78,6 +78,22 @@ class TestGetContractsStatus:
         r = db_module.get_contracts(status="open", agency="DOD")
         assert _ids(r) == ["OPEN1"]
 
+    def test_status_open_can_include_procurement_closed_rows_by_design(self, test_db):
+        # Root-cause regression for the "Open only filter shows Closed
+        # contracts" report: status=open filters on days_remaining only (a
+        # lifecycle/expiry concept) and is entirely independent of
+        # procurement_status (Open / Closed-Awarded / Closed-Expired /
+        # Cancelled). A contract with no live SAM.gov opportunity notice is a
+        # running USASpending award — procurement status Closed (Awarded) —
+        # yet still passes status=open because its expiry window hasn't
+        # lapsed. This is expected behavior: the mislabeled UI text ("Open
+        # only") was the bug, not the filtering logic — see
+        # TestExpiryLabelNotProcurement below.
+        import procurement_status as ps
+        rows = db_module.get_contracts(status="open")["contracts"]
+        assert rows, "fixture must produce at least one status=open row"
+        assert any(ps.status_code(dict(r)) == ps.CLOSED_AWARDED for r in rows)
+
 
 # ── route + UI ──────────────────────────────────────────────────────────────────
 class TestContractsRouteStatus:
@@ -116,3 +132,15 @@ class TestContractsRouteStatus:
         body = client.get("/contracts/export.csv?status=open").get_data(as_text=True)
         assert "OPEN1" in body and "OPEN2" in body
         assert "EXP1" not in body and "EXP0" not in body
+
+
+class TestExpiryLabelNotProcurement:
+    """The "status" filter's dropdown must not claim "Open" in a way that
+    implies procurement-status Open — it is purely days_remaining-based. See
+    test_status_open_can_include_procurement_closed_rows_by_design above.
+    """
+
+    def test_expiry_dropdown_label_not_open_only(self, client):
+        body = client.get("/contracts").get_data(as_text=True)
+        assert "Open only" not in body
+        assert "Not expired" in body
