@@ -88,6 +88,18 @@ tasks.conf.beat_schedule = {
     # see railway.toml) so ingest never runs twice. The run_ingest task below
     # stays registered for the /ingest admin trigger (run_ingest.delay()) and
     # manual re-runs.
+    #
+    # SINGLE SCHEDULER OWNER (same invariant as ingest, inverted): when Celery
+    # beat is activated (O5 / Gate 3 step 7 — human-only; see docs/DEPLOYMENT.md
+    # §8b), beat is the SOLE owner of the two recurring jobs below. Exactly one
+    # scheduler owner may register or dispatch each job. Do not add a Railway
+    # cron service — or any other recurring caller — that dispatches
+    # check_watchlist_alerts or send_trial_emails while these entries exist:
+    # both owners would fire at the same times and customers would receive
+    # duplicate alert / trial emails. If a cron service must own a job instead,
+    # remove its entry here first, the way run_ingest was removed above. One
+    # owner, one place. (Beat itself must also run exactly one replica — see
+    # railway.toml.)
     "watchlist-alerts-0700-utc": {
         "task": "tasks.check_watchlist_alerts",
         "schedule": crontab(hour=7, minute=0),
