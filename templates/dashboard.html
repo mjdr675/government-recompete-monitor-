@@ -559,7 +559,7 @@
                 <td>
                   {% set eff_pri = effective_priority(r.priority, r.days_remaining) %}
                   {% if eff_pri %}
-                  <span class="priority-badge priority-{{ eff_pri | lower }}">{{ eff_pri }}</span>
+                  <span class="priority-badge priority-{{ eff_pri | lower | replace(' ', '-') | replace('_', '-') }}">{{ eff_pri }}</span>
                   {% else %}&mdash;{% endif %}
                 </td>
               </tr>
