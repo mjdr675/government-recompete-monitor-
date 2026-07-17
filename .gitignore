@@ -51,3 +51,16 @@ venv/
 # Local/ad-hoc DB backups (see scripts/backup_db.sh)
 backups/
 recompete-db-backups/
+
+# Rotated ingest logs at the repo root. tasks.py wires the 'ingest' logger to a
+# RotatingFileHandler(maxBytes=1_000_000, backupCount=3), which produces these
+# exact suffixed files; the `ingest.log` and `*.log` rules above match neither.
+# Root-anchored so rotated logs elsewhere are unaffected.
+/ingest.log.1
+/ingest.log.2
+/ingest.log.3
+
+# Generated report written to the repo root by recompete_report.py (open(
+# "recompete_report.csv", "w")). Root-anchored so CSV fixtures and test data
+# elsewhere in the tree stay tracked.
+/recompete_report.csv

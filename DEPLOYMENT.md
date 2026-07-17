@@ -65,13 +65,27 @@ covered by `tests/test_stripe_webhook*.py`. Subscription lifecycle events
 (checkout/update/cancel) are being verified and processed.)
 
 - **worker/beat are not running on Railway.** `Procfile` defines `worker`
-  (`celery -A tasks worker`) and `beat` (`celery -A tasks beat`), but `railway.toml`
-  only defines `web` and `daily-ingest` services — celery worker/beat are dead in
-  production. Watchlist alerts, trial emails, and other async/scheduled email are
-  not running. Needs a shared Postgres to restore properly; deferred to Gate 3 (O5).
-  Branch-only groundwork + human-only cutover steps: see
-  [`docs/O5_POSTGRES_MIGRATION_PLAN.md`](docs/O5_POSTGRES_MIGRATION_PLAN.md)
-  (worker/beat service defs are drafted, commented/inactive, in `railway.toml`).
+  (`celery -A tasks worker`) and `beat` (`celery -A tasks beat`), and `railway.toml`
+  now defines four services — `web`, `daily-ingest`, `worker`, and `beat` — but the
+  `worker` and `beat` blocks are **config-as-code only: the live Railway services
+  have not been created**. Celery worker/beat remain dead in production, so watchlist
+  alerts, trial emails, and other async/scheduled email are still not running.
+  Merging `railway.toml` does **not** auto-create these services.
+
+  The shared-Postgres prerequisite is **satisfied**: web is live on PostgreSQL 18.4
+  as of the 2026-07-10 cutover (`DATABASE_URL=${{Postgres.DATABASE_URL}}`). What
+  remains is **O5 / Gate 3 step 7** — creating the `worker` and `beat` services —
+  which is a **human-only step gated on explicit Product Manager authorization** and
+  on the activation-runbook preconditions (including a bounded post-cutover soak).
+  Those preconditions are **not** asserted here as met; verify each one against the
+  runbook before acting. Nothing in this repo activates worker/beat.
+
+  Runbook and plan of record:
+  [`docs/DEPLOYMENT.md` §8b](docs/DEPLOYMENT.md) (worker/beat activation runbook,
+  human-only) and
+  [`docs/O5_POSTGRES_MIGRATION_PLAN.md`](docs/O5_POSTGRES_MIGRATION_PLAN.md).
+  Note the runbook's hard constraint: **exactly one `beat` replica** — more than one
+  fires every crontab job multiple times (duplicate emails/alerts).
 
 (Resolved: **off-site backup durability** — off-site Cloudflare R2 upload + fail-closed
 restore/verify is now **live** as of 2026-07-08; see Backups above.)
