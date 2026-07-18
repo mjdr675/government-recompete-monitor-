@@ -89,10 +89,10 @@ tasks.conf.beat_schedule = {
     # stays registered for the /ingest admin trigger (run_ingest.delay()) and
     # manual re-runs.
     #
-    # SINGLE SCHEDULER OWNER (same invariant as ingest, inverted): when Celery
-    # beat is activated (O5 / Gate 3 step 7 — human-only; see docs/DEPLOYMENT.md
-    # §8b), beat is the SOLE owner of the two recurring jobs below. Exactly one
-    # scheduler owner may register or dispatch each job. Do not add a Railway
+    # SINGLE SCHEDULER OWNER (same invariant as ingest, inverted): Celery beat is
+    # now activated and running in production (O5 / Gate 3 step 7 complete; see
+    # docs/DEPLOYMENT.md §8b) and is the SOLE owner of the two recurring jobs below.
+    # Exactly one scheduler owner may register or dispatch each job. Do not add a Railway
     # cron service — or any other recurring caller — that dispatches
     # check_watchlist_alerts or send_trial_emails while these entries exist:
     # both owners would fire at the same times and customers would receive

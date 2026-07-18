@@ -335,14 +335,18 @@ others). The app selects Postgres automatically when `DATABASE_URL` is set
 (`db.get_engine()` / `db.get_connection()`).
 
 ### Live services vs. repo config
-The **live** Railway services are dashboard-managed and named
-`government-recompete-monitor-` (web), `Redis`, `ingest-cron`, and `Postgres`.
-The service names in `railway.toml` (`web`/`worker`/`beat`) are the config-as-code
-representation; the dashboard is authoritative. The `${{Postgres.DATABASE_URL}}`
-and `${{Redis.REDIS_URL}}` references in `railway.toml` must therefore **also be
-set as reference variables on the live services**.
+The **live** Railway services are dashboard-managed. They include
+`government-recompete-monitor-` (web), `Redis`, `ingest-cron`, `Postgres`, and the
+now-created Celery `worker` and `beat` services. The service names in `railway.toml`
+(`web`/`worker`/`beat`) are the config-as-code representation; the dashboard is
+authoritative. The `${{Postgres.DATABASE_URL}}` and `${{Redis.REDIS_URL}}`
+references in `railway.toml` must therefore **also be set as reference variables on
+the live services** (and are set on the running worker and beat services).
 
-### Manual Railway steps (human-only, before deploy)
+### Manual Railway steps (human-only) — completed
+These were the manual, human-only steps for the cutover and worker/beat
+activation. **All are now complete**; they are retained here as the record of what
+was done and as the reference for any future rollback/rebuild.
 1. Confirm `Postgres` and `Redis` are provisioned (done).
 2. Set `DATABASE_URL=${{Postgres.DATABASE_URL}}` and `REDIS_URL=${{Redis.REDIS_URL}}`
    on the live `government-recompete-monitor-` (web) service.
@@ -354,18 +358,23 @@ set as reference variables on the live services**.
 6. Verify: `worker` log shows `celery@… ready`; `beat` log shows the schedule;
    Redis key `beat:health` refreshes.
 
-> ✅ **Steps 2–4 are complete — web is live on PostgreSQL 18.4 (cutover 2026-07-10),**
-> schema built, data migrated, and the integrity gate passed. This branch is safe to
-> merge (it is config-as-code only; merging does **not** auto-create Railway
-> services). Creating/enabling the `worker` and `beat` services (steps 5–6) remains a
-> **separate human-only step**, gated by the activation runbook below and explicit
-> Product Manager authorization.
+> ✅ **All steps 1–6 are complete.** Web is live on PostgreSQL 18.4 (cutover
+> 2026-07-10) with schema built, data migrated, and the integrity gate passed; the
+> `worker` and `beat` Railway services have since been created and are running,
+> with beat dispatch verified after the successful PR #71 deploy. Note that
+> `railway.toml` remains config-as-code only — merging it does **not** by itself
+> auto-create Railway services; the live services above were created in the
+> dashboard.
 
-### Worker/beat activation runbook (human-only)
+### Worker/beat activation runbook (human-only) — COMPLETED, retained for reference
 
-Do **not** run this until every precondition holds. Nothing here is automated.
+> **Historical / completed.** The `worker` and `beat` services have already been
+> activated per this runbook and are running in production (beat dispatch verified
+> after the PR #71 deploy). This section is retained as the record of how activation
+> was performed and as the procedure to follow if the services must ever be rebuilt.
+> It is **not** an outstanding action item. Nothing here is automated.
 
-**1. Preconditions**
+**1. Preconditions** (were satisfied before activation)
 - PostgreSQL production cutover accepted (web `DATABASE_URL=${{Postgres.DATABASE_URL}}`,
   `get_engine().dialect == postgresql`).
 - ≥1 successful post-cutover **daily-ingest** cycle has completed on Postgres

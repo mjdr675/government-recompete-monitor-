@@ -54,21 +54,21 @@
 # DB volume). See docs/DEPLOYMENT.md. Pre-deploy backup above is already live.
 
 # ─────────────────────────────────────────────────────────────────────────────
-# O5 / Gate 3 — Celery worker + beat services (config-as-code; NOT yet created).
+# O5 / Gate 3 — Celery worker + beat services (config-as-code; NOW CREATED & LIVE).
 #
-# Postgres and Redis are provisioned, and the web service is now LIVE on
+# Postgres and Redis are provisioned, and the web service is LIVE on
 # PostgreSQL 18.4 (cutover completed 2026-07-10). worker and beat run the Procfile
 # commands and reference the SHARED Postgres + Redis so they operate on the same
 # data as web. The broker is REDIS_URL (already live).
 #
-# ⚠️  ACTIVATION GATE (human-only) — see the activation runbook in
-# docs/DEPLOYMENT.md §8b and docs/O5_POSTGRES_MIGRATION_PLAN.md. These [[services]]
-# blocks are repo-side config only: Railway services are dashboard-authoritative and
-# are NOT auto-created by merging this file. Create/enable the worker + beat services
-# ONLY after (a) ≥1 successful post-cutover daily-ingest cycle on Postgres, (b) a
-# bounded soak with stable /health and no Postgres errors, and (c) explicit Product
-# Manager authorization. Merge and worker/beat activation remain SEPARATE Product
-# Manager decisions; merging this file never auto-deploys the services.
+# STATUS: the worker and beat Railway services have been CREATED and are RUNNING in
+# production (beat dispatch verified after the successful PR #71 deploy). The former
+# human-only activation gate has been satisfied; see the (now historical) activation
+# runbook in docs/DEPLOYMENT.md §8b and docs/O5_POSTGRES_MIGRATION_PLAN.md for the
+# record and for rollback/rebuild. NOTE (still true): these [[services]] blocks are
+# repo-side config only — Railway services are dashboard-authoritative and are NOT
+# auto-created merely by merging this file; the live services were created in the
+# dashboard.
 [[services]]
   name = "worker"
   [services.deploy]

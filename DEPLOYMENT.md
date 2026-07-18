@@ -54,7 +54,7 @@ longer fires automatically. The file is kept, not deleted, as a manual-only
 option in case that VPS path is ever needed again; run it explicitly via the
 GitHub Actions UI or `gh workflow run deploy.yml` if so.
 
-## Known gaps (tracked, not yet resolved)
+## Previously tracked gaps (now resolved)
 
 (Resolved 2026-07-08 — **Stripe webhook processing (was Gate 2 O2)**:
 `STRIPE_WEBHOOK_SECRET` is now set on Railway prod, and the live deploy accepted a
@@ -64,28 +64,26 @@ with no missing-secret warning, no signature-verification error, and no tracebac
 covered by `tests/test_stripe_webhook*.py`. Subscription lifecycle events
 (checkout/update/cancel) are being verified and processed.)
 
-- **worker/beat are not running on Railway.** `Procfile` defines `worker`
-  (`celery -A tasks worker`) and `beat` (`celery -A tasks beat`), and `railway.toml`
-  now defines four services — `web`, `daily-ingest`, `worker`, and `beat` — but the
-  `worker` and `beat` blocks are **config-as-code only: the live Railway services
-  have not been created**. Celery worker/beat remain dead in production, so watchlist
-  alerts, trial emails, and other async/scheduled email are still not running.
-  Merging `railway.toml` does **not** auto-create these services.
+(Resolved — **Celery worker/beat activation (was O5 / Gate 3 step 7)**: the
+`worker` and `beat` Railway services have been **created and are running in
+production**. `Procfile` defines `worker` (`celery -A tasks worker`) and `beat`
+(`celery -A tasks beat`), and `railway.toml` defines four services — `web`,
+`daily-ingest`, `worker`, and `beat`. The Celery worker is processing async email
+tasks and beat is dispatching the scheduled jobs (watchlist alerts, trial emails,
+heartbeat, beat-health check); beat dispatch was verified after the successful
+PR #71 deploy. This closes the prior gap in which the `worker`/`beat` blocks were
+config-as-code only, the live services had not been created, and async/scheduled
+email did not run.
 
-  The shared-Postgres prerequisite is **satisfied**: web is live on PostgreSQL 18.4
-  as of the 2026-07-10 cutover (`DATABASE_URL=${{Postgres.DATABASE_URL}}`). What
-  remains is **O5 / Gate 3 step 7** — creating the `worker` and `beat` services —
-  which is a **human-only step gated on explicit Product Manager authorization** and
-  on the activation-runbook preconditions (including a bounded post-cutover soak).
-  Those preconditions are **not** asserted here as met; verify each one against the
-  runbook before acting. Nothing in this repo activates worker/beat.
-
-  Runbook and plan of record:
-  [`docs/DEPLOYMENT.md` §8b](docs/DEPLOYMENT.md) (worker/beat activation runbook,
-  human-only) and
-  [`docs/O5_POSTGRES_MIGRATION_PLAN.md`](docs/O5_POSTGRES_MIGRATION_PLAN.md).
-  Note the runbook's hard constraint: **exactly one `beat` replica** — more than one
-  fires every crontab job multiple times (duplicate emails/alerts).
+The shared-Postgres prerequisite was satisfied by the 2026-07-10 cutover — web is
+live on PostgreSQL 18.4 (`DATABASE_URL=${{Postgres.DATABASE_URL}}`) — and `worker`
+and `beat` now reference the same shared Postgres + Redis. The historical
+activation runbook is retained in
+[`docs/DEPLOYMENT.md` §8b](docs/DEPLOYMENT.md) and
+[`docs/O5_POSTGRES_MIGRATION_PLAN.md`](docs/O5_POSTGRES_MIGRATION_PLAN.md) for
+reference and rollback. Its hard constraint still holds: **exactly one `beat`
+replica** — more than one fires every crontab job multiple times (duplicate
+emails/alerts).)
 
 (Resolved: **off-site backup durability** — off-site Cloudflare R2 upload + fail-closed
 restore/verify is now **live** as of 2026-07-08; see Backups above.)
