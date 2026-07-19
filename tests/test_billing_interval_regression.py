@@ -11,6 +11,11 @@ There is no live PostgreSQL available in this test environment, so these
 tests reproduce the missing-column condition directly: each fixture drops
 users.billing_interval from the SQLite test database after init_db() runs,
 exactly matching the production (Postgres) schema shape.
+
+Also covers the companion write-path fix: set_subscription() used to accept
+an optional billing_interval kwarg that wrote to this same missing column.
+No caller ever passed one, so it never fired in production, but it was a
+latent landmine for the next billing change. The kwarg has been removed.
 """
 from unittest.mock import MagicMock, patch
 
@@ -105,15 +110,25 @@ def test_old_query_would_have_raised_without_column(prod_shaped_db):
             ), {"id": 1})
 
 
-def test_set_subscription_billing_interval_write_path_is_unreachable_in_prod(prod_shaped_db):
-    """set_subscription()'s optional billing_interval write path still
-    targets the dropped column and would raise if ever invoked with a
-    truthy value. No production caller (app.py) passes one — confirmed by
-    inspection — so this is documented as a known latent risk, not fixed
-    here (fixing it would touch subscription/billing logic, out of scope)."""
+def test_set_subscription_no_longer_accepts_billing_interval(prod_shaped_db):
+    """set_subscription()'s billing_interval kwarg (and its write to the
+    dropped column) has been removed — it was a latent path that would have
+    raised UndefinedColumn in production the moment any caller passed a
+    truthy value. Confirm the kwarg is gone rather than silently reachable."""
     user = create_user("latent-write@example.com", "password123")
-    with pytest.raises(OperationalError, match="billing_interval"):
+    with pytest.raises(TypeError):
         set_subscription(user["id"], "cus_latent", "active", billing_interval="monthly")
+
+
+def test_set_subscription_works_without_billing_interval_column(prod_shaped_db):
+    """The remaining stripe_customer_id/status write path never touches
+    billing_interval, so it must succeed on the production-shaped schema."""
+    user = create_user("subscription-check@example.com", "password123")
+    set_subscription(user["id"], "cus_ok", "active")
+    result = get_user_by_stripe_customer("cus_ok")
+    assert result is not None
+    assert result["id"] == user["id"]
+    assert result["subscription_status"] == "active"
 
 
 # ---------------------------------------------------------------------------

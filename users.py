@@ -148,27 +148,16 @@ def set_subscription(
     user_id: int,
     stripe_customer_id: str,
     status: str,
-    billing_interval: str | None = None,
 ) -> None:
-    """Update stripe_customer_id, subscription_status, and optionally billing_interval."""
+    """Update stripe_customer_id and subscription_status."""
     with get_engine().begin() as conn:
-        if billing_interval:
-            conn.execute(
-                text(
-                    "UPDATE users SET stripe_customer_id = :cid, subscription_status = :status,"
-                    " billing_interval = :interval WHERE id = :id"
-                ),
-                {"cid": stripe_customer_id, "status": status,
-                 "interval": billing_interval, "id": user_id},
-            )
-        else:
-            conn.execute(
-                text(
-                    "UPDATE users SET stripe_customer_id = :cid, subscription_status = :status"
-                    " WHERE id = :id"
-                ),
-                {"cid": stripe_customer_id, "status": status, "id": user_id},
-            )
+        conn.execute(
+            text(
+                "UPDATE users SET stripe_customer_id = :cid, subscription_status = :status"
+                " WHERE id = :id"
+            ),
+            {"cid": stripe_customer_id, "status": status, "id": user_id},
+        )
 
 
 def get_user_by_stripe_customer(stripe_customer_id: str) -> dict | None:
