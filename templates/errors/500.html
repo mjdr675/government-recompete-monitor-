@@ -1,0 +1,10 @@
+{% extends "errors/error_base.html" %}
+{% block title %}Something went wrong — Recompete{% endblock %}
+{% block code %}500{% endblock %}
+{% block heading %}Something went wrong{% endblock %}
+{% block message %}An unexpected error occurred on our end. The team has been notified. Please try again in a moment.{% endblock %}
+{% block actions %}
+  <a class="err-btn err-btn-primary" href="/">Return home</a>
+  <a class="err-btn err-btn-ghost" href="/contracts">Browse contracts</a>
+{% endblock %}
+{% block note %}<p class="err-note">If the problem persists, contact <a href="mailto:support@recompete.us">support@recompete.us</a>.</p>{% endblock %}
