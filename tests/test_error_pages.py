@@ -247,6 +247,71 @@ def test_500_logs_the_exception(boom_client, caplog):
 
 
 # --------------------------------------------------------------------------- #
+# 500 — log-forging mitigation (CWE-117)
+#
+# ``request.path`` can carry raw CR/LF only via a hand-built WSGI environ
+# (Werkzeug's own URL parsing already strips them when a path is supplied as
+# a string, e.g. through the test client or ``test_request_context``), so
+# these tests build the environ directly to prove the handler's own
+# sanitization — not Werkzeug's — is what neutralizes the injection.
+# --------------------------------------------------------------------------- #
+
+def _request_context_with_raw_path(raw_path):
+    import io
+    environ = {
+        "REQUEST_METHOD": "GET",
+        "PATH_INFO": raw_path,
+        "SERVER_NAME": "localhost",
+        "SERVER_PORT": "80",
+        "wsgi.url_scheme": "http",
+        "wsgi.input": io.BytesIO(b""),
+    }
+    return flask_app.app.request_context(environ)
+
+
+def test_sanitize_for_log_leaves_ordinary_paths_unchanged():
+    assert flask_app._sanitize_for_log("/contracts/123") == "/contracts/123"
+
+
+def test_sanitize_for_log_neutralizes_cr():
+    assert "\r" not in flask_app._sanitize_for_log("/foo\rFAKE: injected")
+
+
+def test_sanitize_for_log_neutralizes_lf():
+    assert "\n" not in flask_app._sanitize_for_log("/foo\nFAKE: injected")
+
+
+def test_sanitize_for_log_neutralizes_crlf():
+    tainted = "/foo\r\nFAKE-LOG-LINE: injected\r\nbar"
+    cleaned = flask_app._sanitize_for_log(tainted)
+    assert "\r" not in cleaned
+    assert "\n" not in cleaned
+    assert cleaned == "/fooFAKE-LOG-LINE: injectedbar"
+
+
+def test_500_handler_logs_sanitized_path_for_crlf_injection(caplog):
+    tainted = "/foo\r\nFAKE-LOG-LINE: injected\r\nbar"
+    with _request_context_with_raw_path(tainted):
+        # The raw (unsanitized) path must still be available for request
+        # handling — only the logged representation changes.
+        assert flask_app.request.path == tainted
+        with caplog.at_level(logging.ERROR):
+            flask_app.handle_500(RuntimeError("boom"))
+    logged = caplog.records[-1].getMessage()
+    assert "\r" not in logged
+    assert "\n" not in logged
+    assert "FAKE-LOG-LINE: injected" in logged  # content preserved, just flattened
+
+
+def test_500_handler_logs_ordinary_path_unchanged(caplog):
+    with _request_context_with_raw_path("/contracts/123"):
+        with caplog.at_level(logging.ERROR):
+            flask_app.handle_500(RuntimeError("boom"))
+    logged = caplog.records[-1].getMessage()
+    assert "/contracts/123" in logged
+
+
+# --------------------------------------------------------------------------- #
 # Regression — normal routes unchanged
 # --------------------------------------------------------------------------- #
 

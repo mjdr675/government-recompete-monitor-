@@ -290,6 +290,16 @@ def handle_404(error):
         return "Not Found", 404
 
 
+def _sanitize_for_log(value: str) -> str:
+    """Strip CR/LF from a value before it reaches a log line.
+
+    Prevents log forging/splitting (CWE-117): an attacker-controlled request
+    path containing ``\\r`` or ``\\n`` could otherwise inject fake log entries
+    into the log stream. Only affects the logged representation.
+    """
+    return value.replace("\r", "").replace("\n", "")
+
+
 @app.errorhandler(500)
 def handle_500(error):
     """Branded 500 for browsers; JSON for API/JSON clients. Preserves 500 status.
@@ -303,7 +313,11 @@ def handle_500(error):
     datastore is unavailable; the app uses per-operation connections (no
     request-scoped session) so there is no failed transaction to roll back here.
     """
-    app.logger.error("Serving branded 500 page for %s %s", request.method, request.path)
+    app.logger.error(
+        "Serving branded 500 page for %s %s",
+        request.method,
+        _sanitize_for_log(request.path),
+    )
     if _prefers_json_error():
         return jsonify(error="internal_error",
                        message="An internal server error occurred.",
