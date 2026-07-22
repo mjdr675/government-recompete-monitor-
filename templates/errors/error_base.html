@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Something went wrong — Recompete{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232563eb'/><text x='16' y='22' text-anchor='middle' font-family='Inter,Arial,sans-serif' font-size='18' font-weight='800' fill='%23ffffff'>R</text></svg>">
+  <!-- Apply saved theme immediately to match the rest of the app (light default). -->
+  <script>try{if(localStorage.getItem('recompete-theme')==='dark')document.documentElement.setAttribute('data-theme','dark')}catch(e){}</script>
+  <style>
+    /* Fully self-contained, DB-free, dependency-free styling.
+       Error pages must render even during a database outage, a failed request
+       transaction, or a static-asset failure — so this base makes NO external
+       request (no fonts, no design.css) and references NO context-processor or
+       auth/session variable. Colours mirror the design system (--accent
+       #2563eb, dark theme #3b82f6). */
+    *,*::before,*::after{box-sizing:border-box}
+    :root{--bg:#f5f7fb;--card:#fff;--border:#e5e7eb;--text:#111827;--muted:#6b7280;--accent:#2563eb;--accent-hover:#1d4ed8;--ghost:#eef2f7}
+    html[data-theme="dark"]{--bg:#0f141b;--card:#161d27;--border:#2a333f;--text:#e5e9f0;--muted:#9aa5b5;--accent:#3b82f6;--accent-hover:#2563eb;--ghost:#1f2732}
+    body{font-family:'Inter',Arial,system-ui,sans-serif;margin:0;background:var(--bg);color:var(--text);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;flex-direction:column}
+    .err-topbar{display:flex;align-items:center;height:56px;padding:0 24px;border-bottom:1px solid var(--border);background:var(--card)}
+    .err-brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px;color:var(--text);text-decoration:none}
+    .err-brand:hover{text-decoration:none}
+    .err-mark{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:7px;background:var(--accent);color:#fff;font-weight:800;font-size:12px;flex-shrink:0}
+    .err-main{flex:1;display:flex;align-items:center;justify-content:center;padding:40px 16px}
+    .err-card{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:0 4px 6px -1px rgba(0,0,0,.07),0 2px 4px -1px rgba(0,0,0,.04);padding:44px 40px;width:100%;max-width:460px;text-align:center}
+    .err-code{font-size:52px;line-height:1;font-weight:800;letter-spacing:-.03em;color:var(--accent);margin:0 0 8px}
+    .err-heading{font-size:21px;font-weight:700;letter-spacing:-.02em;color:var(--text);margin:0 0 8px}
+    .err-sub{font-size:14px;color:var(--muted);margin:0 0 26px}
+    .err-actions{display:flex;flex-direction:column;gap:10px}
+    .err-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:11px 18px;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;border:1px solid transparent;font-family:inherit;cursor:pointer;transition:background .12s,border-color .12s}
+    .err-btn:hover{text-decoration:none}
+    .err-btn-primary{background:var(--accent);color:#fff}
+    .err-btn-primary:hover{background:var(--accent-hover)}
+    .err-btn-ghost{background:transparent;color:var(--text);border-color:var(--border)}
+    .err-btn-ghost:hover{background:var(--ghost)}
+    .err-btn:focus-visible,.err-brand:focus-visible,.err-note a:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:6px}
+    .err-note{margin:22px 0 0;font-size:12.5px;color:var(--muted)}
+    .err-note a{color:var(--accent);text-decoration:none}
+    .err-note a:hover{text-decoration:underline}
+    @media(max-width:480px){.err-card{padding:32px 22px}.err-code{font-size:44px}}
+  </style>
+</head>
+<body>
+  <header class="err-topbar">
+    <a class="err-brand" href="/"><span class="err-mark" aria-hidden="true">R</span>Recompete</a>
+  </header>
+  <main class="err-main" role="main">
+    <div class="err-card">
+      <p class="err-code" aria-hidden="true">{% block code %}{% endblock %}</p>
+      <h1 class="err-heading">{% block heading %}Something went wrong{% endblock %}</h1>
+      <p class="err-sub">{% block message %}{% endblock %}</p>
+      <div class="err-actions">
+        {% block actions %}{% endblock %}
+      </div>
+      {% block note %}{% endblock %}
+    </div>
+  </main>
+</body>
+</html>

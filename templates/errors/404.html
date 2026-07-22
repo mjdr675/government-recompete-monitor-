@@ -1,0 +1,9 @@
+{% extends "errors/error_base.html" %}
+{% block title %}Page not found — Recompete{% endblock %}
+{% block code %}404{% endblock %}
+{% block heading %}Page not found{% endblock %}
+{% block message %}The page you're looking for doesn't exist or may have moved. Let's get you back on track.{% endblock %}
+{% block actions %}
+  <a class="err-btn err-btn-primary" href="/contracts">Browse contracts</a>
+  <a class="err-btn err-btn-ghost" href="/">Return home</a>
+{% endblock %}

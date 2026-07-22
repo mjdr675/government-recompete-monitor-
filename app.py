@@ -254,6 +254,81 @@ def handle_csrf_error(error):
     return render_template("csrf_error.html", recovery_url=recovery_url), 400
 
 
+def _prefers_json_error() -> bool:
+    """True when the client expects a JSON error body rather than an HTML page.
+
+    Mirrors how the app's JSON endpoints are addressed: ``/api/*`` paths, an
+    explicit JSON request body, and Accept headers that rank ``application/json``
+    above ``text/html``. Everything else — normal browser navigation, missing
+    static assets — receives the branded HTML error page. No new API-wide
+    contract is introduced; this only decides response *shape*.
+    """
+    if request.path.startswith("/api/"):
+        return True
+    if request.is_json:
+        return True
+    accept = request.accept_mimetypes
+    return accept["application/json"] > 0 and accept["application/json"] > accept["text/html"]
+
+
+@app.errorhandler(404)
+def handle_404(error):
+    """Branded 404 for browsers; JSON for API/JSON clients. Preserves 404 status.
+
+    Fires for both unmatched routes and explicit ``abort(404)``. Never redirects
+    a missing URL to the dashboard and never downgrades the status to 200.
+    Exposes no request, route, or exception detail.
+    """
+    if _prefers_json_error():
+        return jsonify(error="not_found",
+                       message="The requested resource was not found.",
+                       status=404), 404
+    try:
+        return render_template("errors/404.html"), 404
+    except Exception:  # never let the error page itself become a second failure
+        app.logger.exception("404 error page failed to render")
+        return "Not Found", 404
+
+
+def _sanitize_for_log(value: str) -> str:
+    """Strip CR/LF from a value before it reaches a log line.
+
+    Prevents log forging/splitting (CWE-117): an attacker-controlled request
+    path containing ``\\r`` or ``\\n`` could otherwise inject fake log entries
+    into the log stream. Only affects the logged representation.
+    """
+    return value.replace("\r", "").replace("\n", "")
+
+
+@app.errorhandler(500)
+def handle_500(error):
+    """Branded 500 for browsers; JSON for API/JSON clients. Preserves 500 status.
+
+    For uncaught exceptions Flask has already recorded the traceback via
+    ``app.log_exception`` and emitted ``got_request_exception`` (Sentry) *before*
+    this handler runs, so the exception is observed and never swallowed. We log a
+    concise, traceback-free breadcrumb and return a generic branded page — no
+    exception message, SQL, traceback, secret, path, or provider detail reaches
+    the client. The template touches no database, so it renders even when the
+    datastore is unavailable; the app uses per-operation connections (no
+    request-scoped session) so there is no failed transaction to roll back here.
+    """
+    app.logger.error(
+        "Serving branded 500 page for %s %s",
+        request.method,
+        _sanitize_for_log(request.path),
+    )
+    if _prefers_json_error():
+        return jsonify(error="internal_error",
+                       message="An internal server error occurred.",
+                       status=500), 500
+    try:
+        return render_template("errors/500.html"), 500
+    except Exception:  # guard against recursive failure during error rendering
+        app.logger.exception("500 error page failed to render")
+        return "Internal Server Error", 500
+
+
 @app.after_request
 def _set_security_headers(response):
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
