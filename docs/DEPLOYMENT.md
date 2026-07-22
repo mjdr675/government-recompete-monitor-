@@ -336,7 +336,9 @@ others). The app selects Postgres automatically when `DATABASE_URL` is set
 
 ### Live services vs. repo config
 The **live** Railway services are dashboard-managed and named
-`government-recompete-monitor-` (web), `Redis`, `ingest-cron`, and `Postgres`.
+`government-recompete-monitor-` (web), `Redis`, `ingest-cron`, `Postgres`, and — as
+of the 2026-07-22 deploy (commit `1c64b83`) — the `worker` and `beat` Celery
+services.
 The service names in `railway.toml` (`web`/`worker`/`beat`) are the config-as-code
 representation; the dashboard is authoritative. The `${{Postgres.DATABASE_URL}}`
 and `${{Redis.REDIS_URL}}` references in `railway.toml` must therefore **also be
@@ -354,14 +356,24 @@ set as reference variables on the live services**.
 6. Verify: `worker` log shows `celery@… ready`; `beat` log shows the schedule;
    Redis key `beat:health` refreshes.
 
-> ✅ **Steps 2–4 are complete — web is live on PostgreSQL 18.4 (cutover 2026-07-10),**
-> schema built, data migrated, and the integrity gate passed. This branch is safe to
-> merge (it is config-as-code only; merging does **not** auto-create Railway
-> services). Creating/enabling the `worker` and `beat` services (steps 5–6) remains a
-> **separate human-only step**, gated by the activation runbook below and explicit
-> Product Manager authorization.
+> ✅ **Steps 1–6 are complete.** Web went live on PostgreSQL 18.4 at the 2026-07-10
+> cutover (schema built, data migrated, integrity gate passed). The `worker` and
+> `beat` services (steps 5–6) were **created and are live as of the 2026-07-22
+> deploy** (commit `1c64b83`, status SUCCESS): human read-only verification on
+> 2026-07-22 showed the worker log at `celery@… ready`, Beat loaded its schedule and
+> at least one scheduled task fired, and `/health` returned HTTP 200. **Any future**
+> deploy, restart, scaling, or migration of these services remains a **human-only
+> step** requiring explicit Product Manager authorization — this note records live
+> state and does not itself authorize any future production action.
 
 ### Worker/beat activation runbook (human-only)
+
+> **Completed 2026-07-22** — worker and beat are live (commit `1c64b83`, SUCCESS).
+> This runbook is **retained for reference and any future re-provisioning**; the
+> preconditions and steps below record how activation was gated and performed. It
+> does **not** need to be re-run for the current live services, and re-running any of
+> it (create/deploy/scale/restart) still requires explicit Product Manager
+> authorization.
 
 Do **not** run this until every precondition holds. Nothing here is automated.
 

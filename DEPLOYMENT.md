@@ -64,28 +64,36 @@ with no missing-secret warning, no signature-verification error, and no tracebac
 covered by `tests/test_stripe_webhook*.py`. Subscription lifecycle events
 (checkout/update/cancel) are being verified and processed.)
 
-- **worker/beat are not running on Railway.** `Procfile` defines `worker`
-  (`celery -A tasks worker`) and `beat` (`celery -A tasks beat`), and `railway.toml`
-  now defines four services — `web`, `daily-ingest`, `worker`, and `beat` — but the
-  `worker` and `beat` blocks are **config-as-code only: the live Railway services
-  have not been created**. Celery worker/beat remain dead in production, so watchlist
-  alerts, trial emails, and other async/scheduled email are still not running.
-  Merging `railway.toml` does **not** auto-create these services.
+(Resolved 2026-07-22 — **worker/beat are LIVE on Railway.** `Procfile` defines
+`worker` (`celery -A tasks worker`) and `beat` (`celery -A tasks beat`), and
+`railway.toml` defines four services — `web`, `daily-ingest`, `worker`, and `beat`.
+As of the **2026-07-22 deploy** (commit `1c64b83`, status SUCCESS, project
+`joyful-luck` / `production`) the live Railway `worker` and `beat` services are
+**created and running**, deployed from the **same `1c64b83`** as `web`. Verified by
+Michael via read-only Railway inspection on 2026-07-22: the worker log reached
+`celery@… ready`, Beat loaded its schedule and at least one scheduled task fired,
+`/health` returned HTTP 200, and web is live on **PostgreSQL 18.4**. Watchlist
+alerts, trial emails, and other async/scheduled email therefore now run in
+production.
 
-  The shared-Postgres prerequisite is **satisfied**: web is live on PostgreSQL 18.4
-  as of the 2026-07-10 cutover (`DATABASE_URL=${{Postgres.DATABASE_URL}}`). What
-  remains is **O5 / Gate 3 step 7** — creating the `worker` and `beat` services —
-  which is a **human-only step gated on explicit Product Manager authorization** and
-  on the activation-runbook preconditions (including a bounded post-cutover soak).
-  Those preconditions are **not** asserted here as met; verify each one against the
-  runbook before acting. Nothing in this repo activates worker/beat.
+  **Historical (superseded, dated):** from the 2026-07-10 Postgres cutover until the
+  2026-07-22 deploy, the `worker`/`beat` blocks were config-as-code only — the live
+  Railway services had **not** been created and Celery worker/beat were dead in prod.
+  That state **no longer holds** as of the 2026-07-22 deploy above; it is retained
+  here only as history and must not be read as current.
 
-  Runbook and plan of record:
-  [`docs/DEPLOYMENT.md` §8b](docs/DEPLOYMENT.md) (worker/beat activation runbook,
-  human-only) and
-  [`docs/O5_POSTGRES_MIGRATION_PLAN.md`](docs/O5_POSTGRES_MIGRATION_PLAN.md).
-  Note the runbook's hard constraint: **exactly one `beat` replica** — more than one
-  fires every crontab job multiple times (duplicate emails/alerts).
+  The shared-Postgres prerequisite was satisfied at the 2026-07-10 cutover: web is
+  live on PostgreSQL 18.4 (`DATABASE_URL=${{Postgres.DATABASE_URL}}`).
+
+  **Future production changes remain human-only and gated.** Any further deploy,
+  restart, scaling, or migration of `worker`/`beat` — or any service — still requires
+  explicit Product Manager authorization. This documentation records the already-live
+  state; it does **not** by itself authorize any future production action. Runbook and
+  plan of record: [`docs/DEPLOYMENT.md` §8b](docs/DEPLOYMENT.md) (now the reference
+  runbook for re-provisioning) and
+  [`docs/O5_POSTGRES_MIGRATION_PLAN.md`](docs/O5_POSTGRES_MIGRATION_PLAN.md). The
+  runbook's hard constraint still applies: **exactly one `beat` replica** — more than
+  one fires every crontab job multiple times (duplicate emails/alerts).)
 
 (Resolved: **off-site backup durability** — off-site Cloudflare R2 upload + fail-closed
 restore/verify is now **live** as of 2026-07-08; see Backups above.)
