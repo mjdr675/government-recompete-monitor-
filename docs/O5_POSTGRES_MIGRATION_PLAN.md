@@ -22,7 +22,9 @@ owned solely by the `daily-ingest` cron — it is **not** a beat job.
 
 ## Why this needs shared Postgres (not just Redis)
 
-- Today `web` serves off **SQLite** at `/data/contracts.db`, on a Railway **volume**.
+- _Historical (pre-2026-07-10 cutover):_ `web` served off **SQLite** at
+  `/data/contracts.db`, on a Railway **volume**. Web now runs on network Postgres
+  (see "Current state" below); the SQLite topology no longer applies.
 - A Railway volume **binds to a single service**. Separate `worker`/`beat` services
   cannot see `web`'s SQLite file — they'd each get an empty per-service volume.
 - Redis is already provisioned (`REDIS_URL` present) and is only the Celery
@@ -30,8 +32,9 @@ owned solely by the `daily-ingest` cron — it is **not** a beat job.
 - Therefore all three services must share a **network Postgres** via `DATABASE_URL`.
   The app already supports this: `db.get_engine()` / `db.get_connection()` select
   Postgres when `DATABASE_URL` is set, and `db._apply_migrations()` runs against
-  either engine. Worker/beat service defs are **active** (config-as-code) in
-  `railway.toml`, gated behind the human-only activation runbook.
+  either engine. Worker/beat service defs are **active** in `railway.toml`, and the
+  `worker` and `beat` services are now **live in production** as of the 2026-07-22
+  deploy (commit `1c64b83`).
 
 ## Current state (updated 2026-07-22; post-cutover 2026-07-10; originally 2026-07-08)
 
@@ -45,7 +48,8 @@ owned solely by the `daily-ingest` cron — it is **not** a beat job.
 
 
 - Railway services: `government-recompete-monitor-` (web), `ingest-cron`, `Redis`,
-  **and `Postgres` (now provisioned).**
+  `Postgres`, **and the `worker` + `beat` services — all live as of the 2026-07-22
+  deploy (commit `1c64b83`).**
 - `DATABASE_URL`: **now referenced on the live web service** — web runs on
   **PostgreSQL 18.4** as of the 2026-07-10 cutover
   (`DATABASE_URL=${{Postgres.DATABASE_URL}}`). `REDIS_URL`: present on web + Redis.

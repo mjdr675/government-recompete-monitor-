@@ -416,7 +416,9 @@ Do **not** run this until every precondition holds. Nothing here is automated.
 - Watchlist/trial schedules are present without manually running them.
 - Web `/health` remains 200 throughout.
 
-**5. Rollback**
+**5. Rollback** (requires explicit Product Manager authorization — stop, scale, and
+delete are production changes, gated exactly like a forward deploy; only an incident
+response already authorized as an emergency path may skip the gate)
 - Stop/disable **beat first**, then **worker** (scale to 0 or delete the services).
 - Leave web, PostgreSQL, Redis, and the `daily-ingest` cron **untouched**.
 - Confirm `/health` remains 200. Worker/beat are additive — removing them only stops
@@ -437,11 +439,13 @@ point-in-time recovery for Postgres is accepted until a plan upgrade; do not blo
 this work on Railway Pro backups.
 
 ### Rollback (worker/beat)
-`worker` and `beat` are additive and safe to remove at any time — they only consume
-the Redis broker and Postgres. Removing/scaling them to zero reverts to the
-`web` + `daily-ingest` topology. Keep `Redis` provisioned so web request-path
-`.delay()` email enqueues do not hang. See `docs/O5_POSTGRES_MIGRATION_PLAN.md`
-for the full data-cutover rollback.
+`worker` and `beat` are additive — removing them is technically safe (they only consume
+the Redis broker and Postgres), but stopping, scaling, or deleting them in production
+**requires explicit Product Manager authorization, exactly like a forward deploy**,
+unless performed under an incident response already authorized as an emergency path.
+Removing/scaling them to zero reverts to the `web` + `daily-ingest` topology. Keep
+`Redis` provisioned so web request-path `.delay()` email enqueues do not hang. See
+`docs/O5_POSTGRES_MIGRATION_PLAN.md` for the full data-cutover rollback.
 
 ---
 

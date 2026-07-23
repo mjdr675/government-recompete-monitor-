@@ -72,9 +72,11 @@ As of the **2026-07-22 deploy** (commit `1c64b83`, status SUCCESS, project
 **created and running**, deployed from the **same `1c64b83`** as `web`. Verified by
 Michael via read-only Railway inspection on 2026-07-22: the worker log reached
 `celery@… ready`, Beat loaded its schedule and at least one scheduled task fired,
-`/health` returned HTTP 200, and web is live on **PostgreSQL 18.4**. Watchlist
-alerts, trial emails, and other async/scheduled email therefore now run in
-production.
+`/health` returned HTTP 200, and web is live on **PostgreSQL 18.4**. The worker and
+Beat that drive watchlist alerts, trial emails, and other async/scheduled email are
+therefore live and processing in production. (The recorded evidence covers worker
+readiness, Beat schedule loading, and at least one scheduled task firing; end-to-end
+delivery of each individual email path was not separately verified here.)
 
   **Historical (superseded, dated):** from the 2026-07-10 Postgres cutover until the
   2026-07-22 deploy, the `worker`/`beat` blocks were config-as-code only — the live
@@ -100,8 +102,11 @@ restore/verify is now **live** as of 2026-07-08; see Backups above.)
 
 ## Rollback
 
-If a deploy causes 5xx errors or ingest failures within 24h: `git push origin
-<previous-good-commit>:main` (Railway redeploys the prior build automatically), or
-use the Railway dashboard to redeploy the previous deployment directly. If prod
-data was affected, restore the most recent verified snapshot from
-`~/recompete-backups/` via `railway ssh` — this is a prod write and needs approval.
+If a deploy causes 5xx errors or ingest failures within 24h, roll back via `git push
+origin <previous-good-commit>:main` (Railway redeploys the prior build automatically),
+or use the Railway dashboard to redeploy the previous deployment directly. **Both are
+production deploys and — like any forward deploy, restart, scaling, or migration —
+require explicit Product Manager authorization; the only exception is an incident
+response already authorized as an emergency rollback path.** If prod data was affected,
+restore the most recent verified snapshot from `~/recompete-backups/` via `railway ssh`
+— this is a prod write and needs approval.
