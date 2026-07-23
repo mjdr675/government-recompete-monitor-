@@ -25,7 +25,12 @@ import os
 import re
 import json
 
-GATE = "/home/michael/.gate_approval"
+# Approval file path. Defaults to the production location and is overridable via
+# GATE_APPROVAL_PATH only to give tests a controlled, guaranteed-absent path
+# (subprocess-invoked, so it cannot be monkeypatched in-process). When the env
+# var is unset -- i.e. in production -- behavior is identical to the hardcoded
+# path, and the gate still fails CLOSED.
+GATE = os.environ.get("GATE_APPROVAL_PATH", "/home/michael/.gate_approval")
 
 # (compiled regex, human label). Patterns are matched against a single command
 # segment (see _segments) with whitespace normalized. Over-blocking is the safe
@@ -72,10 +77,21 @@ def main():
         # Cannot see the command at all -> cannot certify it safe. Fail closed.
         _emit_deny("gate-guard: unparseable PreToolUse payload; failing closed.")
 
+    # json.loads can return a non-dict (array, string, number, bool, null).
+    # A non-dict has no .get(), so certifying it safe is impossible. Fail closed.
+    if not isinstance(data, dict):
+        _emit_deny("gate-guard: PreToolUse payload is not a dict; failing closed.")
+
     if data.get("tool_name") != "Bash":
         _passthrough()
 
-    command = (data.get("tool_input") or {}).get("command")
+    # tool_input may be absent or an unexpected type; only a dict can carry a
+    # command we can inspect. Anything else -> no usable command -> fail closed
+    # below via the string check.
+    tool_input = data.get("tool_input")
+    if not isinstance(tool_input, dict):
+        tool_input = {}
+    command = tool_input.get("command")
     if not isinstance(command, str):
         _emit_deny("gate-guard: missing/malformed Bash command; failing closed.")
 
