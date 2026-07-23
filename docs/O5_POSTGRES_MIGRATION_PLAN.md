@@ -100,7 +100,9 @@ owned solely by the `daily-ingest` cron — it is **not** a beat job.
 - **After cutover regression:** re-point `web` off `DATABASE_URL` to SQLite (the
   volume snapshot from step-0 backup), remove worker/beat services, restore from the
   R2 snapshot if any SQLite write was affected (prod write — needs approval).
-- Worker/beat are safe to remove any time (they only consume the broker + PG).
+- Removing worker/beat leaves web serving and stored data unaffected, but they hold the
+  email-provider credentials and drive external email delivery, so removal **halts
+  processing of all queued async jobs** until they are restored.
 
 ## Prod risks
 
