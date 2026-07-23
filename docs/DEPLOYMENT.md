@@ -336,7 +336,9 @@ others). The app selects Postgres automatically when `DATABASE_URL` is set
 
 ### Live services vs. repo config
 The **live** Railway services are dashboard-managed and named
-`government-recompete-monitor-` (web), `Redis`, `ingest-cron`, and `Postgres`.
+`government-recompete-monitor-` (web), `Redis`, `ingest-cron`, `Postgres`, and — as
+of the 2026-07-22 deploy (commit `1c64b83`) — the `worker` and `beat` Celery
+services.
 The service names in `railway.toml` (`web`/`worker`/`beat`) are the config-as-code
 representation; the dashboard is authoritative. The `${{Postgres.DATABASE_URL}}`
 and `${{Redis.REDIS_URL}}` references in `railway.toml` must therefore **also be
@@ -354,14 +356,27 @@ set as reference variables on the live services**.
 6. Verify: `worker` log shows `celery@… ready`; `beat` log shows the schedule;
    Redis key `beat:health` refreshes.
 
-> ✅ **Steps 2–4 are complete — web is live on PostgreSQL 18.4 (cutover 2026-07-10),**
-> schema built, data migrated, and the integrity gate passed. This branch is safe to
-> merge (it is config-as-code only; merging does **not** auto-create Railway
-> services). Creating/enabling the `worker` and `beat` services (steps 5–6) remains a
-> **separate human-only step**, gated by the activation runbook below and explicit
-> Product Manager authorization.
+> ✅ **Web, worker, and beat are live.** Web went live on PostgreSQL 18.4 at the
+> 2026-07-10 cutover (schema built, data migrated, integrity gate passed; steps 1–4).
+> The `worker` and `beat` services were **created and are live as of the 2026-07-22
+> deploy** (step 5; commit `1c64b83`, status SUCCESS). Step 6 verification recorded on
+> 2026-07-22 was **read-only** and covered the worker log at `celery@… ready`, Beat
+> loading its schedule and at least one scheduled task firing, and `/health` returning
+> HTTP 200. The step-6 `beat:health` refresh and the runbook's explicitly authorized
+> test-email delivery were **not separately recorded here**, so this note does not
+> claim those specific checks passed. **Any future** deploy, restart, scaling, or
+> migration of these services remains a **human-only step** requiring explicit Product
+> Manager authorization — this note records live state and does not itself authorize
+> any future production action.
 
 ### Worker/beat activation runbook (human-only)
+
+> **Completed 2026-07-22** — worker and beat are live (commit `1c64b83`, SUCCESS).
+> This runbook is **retained for reference and any future re-provisioning**; the
+> preconditions and steps below record how activation was gated and performed. It
+> does **not** need to be re-run for the current live services, and re-running any of
+> it (create/deploy/scale/restart) still requires explicit Product Manager
+> authorization.
 
 Do **not** run this until every precondition holds. Nothing here is automated.
 
@@ -404,7 +419,9 @@ Do **not** run this until every precondition holds. Nothing here is automated.
 - Watchlist/trial schedules are present without manually running them.
 - Web `/health` remains 200 throughout.
 
-**5. Rollback**
+**5. Rollback** (requires explicit Product Manager authorization — stop, scale, and
+delete are production changes, gated exactly like a forward deploy; only an incident
+response already authorized as an emergency path may skip the gate)
 - Stop/disable **beat first**, then **worker** (scale to 0 or delete the services).
 - Leave web, PostgreSQL, Redis, and the `daily-ingest` cron **untouched**.
 - Confirm `/health` remains 200. Worker/beat are additive — removing them only stops
@@ -425,11 +442,16 @@ point-in-time recovery for Postgres is accepted until a plan upgrade; do not blo
 this work on Railway Pro backups.
 
 ### Rollback (worker/beat)
-`worker` and `beat` are additive and safe to remove at any time — they only consume
-the Redis broker and Postgres. Removing/scaling them to zero reverts to the
-`web` + `daily-ingest` topology. Keep `Redis` provisioned so web request-path
-`.delay()` email enqueues do not hang. See `docs/O5_POSTGRES_MIGRATION_PLAN.md`
-for the full data-cutover rollback.
+`worker` and `beat` are additive to the `web` request path — removing them leaves web
+serving and stored data unaffected — but they are **not side-effect-free**: the worker
+also holds the email-provider credentials and drives external email delivery, so
+stopping, scaling, or deleting them **halts processing of all queued asynchronous jobs**
+(watchlist alerts, trial emails, and other `.delay()` work) until they are restored.
+Doing so in production **requires explicit Product Manager authorization, exactly like a
+forward deploy**, unless performed under an incident response already authorized as an
+emergency path. Removing/scaling them to zero reverts to the `web` + `daily-ingest`
+topology. Keep `Redis` provisioned so web request-path `.delay()` email enqueues do not
+hang. See `docs/O5_POSTGRES_MIGRATION_PLAN.md` for the full data-cutover rollback.
 
 ---
 
