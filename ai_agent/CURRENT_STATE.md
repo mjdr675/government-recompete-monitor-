@@ -65,25 +65,34 @@ remain; production web/worker/beat run on PostgreSQL 18.4.
 
 ---
 
-## Not Yet Built (Phase 2 Remaining)
+## Phase 2 Feature Status
 
-- Per-user saved searches
-- Watchlist (bookmark contracts)
-- Email alerts on contract changes
-- CSV export from filtered view
-- Subscription billing portal (upgrade/downgrade/cancel)
-- Trial management (14-day free trial)
-- Contract notes
-- Pipeline view
-- Mobile layout pass
+Most of the original Phase 2 backlog is now **delivered** (evidence in `app.py`,
+`db.py`, `tasks.py`):
+
+- Per-user saved searches — **Built**
+- Watchlist (bookmark contracts) — **Built** (`/watchlist*` routes)
+- Email alerts on contract changes — **Built** (`tasks.check_watchlist_alerts`)
+- CSV export from filtered view — **Built** (`/contracts/export.csv`)
+- Subscription billing portal — **Built** (`/billing/portal`, `/settings/billing`)
+- Trial management — **Built** (`tasks.send_trial_emails`)
+- Contract notes — **Built** (`contract_notes` table in `db.py`)
+- Pipeline view — **Built** (`/pipeline*` routes)
+
+Still pending / not conclusively verified:
+
+- Mobile layout pass — **not verified** (no dedicated responsive-layout pass confirmed)
 
 ---
 
 ## Test Suite
 
-Run `pytest -q` to get current count. As of 2026-06-20: approximately 726+ tests.
+A broad `pytest` suite lives in `tests/`, spanning the application routes, Celery
+worker/beat tasks, ingest, billing/Stripe, authentication, database (SQLite and
+PostgreSQL paths), and the AI-agent modules, plus integration coverage. Run
+`venv/bin/pytest -q` for the current count (the suite grows over time, so no fixed
+number is recorded here). CI runs `pytest -q` via `.github/workflows/deploy.yml`.
 
-Tests live in `tests/`. All AI agent tests are included.
 Test isolation: `tmp_path` fixtures, no live database access.
 
 ---
@@ -121,7 +130,15 @@ Also completed (human-directed): auth system, documentation structure, company o
 
 ## Security Notes
 
-- Live Stripe secret key and HubSpot token were previously committed to git history (commits 971e8d1, d047d16) and were only untracked in d8a45f0. **These credentials should be considered compromised and rotated.**
-- CSRF protection is not implemented on any form.
-- No rate limiting on `/login`.
-- Stripe webhook works without `STRIPE_WEBHOOK_SECRET` set (degrades to unsigned event acceptance).
+- **CSRF protection is enabled** via `flask_wtf` `CSRFProtect` on the app; a small set
+  of endpoints (e.g. the Stripe webhook) are explicitly `@csrf.exempt`.
+- **`/login` and `/register` are rate-limited** via `flask_limiter` (`limiter.limit`
+  applied to the `auth.login` and `auth.register` view functions).
+- **The Stripe webhook fails closed:** when `STRIPE_WEBHOOK_SECRET` is unavailable,
+  `POST /stripe/webhook` returns HTTP 400 ("Webhook secret not configured"). Unsigned
+  webhook acceptance is **not** the current behavior; signatures are verified via
+  `construct_webhook_event`.
+- _Historical/operational:_ live Stripe and HubSpot credentials were previously
+  committed to git history (commits 971e8d1, d047d16) and untracked in d8a45f0. They
+  should be treated as compromised; rotation is an operational action and its status
+  is not tracked in this repository.
