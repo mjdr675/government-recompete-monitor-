@@ -54,21 +54,23 @@
 # DB volume). See docs/DEPLOYMENT.md. Pre-deploy backup above is already live.
 
 # ─────────────────────────────────────────────────────────────────────────────
-# O5 / Gate 3 — Celery worker + beat services (config-as-code; NOT yet created).
+# O5 / Gate 3 — Celery worker + beat services (COMPLETE; live in production).
 #
-# Postgres and Redis are provisioned, and the web service is now LIVE on
-# PostgreSQL 18.4 (cutover completed 2026-07-10). worker and beat run the Procfile
-# commands and reference the SHARED Postgres + Redis so they operate on the same
-# data as web. The broker is REDIS_URL (already live).
+# O5 / Gate 3 is complete. Web is LIVE on PostgreSQL 18.4 (cutover 2026-07-10) and
+# the worker + beat services are LIVE in production as of the 2026-07-22 deploy
+# (commit 1c64b83, confirmed via human read-only Railway inspection). This
+# configuration reflects the active PostgreSQL-backed runtime: worker and beat run
+# the Procfile commands and reference the SHARED Postgres + Redis so they operate on
+# the same data as web. The broker is REDIS_URL (already live). See DEPLOYMENT.md,
+# docs/DEPLOYMENT.md §8b, and docs/O5_POSTGRES_MIGRATION_PLAN.md.
 #
-# ⚠️  ACTIVATION GATE (human-only) — see the activation runbook in
-# docs/DEPLOYMENT.md §8b and docs/O5_POSTGRES_MIGRATION_PLAN.md. These [[services]]
-# blocks are repo-side config only: Railway services are dashboard-authoritative and
-# are NOT auto-created by merging this file. Create/enable the worker + beat services
-# ONLY after (a) ≥1 successful post-cutover daily-ingest cycle on Postgres, (b) a
-# bounded soak with stable /health and no Postgres errors, and (c) explicit Product
-# Manager authorization. Merge and worker/beat activation remain SEPARATE Product
-# Manager decisions; merging this file never auto-deploys the services.
+# Operator note (human-only): Railway services are dashboard-authoritative — these
+# [[services]] blocks are the config-as-code representation, and merging this file
+# does NOT by itself create, deploy, restart, or scale the live services. Deployment
+# and production mutations remain separately authorized operational actions: any
+# future deploy, restart, scaling, or migration of worker/beat — or any service —
+# requires explicit Product Manager authorization. The §8b runbook is retained for
+# reference and any future re-provisioning.
 [[services]]
   name = "worker"
   [services.deploy]
