@@ -25,7 +25,12 @@ import os
 import re
 import json
 
-GATE = "/home/michael/.gate_approval"
+# Approval file path. Defaults to the production location and is overridable via
+# GATE_APPROVAL_PATH only to give tests a controlled, guaranteed-absent path
+# (subprocess-invoked, so it cannot be monkeypatched in-process). When the env
+# var is unset -- i.e. in production -- behavior is identical to the hardcoded
+# path, and the gate still fails CLOSED.
+GATE = os.environ.get("GATE_APPROVAL_PATH", "/home/michael/.gate_approval")
 
 # (compiled regex, human label). Patterns are matched against a single command
 # segment (see _segments) with whitespace normalized. Over-blocking is the safe

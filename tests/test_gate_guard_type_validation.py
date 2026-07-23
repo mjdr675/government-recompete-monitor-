@@ -22,6 +22,23 @@ HOOK = os.path.join(
 )
 
 
+@pytest.fixture(autouse=True)
+def isolated_gate_path(tmp_path, monkeypatch):
+    """Point the hook at a controlled, guaranteed-absent gate path.
+
+    The denied-behavior tests require the gate to be CLOSED (approval file
+    absent). Rather than depending on the real host path
+    (/home/michael/.gate_approval) being absent, hand the subprocess a temp
+    path that never exists via GATE_APPROVAL_PATH. Tests thus never read,
+    create, or remove the real gate file, and the subprocess inherits this env
+    override at spawn.
+    """
+    gate = tmp_path / "gate_approval_absent"
+    assert not gate.exists()
+    monkeypatch.setenv("GATE_APPROVAL_PATH", str(gate))
+    return gate
+
+
 def _run(stdin_text):
     """Invoke the gate hook with the given raw stdin; return (stdout, decision).
 
@@ -106,10 +123,10 @@ def test_non_bash_tool_passes_through():
     assert _passthrough(json.dumps(payload))
 
 
-def test_existing_denied_behavior_git_merge_blocked():
-    # Dangerous op with the gate absent must still be denied.
-    assert not os.path.isfile("/home/michael/.gate_approval"), (
-        "test assumes the real gate file is absent"
+def test_existing_denied_behavior_git_merge_blocked(isolated_gate_path):
+    # Dangerous op with the (controlled) gate absent must still be denied.
+    assert not isolated_gate_path.exists(), (
+        "test assumes the controlled gate path is absent"
     )
     payload = {"tool_name": "Bash", "tool_input": {"command": "git merge feature"}}
     assert _deny(json.dumps(payload))
