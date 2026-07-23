@@ -8,7 +8,8 @@ match the surrounding code.
 
 ## Python
 
-**Version:** Python 3.11+. Use modern syntax: `match`, `|` union types, `f`-strings.
+**Version:** Python 3.11+ (CI pins **3.14** — see `.github/workflows/deploy.yml`).
+Use modern syntax: `match`, `|` union types, `f`-strings.
 
 **Formatter:** No auto-formatter is enforced, but code must be readable at a glance.
 Line length: 100 characters soft limit, 120 hard limit.
