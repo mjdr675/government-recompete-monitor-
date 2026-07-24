@@ -80,7 +80,12 @@ This role is reserved for Michael Robinson's direct administrative sessions and 
 
 These are hard operating rules for automated/lane work in this repo. A PreToolUse
 gate (`.claude/hooks/gate_guard.py`) enforces the destructive-action rules below;
-it fails **closed** and only opens when `/home/michael/.gate_approval` exists.
+it fails **closed** and only opens when `/home/michael/.gate_approval` holds a
+**valid, current, correctly-bound approval token** — a JSON object issued by
+Michael through any Michael-controlled channel (Discord optional, not required)
+that binds the repository, operation, base/head SHA, changed-file scope, and
+merge method for exactly this action, with human provenance. Mere file existence
+is not sufficient; a missing, malformed, stale, or mismatched token fails closed.
 
 ### Approval Authority
 
@@ -110,7 +115,7 @@ it fails **closed** and only opens when `/home/michael/.gate_approval` exists.
 - **Full test suite green before any PR** — no PR opens on a red or partial suite.
 - **No `git merge`, push to `main`, deploy, or force-push without explicit approval
   from Michael** (see **Approval Authority** above). These are blocked by the gate
-  hook unless the approval file exists.
+  hook unless a valid bound approval token is present (see above).
 - **Lane merges happen one at a time** — never merge two lanes concurrently.
 - **Verify `cwd` is the repo root** (`/home/michael/government-recompete-monitor-`)
   before doing any lane work.
